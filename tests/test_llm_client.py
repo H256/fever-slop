@@ -53,6 +53,14 @@ class LLMModelCapabilityTests(unittest.TestCase):
 
 
 class LLMClientRetryTests(unittest.TestCase):
+    def test_preserves_h3_judge_output_budget(self):
+        client = LocalOpenAIClient(
+            api_key="test-key",
+            prompt_judge_max_tokens=12288,
+        )
+
+        self.assertEqual(12288, client.prompt_judge_max_tokens)
+
     @patch("feverslop.adapters.llm_client.OpenAI")
     def test_health_check_probes_model_endpoint(self, mock_openai):
         mock_client = MagicMock()

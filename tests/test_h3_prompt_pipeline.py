@@ -1,3 +1,4 @@
+import hashlib
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -5,13 +6,67 @@ from types import SimpleNamespace
 from feverslop.application.h3_prompt_pipeline import (
     _attach_beat_events,
     _attach_relay_segments,
+    _attach_subject_directives,
     _configured_audio_paths,
+    _h3_judge_issue_rows,
+    _normalize_h3_scene_references,
 )
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.domain.performance_sync import select_performance_stems
 
 
 class ConfiguredAudioPathTests(unittest.TestCase):
+    def test_h3_stage_backfills_single_visible_vocal_actor_binding(self):
+        result = _normalize_h3_scene_references(
+            [{
+                "segment_id": "segment_004",
+                "type": "vocals",
+                "references": {"actor_ids": ["jack"]},
+            }],
+            {"actors": [{"id": "jack"}]},
+        )
+
+        self.assertEqual(
+            {"vocals": {"subject_id": "jack", "speaker_id": "S1"}},
+            result[0]["references"]["audio_subject_bindings"],
+        )
+
+    def test_bad_h3_judgements_expand_to_one_table_row_per_issue(self):
+        rows = _h3_judge_issue_rows([{
+            "segment_id": "segment_004",
+            "prompt_judge": {
+                "verdict": "bad",
+                "issues": ["Broken sentence.", "Missing soundscape."],
+                "field_issues": [{
+                    "shot_id": "shot-0002",
+                    "field": "performance",
+                    "issue_code": "grammar.fragment",
+                    "repair_instruction": "Add a finite verb.",
+                }],
+            },
+        }])
+
+        self.assertEqual([
+            ["segment_004", "1", "Broken sentence."],
+            ["segment_004", "2", "Missing soundscape."],
+            ["segment_004", "3", "shot-0002.performance: Add a finite verb."],
+        ], rows)
+
+    def test_attaches_existing_scene_motion_prompt_as_h3_creative_input(self):
+        result = _attach_subject_directives(
+            [{"segment_id": "segment_001"}],
+            [{
+                "segment_id": "segment_001",
+                "ltx_base_prompt": "A deliberate tracking shot follows the singer.",
+                "subject_directives": {"subjects": []},
+            }],
+        )
+
+        self.assertEqual(
+            "A deliberate tracking shot follows the singer.",
+            result[0]["h3_creative_prompt"],
+        )
+
     def test_attaches_scene_local_beat_and_downbeat_events(self):
         result = _attach_beat_events(
             [{"segment_id": "s2", "start": 8.0, "end": 10.0}],
@@ -145,6 +200,7 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         app_config = SimpleNamespace(
             llm=SimpleNamespace(
                 prompt_judge_attempts=4,
+                prompt_judge_max_tokens=12288,
                 model_for=lambda purpose: "checkpoint-model",
             ),
         )
@@ -171,11 +227,23 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         pipeline.run(context)
 
         self.assertIs(sentinel_store, captured["checkpoint_store"])
+        self.assertEqual("video", captured["video_type"])
         self.assertTrue(captured["preserve_existing_aggregate"])
         self.assertFalse(captured["reuse_checkpoints"])
         self.assertEqual("checkpoint-model", captured["generator_revision"]["model"])
         self.assertEqual(4, captured["generator_revision"]["prompt_judge_attempts"])
+        self.assertEqual(12288, captured["generator_revision"]["prompt_judge_max_tokens"])
         self.assertEqual("abc", captured["generator_revision"]["guide_sha256"])
+
+        context.request = SimpleNamespace(resume=True)
+        pipeline.run(context)
+
+        self.assertTrue(captured["reuse_checkpoints"])
+
+        context.global_context = {"video_type": "short_film"}
+        pipeline.run(context)
+
+        self.assertEqual("short_film", captured["video_type"])
 
     def test_run_reuses_checkpoints_for_a_complete_scene_selection(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
@@ -222,6 +290,72 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         pipeline.run(context)
 
         self.assertTrue(captured["reuse_checkpoints"])
+
+    def test_minimax_reports_compiler_revision_and_recompile_status(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+
+        messages = []
+
+        class Builder:
+            def checkpoint_revision(self):
+                return {
+                    "compiler": "deterministic_h3_compiler",
+                    "compiler_version": 7,
+                }
+
+            def build_all_h3_prompts(self, **kwargs):
+                kwargs["status_callback"](1, 1, "recompiled")
+
+        class ArtifactStore:
+            def read_json(self, _path):
+                return []
+
+        context = GenerateRenderPlanContext(
+            app_config=SimpleNamespace(llm=SimpleNamespace(prompt_judge_attempts=3)),
+            config=SimpleNamespace(
+                video_pipeline="minimax-h3-r2v",
+                minimax_h3_audio_refs=SimpleNamespace(stems=[]),
+                project_dir=Path("project"),
+            ),
+            stage1_segments=[{"scene": 1, "segment_id": "s1"}],
+            concept_prompts={},
+            scene_details={},
+            global_context={},
+            h3_prompts_json=Path("h3.json"),
+            artifact_store=ArtifactStore(),
+            log_step=lambda _: None,
+            log_file=lambda *_: None,
+            reporter=SimpleNamespace(
+                message=messages.append,
+                warning=lambda *_args, **_kwargs: None,
+            ),
+        )
+
+        H3PromptPipeline(
+            llm_factory=lambda _: SimpleNamespace(
+                max_tokens=65536,
+                prompt_judge_max_tokens=8192,
+            ),
+            h3_prompt_builder_factory=lambda _: Builder(),
+            dspy_prompt_builder_factory=lambda _: Builder(),
+        ).run(context)
+
+        self.assertTrue(any(
+            "H3 prompt compiler: deterministic_h3_compiler v7" in message
+            for message in messages
+        ))
+        self.assertTrue(any(
+            "H3 planner output budget: 65536 tokens" in message
+            for message in messages
+        ))
+        self.assertTrue(any(
+            "H3 judge output budget: 8192 tokens" in message
+            for message in messages
+        ))
+        self.assertTrue(any(
+            "recompiled (compiler checkpoint invalidated; using v7)" in message
+            for message in messages
+        ))
 
     def test_run_accepts_typed_context_when_relay_path_is_optional(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
@@ -364,5 +498,136 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         self.assertEqual(1, len(calls))
         self.assertEqual("dspy", calls[0][0])
         self.assertFalse(any("fallback" in message.lower() for message in messages))
+
+    def test_minimax_pipeline_blocks_prompt_without_good_judge(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+        from feverslop.errors import FeverSlopDataError
+
+        class Builder:
+            def build_all_h3_prompts(self, **kwargs):
+                kwargs["artifact_store"].write_json(kwargs["output_json_path"], [{
+                    "segment_id": "s1",
+                    "prompt": "invalid",
+                    "prompt_judge": {"verdict": "bad", "issues": ["bad shape"]},
+                }])
+
+        class ArtifactStore:
+            def read_json(self, path):
+                return [{
+                    "segment_id": "s1",
+                    "prompt": "invalid",
+                    "prompt_judge": {"verdict": "bad", "issues": ["bad shape"]},
+                }]
+
+            def write_json(self, _path, data):
+                return data
+
+        context = GenerateRenderPlanContext(
+            app_config=SimpleNamespace(llm=SimpleNamespace(prompt_judge_attempts=1)),
+            config=SimpleNamespace(video_pipeline="minimax-h3-r2v", minimax_h3_audio_refs=SimpleNamespace(stems=[])),
+            stage1_segments=[{"segment_id": "s1"}],
+            concept_prompts={}, scene_details={}, global_context={},
+            h3_prompts_json=Path("h3.json"), artifact_store=ArtifactStore(),
+            log_step=lambda _: None, log_file=lambda *_: None,
+        )
+        with self.assertRaises(FeverSlopDataError):
+            H3PromptPipeline(
+                llm_factory=lambda _: None,
+                h3_prompt_builder_factory=lambda _: Builder(),
+                dspy_prompt_builder_factory=lambda _: Builder(),
+            ).run(context)
+
+    def test_minimax_pipeline_allows_bad_advisory_judge_with_valid_contract(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+
+        prompt = "usable"
+        item = {
+            "segment_id": "s1",
+            "prompt": prompt,
+            "prompt_provenance": {"compiler_version": 24},
+            "prompt_contract": {
+                "valid": True,
+                "compiler_version": 24,
+                "prompt_sha256": "sha256:" + hashlib.sha256(prompt.encode()).hexdigest(),
+            },
+            "prompt_judge": {"verdict": "bad", "issues": ["wording"]},
+        }
+
+        class Builder:
+            def build_all_h3_prompts(self, **kwargs):
+                kwargs["artifact_store"].write_json(kwargs["output_json_path"], [item])
+
+        class ArtifactStore:
+            def read_json(self, _path):
+                return [item]
+
+            def write_json(self, _path, data):
+                return data
+
+        context = GenerateRenderPlanContext(
+            app_config=SimpleNamespace(llm=SimpleNamespace(
+                prompt_judge_attempts=1,
+                prompt_judge_blocking=False,
+            )),
+            config=SimpleNamespace(
+                video_pipeline="minimax-h3-r2v",
+                minimax_h3_audio_refs=SimpleNamespace(stems=[]),
+            ),
+            stage1_segments=[{"segment_id": "s1"}],
+            concept_prompts={}, scene_details={}, global_context={},
+            h3_prompts_json=Path("h3.json"), artifact_store=ArtifactStore(),
+            log_step=lambda _: None, log_file=lambda *_: None,
+        )
+
+        H3PromptPipeline(
+            llm_factory=lambda _: None,
+            h3_prompt_builder_factory=lambda _: Builder(),
+            dspy_prompt_builder_factory=lambda _: Builder(),
+        ).run(context)
+
+        self.assertEqual([item], context["h3_prompts"])
+
+    def test_minimax_pipeline_blocks_good_judge_without_compiler_contract(self):
+        from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
+        from feverslop.errors import FeverSlopDataError
+
+        class Builder:
+            def build_all_h3_prompts(self, **kwargs):
+                kwargs["artifact_store"].write_json(kwargs["output_json_path"], [{
+                    "segment_id": "s1",
+                    "prompt": "unverified",
+                    "prompt_judge": {"verdict": "good", "issues": []},
+                }])
+
+        class ArtifactStore:
+            def __init__(self):
+                self.data = []
+
+            def read_json(self, _path):
+                return self.data
+
+            def write_json(self, _path, data):
+                self.data = data
+                return data
+
+        store = ArtifactStore()
+        context = GenerateRenderPlanContext(
+            app_config=SimpleNamespace(llm=SimpleNamespace(prompt_judge_attempts=1)),
+            config=SimpleNamespace(
+                video_pipeline="minimax-h3-r2v",
+                minimax_h3_audio_refs=SimpleNamespace(stems=[]),
+            ),
+            stage1_segments=[{"segment_id": "s1"}],
+            concept_prompts={}, scene_details={}, global_context={},
+            h3_prompts_json=Path("h3.json"), artifact_store=store,
+            log_step=lambda _: None, log_file=lambda *_: None,
+        )
+
+        with self.assertRaises(FeverSlopDataError):
+            H3PromptPipeline(
+                llm_factory=lambda _: None,
+                h3_prompt_builder_factory=lambda _: Builder(),
+                dspy_prompt_builder_factory=lambda _: Builder(),
+            ).run(context)
 if __name__ == "__main__":
     unittest.main()

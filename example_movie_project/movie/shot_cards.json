@@ -1,0 +1,83 @@
+{
+  "shot_cards": [
+    {
+      "shot_id": "shot_0001",
+      "scene_id": "scene_0001",
+      "action": "Mara, a maintenance engineer in an orange pressure suit, enters the powerless relay and seals the airlock behind her. Frost drifts from the ceiling while her helmet lamp searches the darkness.",
+      "camera": "controlled interior dolly with motivated cinematic framing",
+      "acting": "subtle emotionally grounded acting",
+      "dialogue": "",
+      "start_frame_brief": "Opening frame: Mara, a maintenance engineer in an orange pressure suit, enters the powerless relay and seals the airlock behind her. Frost drifts from the ceiling while her helmet lamp searches the darkness.; actors mara in Abandoned Orbital Relay.",
+      "end_frame_brief": "Ending frame: Mara, a maintenance engineer in an orange pressure suit, enters the powerless relay and seals the airlock behind her. Frost drifts from the ceiling while her helmet lamp searches the darkness.; preserve actor identity and location geography.",
+      "transition_from_previous": "cut",
+      "transition_reason": "hard cut or new setup"
+    },
+    {
+      "shot_id": "shot_0002",
+      "scene_id": "scene_0002",
+      "action": "Mara follows a weak red pulse through the corridor. She kneels beside a severed fiber cable and recognizes a deliberate distress rhythm.",
+      "camera": "controlled interior dolly with motivated cinematic framing",
+      "acting": "subtle emotionally grounded acting",
+      "dialogue": "",
+      "start_frame_brief": "Opening frame: Mara follows a weak red pulse through the corridor. She kneels beside a severed fiber cable and recognizes a deliberate distress rhythm.; actors mara in Abandoned Orbital Relay.",
+      "end_frame_brief": "Ending frame: Mara follows a weak red pulse through the corridor. She kneels beside a severed fiber cable and recognizes a deliberate distress rhythm.; preserve actor identity and location geography.",
+      "transition_from_previous": "cut",
+      "transition_reason": "hard cut or new setup"
+    },
+    {
+      "shot_id": "shot_0003",
+      "scene_id": "scene_0003",
+      "action": "Mara connects her wrist terminal to the damaged console and watches the dead transmitter.",
+      "camera": "controlled interior dolly with motivated cinematic framing",
+      "acting": "emotion and facial acting follow the dialogue beats",
+      "dialogue": "MARA: Relay station, can you hear me?",
+      "start_frame_brief": "Opening frame: Mara connects her wrist terminal to the damaged console and watches the dead transmitter.; actors mara in Abandoned Orbital Relay.",
+      "end_frame_brief": "Ending frame: Mara connects her wrist terminal to the damaged console and watches the dead transmitter.; preserve actor identity and location geography.",
+      "transition_from_previous": "cut",
+      "transition_reason": "hard cut or new setup"
+    },
+    {
+      "shot_id": "shot_0004",
+      "scene_id": "scene_0004",
+      "action": "The emergency batteries fail. Mara braces a sparking conduit with both hands and forces a manual bypass into place.",
+      "camera": "controlled interior dolly with motivated cinematic framing",
+      "acting": "subtle emotionally grounded acting",
+      "dialogue": "",
+      "start_frame_brief": "Opening frame: The emergency batteries fail. Mara braces a sparking conduit with both hands and forces a manual bypass into place.; actors mara in Abandoned Orbital Relay.",
+      "end_frame_brief": "Ending frame: The emergency batteries fail. Mara braces a sparking conduit with both hands and forces a manual bypass into place.; preserve actor identity and location geography.",
+      "transition_from_previous": "cut",
+      "transition_reason": "hard cut or new setup"
+    },
+    {
+      "shot_id": "shot_0005",
+      "scene_id": "scene_0005",
+      "action": "Power surges back through the room. The transmitter emits a fragile human heartbeat from a trapped survivor capsule beyond the station.",
+      "camera": "controlled interior dolly with motivated cinematic framing",
+      "acting": "subtle emotionally grounded acting",
+      "dialogue": "",
+      "start_frame_brief": "Opening frame: Power surges back through the room. The transmitter emits a fragile human heartbeat from a trapped survivor capsule beyond the station.; actors mara in Abandoned Orbital Relay.",
+      "end_frame_brief": "Ending frame: Power surges back through the room. The transmitter emits a fragile human heartbeat from a trapped survivor capsule beyond the station.; preserve actor identity and location geography.",
+      "transition_from_previous": "cut",
+      "transition_reason": "hard cut or new setup"
+    },
+    {
+      "shot_id": "shot_0006",
+      "scene_id": "scene_0006",
+      "action": "Mara routes the rescued signal toward Earth as sunlight reaches the station and the transmission locks. story_idea: \"A maintenance engineer boards a dead orbital relay and races to restore a distress signal from a trapped survivor capsule.\" style: \"Grounded near-future science fiction, cold industrial realism, restrained blue and amber lighting, realistic materials, cinematic contrast.\" subject: \"Mara remains the same maintenance engineer in the same orange pressure suit throughout all six scenes.\" steering: {\"global\": \"\", \"story_idea\": \"A maintenance engineer boards a dead orbital relay and races to restore a distress signal from a trapped survivor capsule.\", \"style\": \"\", \"subject\": \"\", \"locations\": \"\", \"concepts\": \"\", \"zimage\": \"\", \"ltx\": \"\", \"final_prompts\": \"\"} prompt_guidance: {\"character_visibility\": \"\", \"shot_types\": \"\", \"environments\": \"\", \"lighting\": \"\", \"camera_motion\": \"\", \"physical_interaction\": \"\", \"facial_expression\": \"\", \"outfit_rules\": \"\", \"prompt_structure\": \"\", \"list_handling\": \"\", \"word_count_min\": 40, \"word_count_max\": 50} dialogue_language: \"English\" actors: [{\"id\": \"mara\", \"name\": \"Mara\", \"role\": \"maintenance engineer and protagonist\", \"visual_description\": \"A woman in her early thirties with a lean face, short black hair, tired brown eyes, and a weathered orange pressure suit with a compact wrist terminal.\"}] locations: [\"Abandoned Orbital Relay\"]",
+      "camera": "controlled interior dolly with motivated cinematic framing",
+      "acting": "emotion and facial acting follow the dialogue beats",
+      "dialogue": "MARA: I found you. Hold on.",
+      "start_frame_brief": "Opening frame: Mara routes the rescued signal toward Earth as sunlight reaches the station and the transmission locks. story_idea: \"A maintenance engineer boards a dead orbital relay and races to restore a distress signal from a trapped survivor capsule.\" style: \"Grounded near-future science fiction, cold industrial realism, restrained blue and amber lighting, realistic materials, cinematic contrast.\" subject: \"Mara remains the same maintenance engineer in the same orange pressure suit throughout all six scenes.\" steering: {\"global\": \"\", \"story_idea\": \"A maintenance engineer boards a dead orbital relay and races to restore a distress signal from a trapped survivor capsule.\", \"style\": \"\", \"subject\": \"\", \"locations\": \"\", \"concepts\": \"\", \"zimage\": \"\", \"ltx\": \"\", \"final_prompts\": \"\"} prompt_guidance: {\"character_visibility\": \"\", \"shot_types\": \"\", \"environments\": \"\", \"lighting\": \"\", \"camera_motion\": \"\", \"physical_interaction\": \"\", \"facial_expression\": \"\", \"outfit_rules\": \"\", \"prompt_structure\": \"\", \"list_handling\": \"\", \"word_count_min\": 40, \"word_count_max\": 50} dialogue_language: \"English\" actors: [{\"id\": \"mara\", \"name\": \"Mara\", \"role\": \"maintenance engineer and protagonist\", \"visual_description\": \"A woman in her early thirties with a lean face, short black hair, tired brown eyes, and a weathered orange pressure suit with a compact wrist terminal.\"}] locations: [\"Abandoned Orbital Relay\"]; actors mara in Abandoned Orbital Relay.",
+      "end_frame_brief": "Ending frame: Mara routes the rescued signal toward Earth as sunlight reaches the station and the transmission locks. story_idea: \"A maintenance engineer boards a dead orbital relay and races to restore a distress signal from a trapped survivor capsule.\" style: \"Grounded near-future science fiction, cold industrial realism, restrained blue and amber lighting, realistic materials, cinematic contrast.\" subject: \"Mara remains the same maintenance engineer in the same orange pressure suit throughout all six scenes.\" steering: {\"global\": \"\", \"story_idea\": \"A maintenance engineer boards a dead orbital relay and races to restore a distress signal from a trapped survivor capsule.\", \"style\": \"\", \"subject\": \"\", \"locations\": \"\", \"concepts\": \"\", \"zimage\": \"\", \"ltx\": \"\", \"final_prompts\": \"\"} prompt_guidance: {\"character_visibility\": \"\", \"shot_types\": \"\", \"environments\": \"\", \"lighting\": \"\", \"camera_motion\": \"\", \"physical_interaction\": \"\", \"facial_expression\": \"\", \"outfit_rules\": \"\", \"prompt_structure\": \"\", \"list_handling\": \"\", \"word_count_min\": 40, \"word_count_max\": 50} dialogue_language: \"English\" actors: [{\"id\": \"mara\", \"name\": \"Mara\", \"role\": \"maintenance engineer and protagonist\", \"visual_description\": \"A woman in her early thirties with a lean face, short black hair, tired brown eyes, and a weathered orange pressure suit with a compact wrist terminal.\"}] locations: [\"Abandoned Orbital Relay\"]; preserve actor identity and location geography.",
+      "transition_from_previous": "cut",
+      "transition_reason": "hard cut or new setup"
+    }
+  ],
+  "memory_pack": {
+    "current_shot": {
+      "shot_id": "shot_0001",
+      "description": "Mara, a maintenance engineer in an orange pressure suit, enters the powerless relay and seals the airlock behind her. Frost drifts from the ceiling while her helmet lamp searches the darkness.",
+      "scene_id": "scene_0001"
+    }
+  }
+}

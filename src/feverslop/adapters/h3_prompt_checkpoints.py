@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Mapping
 from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
 from feverslop.domain.canonical_render_plan import (
     PromptRole,
+    resolve_effective_role,
     stable_scene_id,
     validate_canonical_plan,
 )
@@ -35,7 +36,27 @@ class H3PromptCheckpointStore:
 
     def load(self, request: H3PromptCheckpointInput) -> H3PromptCheckpoint | None:
         checkpoint = self.load_for_resume(request)
-        if checkpoint is None or checkpoint.input_fingerprint != self._fingerprint(request):
+        if (
+            checkpoint is None
+            or checkpoint.status != "good"
+            or checkpoint.input_fingerprint != self._fingerprint(request)
+        ):
+            return None
+        self._sync_canonical(checkpoint)
+        self._report("reused", checkpoint)
+        return checkpoint
+
+    def load_advisory(
+        self,
+        request: H3PromptCheckpointInput,
+    ) -> H3PromptCheckpoint | None:
+        """Reuse a matching deterministic prompt even when its LLM judge said BAD."""
+        checkpoint = self.load_for_resume(request)
+        if (
+            checkpoint is None
+            or checkpoint.status not in {"good", "bad_exhausted"}
+            or checkpoint.input_fingerprint != self._fingerprint(request)
+        ):
             return None
         self._sync_canonical(checkpoint)
         self._report("reused", checkpoint)
@@ -129,10 +150,20 @@ class H3PromptCheckpointStore:
             "bad_exhausted": "BAD",
             "unjudged": "UNJUDGED",
         }[checkpoint.status]
-        self.reporter.message(
+        message = (
             f"H3 prompt checkpoint {action}: scene {checkpoint.scene_number}, "
-            f"judge {verdict}, status {checkpoint.status}, path {checkpoint.path}",
+            f"judge {verdict}, status {checkpoint.status}, path {checkpoint.path}"
         )
+        if checkpoint.status == "bad_exhausted":
+            judge = checkpoint.generated.get("prompt_judge")
+            issues = judge.get("issues") if isinstance(judge, dict) else None
+            if issues:
+                summary = "; ".join(str(issue).strip() for issue in issues if str(issue).strip())
+                if summary:
+                    message += f"; issues: {summary[:500]}"
+                    if len(summary) > 500:
+                        message += "..."
+        self.reporter.message(message)
 
     def _sync_canonical(self, checkpoint: H3PromptCheckpoint) -> None:
         store = CanonicalPlanStore(self.project_dir)
@@ -162,9 +193,17 @@ class H3PromptCheckpointStore:
                     "input_fingerprint": checkpoint.input_fingerprint,
                 },
             }
+            current_h3 = scene.get("h3")
+            current_prompt = current_h3.get("prompt") if isinstance(current_h3, dict) else None
             if role.get("generated") == generated:
-                return
+                current_effective = resolve_effective_role(scene, PromptRole.H3_VIDEO)
+                if current_prompt == current_effective:
+                    return
             role["generated"] = generated
+            h3 = scene.setdefault("h3", {})
+            if not isinstance(h3, dict):
+                raise FeverSlopDataError("H3 checkpoint canonical projection must be an object")
+            h3["prompt"] = resolve_effective_role(scene, PromptRole.H3_VIDEO)
             store.commit_regeneration(snapshot, scenes)
             return
 

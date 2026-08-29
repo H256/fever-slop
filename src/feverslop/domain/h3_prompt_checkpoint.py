@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Mapping
@@ -35,6 +36,25 @@ class H3PromptCheckpoint:
 
 
 def checkpoint_status(generated: Mapping[str, Any]) -> H3CheckpointStatus:
+    provenance = generated.get("prompt_provenance")
+    compiler_version = (
+        int(provenance.get("compiler_version") or 0)
+        if isinstance(provenance, Mapping)
+        else 0
+    )
+    if compiler_version >= 8:
+        contract = generated.get("prompt_contract")
+        if not isinstance(contract, Mapping):
+            return "unjudged"
+        if contract.get("valid") is not True:
+            return "bad_exhausted"
+        if int(contract.get("compiler_version") or 0) != compiler_version:
+            return "bad_exhausted"
+        expected_hash = "sha256:" + hashlib.sha256(
+            str(generated.get("prompt") or "").encode("utf-8"),
+        ).hexdigest()
+        if contract.get("prompt_sha256") != expected_hash:
+            return "bad_exhausted"
     judge = generated.get("prompt_judge")
     verdict = str(judge.get("verdict") or "").strip().lower() if isinstance(judge, Mapping) else ""
     if verdict == "good":
@@ -42,3 +62,20 @@ def checkpoint_status(generated: Mapping[str, Any]) -> H3CheckpointStatus:
     if verdict == "bad":
         return "bad_exhausted"
     return "unjudged"
+
+
+def valid_h3_prompt_contract(generated: Mapping[str, Any]) -> bool:
+    provenance = generated.get("prompt_provenance")
+    contract = generated.get("prompt_contract")
+    if not isinstance(provenance, Mapping) or not isinstance(contract, Mapping):
+        return False
+    compiler_version = int(provenance.get("compiler_version") or 0)
+    expected_hash = "sha256:" + hashlib.sha256(
+        str(generated.get("prompt") or "").encode("utf-8"),
+    ).hexdigest()
+    return (
+        compiler_version >= 8
+        and contract.get("valid") is True
+        and int(contract.get("compiler_version") or 0) == compiler_version
+        and contract.get("prompt_sha256") == expected_hash
+    )

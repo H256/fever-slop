@@ -1,27 +1,32 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections import defaultdict
+from collections.abc import Mapping
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from feverslop.domain.continuation_intent import ContinuationIntent
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.creative_field_repair import repair_creative_payloads
 from feverslop.prompting.deterministic_h3_compiler import creative_shots_from_plan
 from feverslop.prompting.dspy_h3_models import (
     BaseVideoPrompt,
+    CreativeFieldIssue,
     GeneratedVideoPrompt,
     ImageAnalysisMode,
     MusicIntent,
-    PlannedSubject,
+    PlannedShot,
     PromptJudgeResult,
     PromptMode,
     ReferenceAsset,
     ReferenceKind,
     ReferenceLimits,
     ReferenceRole,
+    ReferenceUsage,
     ReferenceVideoPrompt,
     ResolvedPromptPlan,
     ResolvedReference,
@@ -32,6 +37,80 @@ from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
 
 logger = logging.getLogger(__name__)
+
+_H3_JUDGE_MAX_TOKENS = 8192
+
+
+def _subjects_from_references(refs: list[ResolvedReference]) -> list[SubjectDefinition]:
+    subjects = []
+    used_names: set[str] = set()
+    for ref in refs:
+        if ref.kind is not ReferenceKind.PICTURE or ref.role not in {
+            ReferenceRole.SUBJECT,
+            ReferenceRole.ENVIRONMENT,
+        }:
+            continue
+        base_name = str(ref.name or ref.label.strip("<>")).strip()
+        name = base_name
+        suffix = 2
+        while name.casefold() in used_names:
+            name = f"{base_name} {suffix}"
+            suffix += 1
+        used_names.add(name.casefold())
+        subjects.append(SubjectDefinition(
+            label=f"<Subject {len(subjects) + 1}>",
+            name=name,
+            description=ref.description,
+            source_references=[ref.label],
+        ))
+    return subjects
+
+
+def _authoritative_shot_windows(
+    request: VideoPromptRequest,
+    shot_count: int,
+) -> list[tuple[float | None, float | None, bool]]:
+    if shot_count == 0:
+        return []
+    relay = list(request.relay_segments)
+    if relay:
+        if len(relay) != shot_count:
+            raise ValueError(
+                "creative plan must contain exactly one shot per authoritative relay segment",
+            )
+        windows = []
+        for item in relay:
+            start = float(item["start_seconds"])
+            end = float(item["end_seconds"])
+            if start < 0 or end <= start:
+                raise ValueError("authoritative relay segment has an invalid time window")
+            windows.append((start, end, bool(item.get("hard_cut_after", False))))
+        return windows
+    duration = float(request.duration_seconds or 0.0)
+    if duration <= 0:
+        return [(None, None, False) for _ in range(shot_count)]
+    step = duration / shot_count
+    return [
+        (index * step, (index + 1) * step, False)
+        for index in range(shot_count)
+    ]
+
+
+def _authoritative_continuation_intents(
+    request: VideoPromptRequest,
+) -> list[ContinuationIntent]:
+    intents = []
+    for item in request.relay_segments:
+        action_id = str(item.get("action_id") or "").strip()
+        if not action_id:
+            continue
+        intents.append(ContinuationIntent(
+            action_id=action_id,
+            requires_continuation=bool(item.get("requires_continuation", False)),
+            rationale=str(item.get("continuation_rationale") or "").strip(),
+            desired_duration_seconds=item.get("desired_duration_seconds"),
+        ))
+    return intents
 
 _ACTIVE_VOCAL_PATTERN = re.compile(
     r"\b(?:sing|sings|singing|lip[- ]sync(?:s|ing)?|mouth\s+(?:moves|moving|opens?))\b",
@@ -49,43 +128,48 @@ _VOCAL_NEGATION_PATTERN = re.compile(
 )
 
 
-_REFERENCE_LABEL_PATTERN = re.compile(r"<(?:Picture|Video|Audio)\s+\d+>")
+def _sanitize_creative_repair(value: Any) -> str:
+    """Remove compiler-owned syntax from one LLM repair candidate field."""
+    text = str(value or "")
+    text = re.sub(
+        r"<(Subject|Picture|Video|Audio)\s+\d+>",
+        lambda match: {
+            "subject": "the referenced subject",
+            "picture": "the reference image",
+            "video": "the reference video",
+            "audio": "the reference audio",
+        }[match.group(1).casefold()],
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\b\d{2}:\d{2}(?:[:.]\d{2,3})\b", "", text)
+    return re.sub(r"\s+", " ", text).strip(" ,;:.\n\t")
 
 
-def _split_reference_labels(value: str) -> list[str]:
-    """Return individual H3 reference labels from an LM-serialized value.
+def _normalize_judge_payload(value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return value
+    payload = dict(value)
+    raw_verdict = str(payload.get("verdict") or "").strip().lower()
+    if raw_verdict in {"good", "pass", "passed", "accept", "accepted"}:
+        payload["verdict"] = "good"
+    elif raw_verdict in {
+        "bad", "fail", "failed", "reject", "rejected", "pass_with_minor_issues",
+    }:
+        payload["verdict"] = "bad"
+    elif not raw_verdict:
+        # Some local models return only observations and an empty issue list.
+        # Treat that as a pass; any reported issue remains fail-closed.
+        payload["verdict"] = "bad" if payload.get("issues") or payload.get("field_issues") else "good"
+    else:
+        payload["verdict"] = "bad"
+    return payload
 
-    Small instruction models sometimes serialize a list element as one string,
-    e.g. "<Picture 2>, <Picture 3>, <Picture 4>".  Treat that as three labels
-    rather than as one unknown reference.
-    """
-    text = str(value or "").strip()
-    if not text:
-        return []
-    labels = _REFERENCE_LABEL_PATTERN.findall(text)
-    return labels or [text]
 
-
-def _normalize_plan_reference_labels(plan: Any) -> None:
-    """Normalize LM reference-label serialization before contract validation."""
-    for subject in plan.subjects:
-        normalized: list[str] = []
-        for value in subject.source_references:
-            normalized.extend(_split_reference_labels(value))
-        subject.source_references = list(dict.fromkeys(normalized))
-
-    normalized_usages = []
-    for usage in plan.reference_usage:
-        labels = _split_reference_labels(usage.reference_label)
-        for label in labels:
-            normalized_usages.append(usage.model_copy(update={"reference_label": label}))
-    plan.reference_usage = normalized_usages
-
-    for shot in plan.shots:
-        normalized: list[str] = []
-        for value in shot.reference_labels:
-            normalized.extend(_split_reference_labels(value))
-        shot.reference_labels = list(dict.fromkeys(normalized))
+def _judge_guide(guide: str, mode: PromptMode) -> str:
+    """Keep judge context to normative rules, not the guide's long example."""
+    marker = "\n## 7. Complete Example" if mode is PromptMode.R2V else "\n## 5. Cases"
+    return guide.split(marker, 1)[0].rstrip() if marker in guide else guide
 
 
 def _contains_active_vocal_language(text: str) -> bool:
@@ -165,8 +249,13 @@ class VideoPromptGenerator:
             else None
         )
         self.judge_attempts = max(1, int(getattr(llm, "prompt_judge_attempts", 3)))
+        self.prompt_judge_blocking = bool(getattr(llm, "prompt_judge_blocking", True))
         self.warning_callback = warning_callback
         self.lm = self.dspy_runtime.make_lm(llm)
+        self.judge_lm = self.dspy_runtime.make_lm(
+            llm,
+            max_tokens=int(getattr(llm, "prompt_judge_max_tokens", _H3_JUDGE_MAX_TOKENS)),
+        )
 
     def set_warning_callback(self, callback: Callable[..., None] | None) -> None:
         self.warning_callback = callback
@@ -182,25 +271,115 @@ class VideoPromptGenerator:
         request: VideoPromptRequest,
         plan: ResolvedPromptPlan,
         references: list[ResolvedReference],
-        prompt: BaseVideoPrompt | ReferenceVideoPrompt,
+        prompt: BaseVideoPrompt | ReferenceVideoPrompt | str,
     ) -> PromptJudgeResult | None:
         if self.judge is None:
             return None
         guide_path = self.reference_guide_path if request.mode is PromptMode.R2V else self.base_guide_path
         try:
+            guide = _judge_guide(self._read(guide_path), request.mode)
             output = self.judge(
-                guide=self._read(guide_path),
-                final_prompt=prompt.render(),
-                authoritative_plan=plan.model_dump_json(indent=2),
+                guide=guide,
+                final_prompt=prompt if isinstance(prompt, str) else prompt.render(),
+                authoritative_plan=json.dumps(
+                    plan.model_dump(mode="json", exclude_none=True),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
                 references=references,
             )
-            value = getattr(output, "judge", output)
-            return PromptJudgeResult.model_validate(value)
+            value = _normalize_judge_payload(getattr(output, "judge", output))
+            try:
+                return PromptJudgeResult.model_validate(value)
+            except Exception:
+                if not isinstance(value, Mapping):
+                    raise
+                repairable = []
+                section_feedback = []
+                for issue in value.get("field_issues", ()) or ():
+                    try:
+                        repairable.append(CreativeFieldIssue.model_validate(issue).model_dump())
+                    except Exception:
+                        if isinstance(issue, Mapping):
+                            section_feedback.append(
+                                f"{issue.get('field', 'section')}: "
+                                f"{issue.get('repair_instruction', 'review this section')}"
+                            )
+                repaired = dict(value)
+                repaired["field_issues"] = repairable
+                repaired["issues"] = [
+                    *[str(item) for item in (value.get("issues", ()) or ())],
+                    *section_feedback,
+                ]
+                return PromptJudgeResult.model_validate(repaired)
         except Exception as exc:
             self._warning(f"H3 final prompt judge unavailable: {exc}")
             return PromptJudgeResult(
                 verdict="bad",
                 issues=[f"judge unavailable: {type(exc).__name__}: {exc}"],
+            )
+
+    def judge_compiled_prompt(
+        self,
+        *,
+        request: dict[str, Any],
+        plan: ResolvedPromptPlan,
+        references: list[ResolvedReference],
+        final_prompt: str,
+    ) -> PromptJudgeResult | None:
+        """Judge the exact deterministic prompt sent to the video backend."""
+        if self.judge is None:
+            return None
+        resolved_references = [
+            reference
+            if isinstance(reference, ResolvedReference)
+            else ResolvedReference.model_validate(reference)
+            for reference in references
+        ]
+        request_model = VideoPromptRequest.model_validate({
+            "mode": request["mode"],
+            "user_prompt": request["user_prompt"],
+            "duration_seconds": request.get("duration_seconds"),
+            "references": [
+                reference.model_dump() for reference in resolved_references
+            ],
+            "strict_fidelity": bool(request.get("strict_fidelity", True)),
+        })
+        with self.dspy_runtime.context(lm=getattr(self, "judge_lm", self.lm)):
+            return self._judge_final_prompt(
+                request_model,
+                plan,
+                resolved_references,
+                final_prompt,
+            )
+
+    def repair_compiled_plan(
+        self,
+        *,
+        request: dict[str, Any],
+        plan: ResolvedPromptPlan,
+        references: list[ResolvedReference],
+        field_issues: list[CreativeFieldIssue],
+    ) -> ResolvedPromptPlan:
+        """Repair only judge-addressed creative fields in a compiled-plan retry."""
+        resolved_references = [
+            reference
+            if isinstance(reference, ResolvedReference)
+            else ResolvedReference.model_validate(reference)
+            for reference in references
+        ]
+        request_model = VideoPromptRequest.model_validate({
+            **request,
+            "references": [
+                reference.model_dump() for reference in resolved_references
+            ],
+        })
+        with self.dspy_runtime.context(lm=self.lm):
+            return self._repair_creative_plan(
+                request_model,
+                plan,
+                resolved_references,
+                field_issues,
             )
 
     @staticmethod
@@ -235,150 +414,78 @@ class VideoPromptGenerator:
         return result
 
     def _plan(self, request: VideoPromptRequest, refs: list[ResolvedReference]) -> ResolvedPromptPlan:
-        allowed = {ref.label for ref in refs}
-        # Only references that semantically define reusable visible content must
-        # be mapped to a PlannedSubject. Frame anchors, composition/style refs,
-        # camera/motion refs, etc. are valid without becoming subjects.
-        subject_reference_labels = {
-            ref.label for ref in refs
-            if ref.kind is ReferenceKind.PICTURE
-            and ref.role in {ReferenceRole.SUBJECT, ReferenceRole.ENVIRONMENT}
-        }
-        notes = request.notes or ""
-        for attempt in range(1, 4):
-            prediction = self.planner(
-                mode=request.mode.value, user_prompt=request.user_prompt,
-                duration_seconds=request.duration_seconds, references=refs, notes=notes,
-                strict_fidelity=request.strict_fidelity,
-                requested_music_intent=request.music_intent.value if request.music_intent else "",
-                relay_segments=request.relay_segments,
+        prediction = self.planner(
+            mode=request.mode.value,
+            user_prompt=request.user_prompt,
+            duration_seconds=request.duration_seconds,
+            references=refs,
+            notes=request.notes or "",
+            strict_fidelity=request.strict_fidelity,
+            requested_music_intent=request.music_intent.value if request.music_intent else "",
+            relay_segments=request.relay_segments,
+        )
+        creative = prediction.plan
+        music_intent = request.music_intent or creative.music_intent
+        subjects = _subjects_from_references(refs)
+        reference_usage = [
+            ReferenceUsage(
+                reference_label=ref.label,
+                purpose=ref.role.value.replace("_", " "),
+                details=ref.description,
             )
-            plan = prediction.plan
-            _normalize_plan_reference_labels(plan)
-            if request.music_intent is not None:
-                plan.music_intent = request.music_intent
-            if plan.music_intent == MusicIntent.NONE:
-                plan.non_diegetic_music = None
-            missing_music_description = bool(
-                plan.music_intent != MusicIntent.NONE and not plan.non_diegetic_music,
+            for ref in refs
+            if not (
+                ref.kind is ReferenceKind.PICTURE
+                and ref.role in {ReferenceRole.SUBJECT, ReferenceRole.ENVIRONMENT}
             )
-            unknown = {
-                label
-                for subject in plan.subjects
-                for label in subject.source_references
-                if label not in allowed
-            }
-            unknown.update(
-                usage.reference_label
-                for usage in plan.reference_usage
-                if usage.reference_label not in allowed
+        ]
+        subject_names = [subject.name for subject in subjects]
+        authored_shots = list(creative.shots)
+        authoritative_count = len(request.relay_segments) or 1
+        if len(authored_shots) != authoritative_count:
+            raise ValueError(
+                "creative plan shot count does not match authoritative scene structure",
             )
-            unknown.update(
-                label
-                for shot in plan.shots
-                for label in shot.reference_labels
-                if label not in allowed
-            )
-            mapped_subject_references = {
-                label
-                for subject in plan.subjects
-                for label in subject.source_references
-                if label in subject_reference_labels
-            }
-            unmapped_subject_references = subject_reference_labels - mapped_subject_references
-
-            # Subject/environment reference membership is deterministic metadata,
-            # not a creative LM decision. If the planner describes a reference in
-            # reference_usage/shots but omits the corresponding PlannedSubject,
-            # repair that serialization immediately instead of spending another
-            # LM call asking it to reproduce information we already know.
-            if unmapped_subject_references:
-                missing_refs = [
-                    ref for ref in refs if ref.label in unmapped_subject_references
-                ]
-                existing_names = {subject.name.strip().casefold() for subject in plan.subjects}
-                for ref in missing_refs:
-                    base_name = ref.name or ref.label.strip("<>")
-                    name = base_name
-                    suffix = 2
-                    while name.strip().casefold() in existing_names:
-                        name = f"{base_name} {suffix}"
-                        suffix += 1
-                    existing_names.add(name.strip().casefold())
-                    plan.subjects.append(PlannedSubject(
-                        name=name,
-                        description=ref.description,
-                        source_references=[ref.label],
-                    ))
-                logger.info(
-                    "H3 planner normalized required subject mappings from reference metadata: %s",
-                    ", ".join(f"{ref.label} -> {ref.name or ref.label}" for ref in missing_refs),
-                )
-                mapped_subject_references.update(unmapped_subject_references)
-                unmapped_subject_references.clear()
-
-            if not unknown and not unmapped_subject_references and not missing_music_description:
-                break
-            error = "Planner contract mismatch: " + "; ".join((
-                f"unknown={sorted(unknown)!r}",
-                f"unmapped_subject_references={sorted(unmapped_subject_references)!r}",
-                f"missing_music_description={missing_music_description!r}",
-                f"music_intent={plan.music_intent.value!r}",
-                f"requested_music_intent={(request.music_intent.value if request.music_intent else '')!r}",
-                f"allowed={sorted(allowed)!r}",
-            ))
-            if attempt == 3:
-                self._warning(
-                    "H3 planner contract warning after final attempt; continuing with result: "
-                    f"{error}",
-                )
-                break
-            self._warning(f"H3 planner retry {attempt + 1}/3: {error}", title="H3 planner retry")
-            mapping_contract = "; ".join(
-                f'{ref.label} -> reusable subject "{ref.name or ref.label.strip("<>")}" '
-                f'with role "{ref.role.value}" and description "{ref.description}"'
+        windows = _authoritative_shot_windows(request, len(authored_shots))
+        shots = []
+        for index, authored in enumerate(authored_shots):
+            labels = [
+                ref.label
                 for ref in refs
-                if ref.label in subject_reference_labels
-            )
-            non_subject_contract = "; ".join(
-                f'{ref.label} -> role "{ref.role.value}" (use according to its role; do not force it into a subject)'
-                for ref in refs
-                if ref.label not in subject_reference_labels
-            )
-            notes = (
-                f"{request.notes or ''}\n\n"
-                f"The previous plan was invalid ({error}). Retry using only the exact "
-                "reference labels listed in allowed. Do not rename, omit, or invent labels. "
-                "Map each subject/environment picture reference to at least one reusable subject. "
-                "Do not force frame, style, composition, camera, motion, temporal, video, or audio references "
-                "into subjects; represent them through reference_usage and/or the relevant shots instead. "
-                f"Required subject mappings: {mapping_contract or 'none'}. "
-                f"Role-only references: {non_subject_contract or 'none'}. "
-                + (
-                    "The previous plan enabled non-diegetic music but omitted its description. "
-                    "If requested_music_intent is 'none', set music_intent='none' and omit non_diegetic_music. "
-                    "Otherwise keep the enabled music intent and provide a concrete non_diegetic_music description."
-                    if missing_music_description else ""
+                if (
+                    ref.role is ReferenceRole.FIRST_FRAME and index == 0
+                    or ref.role is ReferenceRole.LAST_FRAME and index == len(authored_shots) - 1
+                    or ref.role not in {ReferenceRole.FIRST_FRAME, ReferenceRole.LAST_FRAME}
                 )
-            ).strip()
-        subjects = []
-        seen = set()
-        for index, subject in enumerate(plan.subjects, 1):
-            key = subject.name.strip().casefold()
-            if key in seen:
-                raise ValueError(f"Planner created duplicate subject name: {subject.name!r}")
-            seen.add(key)
-            subjects.append(SubjectDefinition(
-                label=f"<Subject {index}>", name=subject.name,
-                description=subject.description, source_references=subject.source_references,
-            ))
+            ]
+            start, end, hard_cut_after = windows[index]
+            shots.append(PlannedShot.model_validate({
+                "shot_number": index + 1,
+                "start_seconds": start,
+                "end_seconds": end,
+                "description": authored.description,
+                "visible_action": authored.visible_action,
+                "performance": authored.performance,
+                "camera_behavior": authored.camera_behavior,
+                "environmental_motion": authored.environmental_motion,
+                "transition_intent": authored.transition_intent,
+                "involved_subjects": subject_names,
+                "reference_labels": labels,
+                "hard_cut_after": hard_cut_after,
+            }))
         return ResolvedPromptPlan(
-            creative_intent=plan.creative_intent, subjects=subjects,
-            reference_usage=plan.reference_usage, shots=plan.shots,
-            overall_soundscape=plan.overall_soundscape, music_intent=plan.music_intent,
-            non_diegetic_music=plan.non_diegetic_music,
-            alignment_instruction=plan.alignment_instruction,
-            continuation_intents=plan.continuation_intents,
+            creative_intent=creative.creative_intent,
+            style_opening=creative.style_opening,
+            subjects=subjects,
+            reference_usage=reference_usage,
+            shots=shots,
+            overall_soundscape=creative.overall_soundscape,
+            music_intent=music_intent,
+            non_diegetic_music=(
+                None if music_intent is MusicIntent.NONE else creative.non_diegetic_music
+            ),
+            alignment_instruction=None,
+            continuation_intents=_authoritative_continuation_intents(request),
         )
 
     def _render_reference(
@@ -495,31 +602,17 @@ class VideoPromptGenerator:
                 relay_segments=request.relay_segments,
             )
             candidate_plan = prediction.plan
-            _normalize_plan_reference_labels(candidate_plan)
             current_payloads = creative_shots_from_plan(plan)
-            candidate_payloads = creative_shots_from_plan(
-                ResolvedPromptPlan(
-                    creative_intent=candidate_plan.creative_intent,
-                    subjects=[SubjectDefinition(
-                        label=f"<Subject {index}>",
-                        name=subject.name,
-                        description=subject.description,
-                        source_references=subject.source_references,
-                    ) for index, subject in enumerate(candidate_plan.subjects, 1)],
-                    reference_usage=candidate_plan.reference_usage,
-                    shots=candidate_plan.shots,
-                    overall_soundscape=candidate_plan.overall_soundscape,
-                    music_intent=candidate_plan.music_intent,
-                    non_diegetic_music=candidate_plan.non_diegetic_music,
-                    alignment_instruction=candidate_plan.alignment_instruction,
-                    continuation_intents=candidate_plan.continuation_intents,
-                ),
-            )
-            candidates = {payload.shot_id: payload for payload in candidate_payloads}
+            candidates = {
+                f"shot-{index:04d}": shot
+                for index, shot in enumerate(candidate_plan.shots, start=1)
+            }
             replacements = {}
             for issue in field_issues:
                 payload = candidates.get(issue.shot_id)
-                value = None if payload is None else getattr(payload, issue.field)
+                value = None if payload is None else _sanitize_creative_repair(
+                    getattr(payload, issue.field, None),
+                )
                 if value is not None and str(value).strip():
                     replacements[(issue.shot_id, issue.field)] = str(value).strip()
             repaired_payloads = repair_creative_payloads(

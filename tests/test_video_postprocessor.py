@@ -134,6 +134,8 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
                 "stdout": subprocess.DEVNULL,
                 "stderr": subprocess.PIPE,
                 "text": True,
+                "encoding": "utf-8",
+                "errors": "replace",
                 "timeout": 120,
             },
             run.call_args.kwargs,

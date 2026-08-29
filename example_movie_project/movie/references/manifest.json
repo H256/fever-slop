@@ -1,0 +1,26 @@
+{
+  "project_type": "movie",
+  "actors": [
+    {
+      "id": "mara",
+      "name": "Mara",
+      "role": "maintenance engineer and protagonist",
+      "visual_description": "A woman in her early thirties with a lean face, short black hair, tired brown eyes, and a weathered orange pressure suit with a compact wrist terminal",
+      "image_prompt": "Full-body cinematic character reference sheet for Mara. A woman in her early thirties with a lean face, short black hair, tired brown eyes, and a weathered orange pressure suit with a compact wrist terminal. Four vertical panels in one image: 1st panel head-and-shoulders closeup, 2nd panel straight full-body front view, 3rd panel clean full-body left view, 4th panel clean full-body back view. Consistent face, hair, body shape, wardrobe, posture, neutral expression, plain white seamless studio background, even reference-sheet lighting, no environment, no scenery, no props, no text, no extra characters.",
+      "prompt": "Full-body cinematic character reference sheet for Mara. A woman in her early thirties with a lean face, short black hair, tired brown eyes, and a weathered orange pressure suit with a compact wrist terminal. Four vertical panels in one image: 1st panel head-and-shoulders closeup, 2nd panel straight full-body front view, 3rd panel clean full-body left view, 4th panel clean full-body back view. Consistent face, hair, body shape, wardrobe, posture, neutral expression, plain white seamless studio background, even reference-sheet lighting, no environment, no scenery, no props, no text, no extra characters.",
+      "status": "required",
+      "msr_sheet_path": ""
+    }
+  ],
+  "locations": [
+    {
+      "id": "orbital_relay",
+      "name": "Abandoned Orbital Relay",
+      "visual_description": "A failing industrial orbital communications station with narrow metal corridors, frost, exposed cables, dark control rooms, red emergency lights, and a wide observation window above Earth",
+      "image_prompt": "A failing industrial orbital communications station with narrow metal corridors, frost, exposed cables, dark control rooms, red emergency lights, and a wide observation window above Earth",
+      "prompt": "A failing industrial orbital communications station with narrow metal corridors, frost, exposed cables, dark control rooms, red emergency lights, and a wide observation window above Earth",
+      "status": "required",
+      "msr_sheet_path": ""
+    }
+  ]
+}

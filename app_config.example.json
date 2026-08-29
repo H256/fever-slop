@@ -10,7 +10,9 @@
     "request_timeout_seconds": 180.0,
     "dspy_cache": false,
     "max_concurrent_requests": 1,
-    "prompt_judge_attempts": 3
+    "prompt_judge_attempts": 3,
+    "prompt_judge_max_tokens": 8192,
+    "prompt_judge_blocking": true
   },
   "comfyui": {
     "base_url": "http://127.0.0.1:8188",

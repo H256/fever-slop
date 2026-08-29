@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -83,7 +84,7 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
     def test_save_reads_production_sections_shape_for_structured_fingerprints(self):
         result = {
             "prompt": "compiled prompt",
-            "prompt_provenance": {"compiler": "deterministic_h3_compiler", "compiler_version": 2},
+            "prompt_provenance": {"compiler": "deterministic_h3_compiler", "compiler_version": 7},
             "sections": {
                 "h3_sections": {"subject": "hero"},
                 "shots": [{"shot_id": "shot-1", "visible_action": "turn"}],
@@ -93,7 +94,7 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         }
         payload = json.loads(self.store.save(self.request(), result).path.read_text(encoding="utf-8"))
 
-        self.assertEqual(2, payload["provenance"]["compiler_version"])
+        self.assertEqual(7, payload["provenance"]["compiler_version"])
         self.assertTrue(payload["provenance"]["creative_sections_sha256"].startswith("sha256:"))
         self.assertTrue(payload["provenance"]["locked_facts_sha256"].startswith("sha256:"))
 
@@ -136,6 +137,59 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
             {"prompt": "fallback prompt"},
         )
         self.assertEqual("unjudged", unjudged.status)
+
+    def test_v8_checkpoint_requires_deterministic_contract_and_good_judge(self):
+        request = self.request(generator_revision={
+            "compiler": "deterministic_h3_compiler",
+            "compiler_version": 8,
+        })
+        missing_contract = self.store.save(request, {
+            "prompt": "compiled",
+            "prompt_provenance": {
+                "compiler": "deterministic_h3_compiler",
+                "compiler_version": 8,
+            },
+            "prompt_judge": {"verdict": "good"},
+        })
+        self.assertEqual("unjudged", missing_contract.status)
+        self.assertIsNone(self.store.load(request))
+
+        valid = self.store.save(request, {
+            "prompt": "compiled",
+            "prompt_provenance": {
+                "compiler": "deterministic_h3_compiler",
+                "compiler_version": 8,
+            },
+            "prompt_contract": {
+                "valid": True,
+                "compiler_version": 8,
+                "prompt_sha256": "sha256:" + hashlib.sha256(b"compiled").hexdigest(),
+            },
+            "prompt_judge": {"verdict": "good"},
+        })
+        self.assertEqual("good", valid.status)
+        self.assertIsNotNone(self.store.load(request))
+
+    def test_load_does_not_reuse_rejected_or_unjudged_checkpoints(self):
+        request = self.request()
+        self.store.save(request, {"prompt": "rejected", "prompt_judge": {"verdict": "bad"}})
+        self.assertIsNone(self.store.load(request))
+
+    def test_advisory_load_reuses_matching_bad_checkpoint(self):
+        request = self.request()
+        saved = self.store.save(
+            request,
+            {"prompt": "rejected", "prompt_judge": {"verdict": "bad"}},
+        )
+
+        loaded = self.store.load_advisory(request)
+
+        self.assertEqual(saved.path, loaded.path)
+        self.assertEqual("bad_exhausted", loaded.status)
+
+        request = self.request(scene_number=2, segment_id="segment-b", segment={"scene": 2, "segment_id": "segment-b"})
+        self.store.save(request, {"prompt": "unjudged"})
+        self.assertIsNone(self.store.load(request))
 
     def test_changed_input_or_generator_revision_is_not_reused(self):
         request = self.request()
@@ -234,14 +288,32 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
 
         saved = self.store.save(self.request(), {"prompt": "new judged prompt"})
 
-        role = json.loads(base.read_text(encoding="utf-8"))[0]["canonical"]["roles"][PromptRole.H3_VIDEO]
+        scene = json.loads(base.read_text(encoding="utf-8"))[0]
+        role = scene["canonical"]["roles"][PromptRole.H3_VIDEO]
         self.assertEqual("new judged prompt", role["generated"]["value"])
         self.assertEqual(expected_override, role["override"])
         self.assertEqual(saved.input_fingerprint, role["generated"]["provenance"]["input_fingerprint"])
+        self.assertEqual("human approved", scene["h3"]["prompt"])
+
+    def test_save_populates_previously_empty_canonical_h3_role(self):
+        base = self.project / "output/render/plans/base.json"
+        base.parent.mkdir(parents=True)
+        canonical = build_canonical_scene(
+            segment_id="segment-a",
+            generated_roles={},
+        )
+        base.write_text(json.dumps([{"scene": 1, "canonical": canonical}]), encoding="utf-8")
+
+        self.store.save(self.request(), {"prompt": "first generated H3 prompt"})
+
+        scene = json.loads(base.read_text(encoding="utf-8"))[0]
+        role = scene["canonical"]["roles"][PromptRole.H3_VIDEO]
+        self.assertEqual("first generated H3 prompt", role["generated"]["value"])
+        self.assertEqual("first generated H3 prompt", scene["h3"]["prompt"])
 
     def test_reuse_syncs_checkpoint_created_before_canonical_base_existed(self):
         request = self.request()
-        self.store.save(request, {"prompt": "checkpoint prompt"})
+        self.store.save(request, {"prompt": "checkpoint prompt", "prompt_judge": {"verdict": "good"}})
         base = self.project / "output/render/plans/base.json"
         base.parent.mkdir(parents=True)
         base.write_text(json.dumps([{

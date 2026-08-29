@@ -72,7 +72,8 @@ class ConfigExampleTests(unittest.TestCase):
             {
                 "api_key", "base_url", "model", "models", "temperature", "dspy_temperature",
                 "max_tokens", "request_timeout_seconds", "dspy_cache", "max_concurrent_requests",
-                "prompt_judge_attempts",
+                "prompt_judge_attempts", "prompt_judge_max_tokens",
+                "prompt_judge_blocking",
             },
             set(raw["llm"]),
         )

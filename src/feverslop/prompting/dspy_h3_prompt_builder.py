@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from collections.abc import Callable
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -11,9 +12,18 @@ from feverslop.domain.performance_sync import select_performance_audio_paths
 from feverslop.domain.h3_prompt_checkpoint import H3PromptCheckpointInput
 from feverslop.domain.locked_scene_facts import LockedSceneFacts, locked_scene_facts_from_scene
 from feverslop.prompting.dspy_h3_models import AudioSubjectBinding, H3PromptSections, MusicIntent
-from feverslop.prompting.deterministic_h3_compiler import DeterministicH3Compiler
-from feverslop.prompting.deterministic_h3_compiler import creative_shots_from_plan
+from feverslop.prompting.deterministic_h3_compiler import (
+    H3_COMPILER_NAME,
+    H3_COMPILER_VERSION,
+    plan_with_authoritative_relay,
+    DeterministicH3Compiler,
+    creative_shots_from_plan,
+)
 from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.prompt_contract_validation import (
+    PromptContractError,
+    validate_h3_prompt_contract,
+)
 from feverslop.prompting.subject_directive_planning import (
     project_directives_to_prompt,
     subject_directives_from_scene,
@@ -69,6 +79,7 @@ def _audio_subject_bindings(
     actor_labels = {value: f"<Subject {index}>" for index, value in enumerate(actor_ids, start=1)}
     result: dict[str, dict[str, str]] = {}
     seen_subjects: set[str] = set()
+    seen_speaker_ids: dict[str, str] = {}
     for stem, value in raw.items():
         stem_name = str(stem).strip()
         if not stem_name or not isinstance(value, dict):
@@ -93,12 +104,129 @@ def _audio_subject_bindings(
             raise ValueError(f"speaker_id does not identify a visible subject: {speaker_id}")
         if stem_name == "vocals" and not speaker_id:
             raise ValueError("vocal audio binding requires speaker_id")
+        other_subject = seen_speaker_ids.get(speaker_id) if speaker_id else None
+        if other_subject and other_subject != subject_label:
+            raise ValueError(
+                f"speaker ID {speaker_id} is bound to both "
+                f"{other_subject} and {subject_label}"
+            )
+        if speaker_id:
+            seen_speaker_ids[speaker_id] = subject_label
         result[stem_name] = {
             "subject_label": subject_label,
             "speaker_id": speaker_id,
             "subject_id": subject_id,
         }
     return result
+
+
+def _speaker_bindings_for_compile(
+    *,
+    segment: dict[str, Any],
+    references: list[dict[str, Any]],
+    stored_bindings: list[dict[str, Any]] | None,
+) -> list[dict[str, str]]:
+    """Return explicit generic speaker bindings, rebuilding stale checkpoint data."""
+    audio_references = {
+        str(reference.get("name") or "").strip(): str(reference.get("label") or "").strip()
+        for reference in references
+        if str(reference.get("kind") or "").casefold() == "audio"
+        and str(reference.get("name") or "").strip()
+        and str(reference.get("label") or "").strip()
+    }
+    raw = _audio_subject_bindings(
+        segment.get("references") or {},
+        available_stems=set(audio_references),
+    )
+    current = [
+        {
+            "audio_label": audio_references[stem],
+            "stem": stem,
+            "subject_label": binding["subject_label"],
+            "speaker_id": binding["speaker_id"],
+        }
+        for stem, binding in raw.items()
+        if stem in audio_references and binding.get("speaker_id")
+    ]
+    relay = (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    for item in relay:
+        if not isinstance(item, dict):
+            continue
+        subject_label = str(item.get("subject_label") or "").strip()
+        speaker_id = str(item.get("speaker_id") or "").strip()
+        if subject_label and speaker_id and not any(
+            binding["subject_label"] == subject_label
+            and binding["speaker_id"] == speaker_id
+            for binding in current
+        ):
+            current.append({
+                "subject_label": subject_label,
+                "speaker_id": speaker_id,
+            })
+    _validate_speaker_binding_bijection(current, source="current")
+    if not stored_bindings:
+        return sorted(current, key=_speaker_binding_sort_key)
+    stored = [
+        {
+            key: str(binding.get(key) or "").strip()
+            for key in ("audio_label", "stem", "subject_label", "speaker_id")
+            if str(binding.get(key) or "").strip()
+        }
+        for binding in stored_bindings
+        if isinstance(binding, dict)
+    ]
+    actor_count = len((segment.get("references") or {}).get("actor_ids") or [])
+    valid_audio_labels = set(audio_references.values())
+    for binding in stored:
+        subject_label = binding.get("subject_label", "")
+        speaker_id = binding.get("speaker_id", "")
+        subject_match = re.fullmatch(r"<Subject\s+([1-9][0-9]*)>", subject_label)
+        if not subject_match or (actor_count and int(subject_match.group(1)) > actor_count):
+            raise ValueError(f"stored speaker binding has unknown subject: {subject_label}")
+        if not re.fullmatch(r"S[1-9][0-9]*", speaker_id):
+            raise ValueError(f"stored speaker binding has invalid speaker ID: {speaker_id}")
+        audio_label = binding.get("audio_label", "")
+        if audio_label and audio_label not in valid_audio_labels:
+            raise ValueError(f"stored speaker binding has unknown audio reference: {audio_label}")
+    _validate_speaker_binding_bijection(stored, source="stored")
+    current = sorted(current, key=_speaker_binding_sort_key)
+    stored = sorted(stored, key=_speaker_binding_sort_key)
+    if stored != current:
+        raise ValueError("stored speaker binding conflicts with current config")
+    return stored
+
+
+def _speaker_binding_sort_key(binding: dict[str, str]) -> tuple[str, str, str, str]:
+    return tuple(
+        str(binding.get(key) or "")
+        for key in ("subject_label", "speaker_id", "audio_label", "stem")
+    )
+
+
+def _validate_speaker_binding_bijection(
+    bindings: list[dict[str, str]],
+    *,
+    source: str,
+) -> None:
+    by_subject: dict[str, str] = {}
+    by_speaker: dict[str, str] = {}
+    for binding in bindings:
+        subject_label = str(binding.get("subject_label") or "").strip()
+        speaker_id = str(binding.get("speaker_id") or "").strip()
+        if not subject_label or not speaker_id:
+            continue
+        other_id = by_subject.get(subject_label)
+        if other_id and other_id != speaker_id:
+            raise ValueError(
+                f"{source} subject {subject_label} has multiple speaker IDs"
+            )
+        other_subject = by_speaker.get(speaker_id)
+        if other_subject and other_subject != subject_label:
+            raise ValueError(
+                f"{source} speaker ID {speaker_id} is bound to multiple subjects"
+            )
+        by_subject[subject_label] = speaker_id
+        by_speaker[speaker_id] = subject_label
 
 
 def _audio_description(name: str, binding: dict[str, str] | None) -> str:
@@ -108,6 +236,47 @@ def _audio_description(name: str, binding: dict[str, str] | None) -> str:
         return f"{name} stem; no subject binding was supplied"
     speaker = f" ({binding['speaker_id']})" if binding.get("speaker_id") else ""
     return f"{name} stem bound to {binding['subject_label']}{speaker}"
+
+
+def _scene_audio_copy_mode(name: str, description: str) -> str:
+    """Classify scene-level audio without claiming the whole song is copied 1:1."""
+    identity = f"{name} {description}".casefold()
+    return "reference" if "full_mix" in identity else "partially_copy"
+
+
+def _normalize_resolved_scene_references(
+    references: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Upgrade stale scene-level full-song metadata before compile and judge."""
+    normalized: list[dict[str, Any]] = []
+    for reference in references:
+        item = dict(reference)
+        identity = f"{item.get('name', '')} {item.get('description', '')}".casefold()
+        if item.get("kind") == "audio" and "full_mix" in identity:
+            item["copy_mode"] = "reference"
+        normalized.append(item)
+    return normalized
+
+
+def _normalize_plan_audio_usage(plan: Any, references: list[dict[str, Any]]) -> Any:
+    """Align planner-owned audio wording with deterministic scene metadata."""
+    by_label = {str(item.get("label")): item for item in references}
+    usages = []
+    for usage in plan.reference_usage:
+        reference = by_label.get(usage.reference_label, {})
+        if (
+            str(reference.get("kind") or "").casefold() == "audio"
+            and str(reference.get("copy_mode") or "").casefold() == "reference"
+        ):
+            usage = usage.model_copy(update={
+                "purpose": "audio reference",
+                "details": (
+                    "Use the supplied original song only for beat, rhythm, and dynamic "
+                    "timing continuity without copying the source signal."
+                ),
+            })
+        usages.append(usage)
+    return plan.model_copy(update={"reference_usage": usages})
 
 
 def _scene_references(
@@ -251,8 +420,8 @@ def _scene_references(
             continue
         if fully_instrumental and "vocal" in tag.casefold() and "full_mix" not in tag.casefold():
             continue
-        copy_mode = "fully_copy" if "full_mix" in tag.casefold() else "partially_copy"
         description = tag or _audio_description(path.stem, audio_bindings.get(path.stem))
+        copy_mode = _scene_audio_copy_mode(path.stem, description)
         if tag and path.stem in audio_bindings:
             binding = audio_bindings[path.stem]
             speaker = f" ({binding['speaker_id']})" if binding.get("speaker_id") else ""
@@ -276,7 +445,7 @@ def _scene_references(
             name=name,
             description=_audio_description(name, audio_bindings.get(name)),
             role="audio_reuse",
-        ) | {"copy_mode": "fully_copy" if name == "full_mix" else "partially_copy"})
+        ) | {"copy_mode": _scene_audio_copy_mode(name, _audio_description(name, audio_bindings.get(name)))})
 
     for reference in pending_audio_references:
         add_reference(reference)
@@ -333,6 +502,13 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
         source_prompt = str(item.get("source_prompt") or "").strip()
         if source_prompt:
             shot["source_prompt"] = source_prompt
+        for key in (
+            "lyrics", "dialogue", "text",
+            "subject_id", "subject_label", "speaker_id", "speaker_description",
+        ):
+            value = str(item.get(key) or "").strip()
+            if value:
+                shot[key] = value
         shots.append(shot)
     return shots
 
@@ -371,7 +547,9 @@ class DspyH3PromptBuilder:
 
     def checkpoint_revision(self) -> dict[str, Any]:
         revision: dict[str, Any] = {
-            "contract": 1,
+            "contract": 3,
+            "compiler": H3_COMPILER_NAME,
+            "compiler_version": H3_COMPILER_VERSION,
             "generator": f"{type(self.generator).__module__}.{type(self.generator).__qualname__}",
             "judge_attempts": int(getattr(self.generator, "judge_attempts", 0)),
         }
@@ -399,6 +577,8 @@ class DspyH3PromptBuilder:
             return self._build_structured_prompt(
                 mode=mode,
                 segment=segment,
+                concept=concept,
+                global_context=global_context,
                 sections=structured_sections,
             )
         references, images = _scene_references(
@@ -429,6 +609,12 @@ class DspyH3PromptBuilder:
             if str(scene_details.get(key) or "").strip()
         ]
         user_prompt = str(concept or "").strip()
+        creative_prompt = str(segment.get("h3_creative_prompt") or "").strip()
+        if creative_prompt:
+            user_prompt = (
+                f"{user_prompt}\n\nExisting backend-neutral scene motion prompt:\n"
+                f"{creative_prompt}"
+            ).strip()
         if directive_plan is not None:
             user_prompt = f"{user_prompt}\n\n{project_directives_to_prompt(directive_plan)}".strip()
         if directing_lines:
@@ -447,6 +633,7 @@ class DspyH3PromptBuilder:
             "video_type": video_type,
             "duration_seconds": segment.get("duration") or segment.get("duration_seconds"),
             "user_prompt": user_prompt,
+            "source_language": str(global_context.get("language") or "").strip(),
             "notes": json.dumps({
                 "scene": segment,
                 "scene_details": scene_details,
@@ -482,46 +669,148 @@ class DspyH3PromptBuilder:
         try:
             generated = self.generator(request)
             if hasattr(generated, "plan"):
-                sections = H3PromptSections.from_plan(generated.plan)
-                plan = sections.to_plan()
-                shots = creative_shots_from_plan(plan)
-                windows = {}
-                references_by_shot = {}
-                for shot, creative in zip(plan.shots, shots, strict=True):
-                    start = float(shot.start_seconds or 0.0)
-                    end = float(shot.end_seconds or segment.get("duration") or segment.get("duration_seconds") or (start + 1.0))
-                    if end <= start:
-                        end = start + 1.0
-                    windows[creative.shot_id] = (start, end)
-                    references_by_shot[creative.shot_id] = list(shot.reference_labels)
-                prompt = DeterministicH3Compiler().compile(
-                    mode="base" if str(mode).lower() == "base" else "reference",
-                    facts=facts,
-                    shots=shots,
-                    shot_windows=windows,
-                    references=references_by_shot,
-                    prepared_reference_labels=[reference["label"] for reference in references],
-                    duration_seconds=float(segment.get("duration") or segment.get("duration_seconds") or 0) or None,
-                )
-                return {
-                    "prompt": prompt,
-                    "references": references,
-                    "sections": {
-                        "h3_sections": sections.model_dump(),
-                        "facts": facts.to_dict(),
-                        "shots": [shot.model_dump() for shot in shots],
-                        "shot_windows": {key: list(value) for key, value in windows.items()},
-                        "references": references_by_shot,
-                    },
-                    "continuation_intents": [
-                        intent.model_dump() for intent in sections.continuation_intents
+                max_attempts = max(1, int(getattr(self.generator, "judge_attempts", 1)))
+                judge_attempts = []
+                current_plan = generated.plan
+                speaker_bindings = _speaker_bindings_for_compile(
+                    segment=segment,
+                    references=references,
+                    stored_bindings=[
+                        binding.model_dump()
+                        for binding in request.get("audio_subject_bindings") or ()
                     ],
-                    "prompt_provenance": {
-                        "compiler": "deterministic_h3_compiler",
-                        "compiler_version": 1,
-                        "source": "dspy_section_plan",
-                    },
-                }
+                )
+                for attempt in range(max_attempts):
+                    normalized_plan = _normalize_plan_audio_usage(current_plan, references)
+                    normalized_plan = plan_with_authoritative_relay(
+                        normalized_plan,
+                        request.get("relay_segments") or (),
+                        language=str(request.get("source_language") or "English"),
+                        speaker_bindings=speaker_bindings,
+                    )
+                    sections = H3PromptSections.from_plan(normalized_plan)
+                    plan = sections.to_plan()
+                    shots = creative_shots_from_plan(plan)
+                    windows = {}
+                    references_by_shot = {}
+                    for shot, creative in zip(plan.shots, shots, strict=True):
+                        start = float(shot.start_seconds or 0.0)
+                        end = float(shot.end_seconds or segment.get("duration") or segment.get("duration_seconds") or (start + 1.0))
+                        if end <= start:
+                            end = start + 1.0
+                        windows[creative.shot_id] = (start, end)
+                        references_by_shot[creative.shot_id] = list(shot.reference_labels)
+                    prompt = DeterministicH3Compiler().compile(
+                        mode=mode, plan=plan, facts=facts, shots=shots,
+                        shot_windows=windows, references=references_by_shot,
+                        prepared_reference_labels=[reference["label"] for reference in references],
+                        reference_metadata=references,
+                        duration_seconds=float(segment.get("duration") or segment.get("duration_seconds") or 0) or None,
+                        dialogue_language=str(request.get("source_language") or "English"),
+                        relay_segments=request.get("relay_segments") or (),
+                        speaker_bindings=speaker_bindings,
+                    )
+                    shape_issues = validate_h3_prompt_contract(
+                        prompt,
+                        mode=mode,
+                        plan=plan,
+                        reference_metadata=references,
+                        duration_seconds=float(
+                            segment.get("duration") or segment.get("duration_seconds") or 0
+                        ) or None,
+                    )
+                    if shape_issues:
+                        if attempt == max_attempts - 1:
+                            raise PromptContractError(shape_issues)
+                        feedback = "; ".join(
+                            f"{issue.code}: {issue.message}"
+                            for issue in shape_issues
+                        )
+                        self._report_contract_retry(attempt + 2, max_attempts, feedback)
+                        request = {
+                            **request,
+                            "notes": (
+                                f"{request.get('notes', '')}\n\n"
+                                "Regenerate the structured creative fields because the "
+                                "deterministic final-prompt validator rejected the compiled "
+                                f"result: {feedback}. Do not add compiler-owned section headers, "
+                                "reference definitions, shot labels, or timestamps."
+                            ).strip(),
+                        }
+                        generated = self.generator(request)
+                        current_plan = generated.plan
+                        continue
+                    result = {
+                        "prompt": prompt,
+                        "references": references,
+                        "prompt_contract": _valid_prompt_contract(prompt),
+                        "sections": {
+                            "h3_sections": sections.model_dump(),
+                            "facts": facts.to_dict(),
+                            "shots": [shot.model_dump() for shot in shots],
+                            "shot_windows": {key: list(value) for key, value in windows.items()},
+                            "references": references_by_shot,
+                            "speaker_bindings": speaker_bindings,
+                        },
+                        "continuation_intents": [asdict(intent) for intent in sections.continuation_intents],
+                        "prompt_provenance": {
+                            "compiler": H3_COMPILER_NAME,
+                            "compiler_version": H3_COMPILER_VERSION,
+                            "source": "dspy_section_plan",
+                        },
+                    }
+                    judge_compiled = getattr(self.generator, "judge_compiled_prompt", None)
+                    judged = judge_compiled(
+                        request=request, plan=plan, references=references, final_prompt=prompt,
+                    ) if callable(judge_compiled) else None
+                    if judged is not None:
+                        judge_attempts.append(judged.model_dump())
+                        result["prompt_judge"] = judged.model_dump()
+                        result["prompt_judge_attempts"] = list(judge_attempts)
+                    if (
+                        judged is None
+                        or judged.verdict == "good"
+                        or not bool(getattr(self.generator, "prompt_judge_blocking", True))
+                        or attempt == max_attempts - 1
+                        or any(issue.startswith("judge unavailable:") for issue in judged.issues)
+                    ):
+                        break
+                    feedback = _sanitize_judge_feedback(_judge_feedback(judged))
+                    self._report_judge_retry(attempt + 2, max_attempts, feedback)
+                    repair_compiled_plan = getattr(
+                        self.generator, "repair_compiled_plan", None,
+                    )
+                    if judged.field_issues and callable(repair_compiled_plan):
+                        current_plan = repair_compiled_plan(
+                            request=request,
+                            plan=plan,
+                            references=references,
+                            field_issues=judged.field_issues,
+                        )
+                        continue
+                    request = {
+                        **request,
+                        "notes": (
+                            f"{request.get('notes', '')}\n\n"
+                            "Regenerate the structured fields and fix these judge findings: "
+                            f"{feedback}\n"
+                            "Do not add reference labels or timestamps to structured fields; "
+                            "the deterministic compiler adds those guide tokens. Keep dialogue or lyric "
+                            "content inside the guide-required <d>[Language] ...</d> form."
+                        ).strip(),
+                    }
+                    try:
+                        generated = self.generator(request)
+                        current_plan = generated.plan
+                    except Exception as repair_exc:
+                        if self.warning_callback is not None:
+                            self.warning_callback(
+                                "H3 judge repair was rejected; preserving the valid compiled "
+                                f"prompt and BAD verdict: {_safe_error_message(repair_exc)}",
+                                title="H3 judge repair",
+                            )
+                        break
+                return result
             prompt = getattr(generated, "rendered_prompt", None)
             if not prompt and isinstance(generated, dict):
                 prompt = generated.get("rendered_prompt") or generated.get("prompt")
@@ -563,11 +852,29 @@ class DspyH3PromptBuilder:
             result["prompt_judge_attempts"] = [item.model_dump() for item in judge_attempts]
         return result
 
-    @staticmethod
+    def _report_judge_retry(self, attempt: int, total: int, feedback: str) -> None:
+        warning = getattr(self.generator, "_warning", None)
+        if callable(warning):
+            warning(
+                f"H3 compiled prompt judge retry {attempt}/{total}: {feedback}",
+                title="H3 compiled prompt judge retry",
+            )
+
+    def _report_contract_retry(self, attempt: int, total: int, feedback: str) -> None:
+        warning = getattr(self.generator, "_warning", None)
+        if callable(warning):
+            warning(
+                f"H3 deterministic contract retry {attempt}/{total}: {feedback}",
+                title="H3 deterministic contract retry",
+            )
+
     def _build_structured_prompt(
+        self,
         *,
         mode: str,
         segment: dict[str, Any],
+        concept: str,
+        global_context: dict[str, Any],
         sections: dict[str, Any],
     ) -> dict[str, Any]:
         """Compile planner-owned sections without invoking the legacy prose generator.
@@ -582,6 +889,111 @@ class DspyH3PromptBuilder:
             if isinstance(raw_facts, LockedSceneFacts)
             else LockedSceneFacts.from_dict(raw_facts)
         )
+        raw_h3_sections = sections.get("h3_sections")
+        if raw_h3_sections is not None:
+            h3_sections = H3PromptSections.model_validate(raw_h3_sections)
+            plan = h3_sections.to_plan()
+            resolved_references = _normalize_resolved_scene_references(
+                list(sections.get("resolved_references") or []),
+            )
+            plan = _normalize_plan_audio_usage(plan, resolved_references)
+            speaker_bindings = _speaker_bindings_for_compile(
+                segment=segment,
+                references=resolved_references,
+                stored_bindings=list(sections.get("speaker_bindings") or ()),
+            )
+            plan = plan_with_authoritative_relay(
+                plan,
+                _normalize_relay_segments(segment),
+                language=str(global_context.get("language") or "English"),
+                speaker_bindings=speaker_bindings,
+            )
+            shots = creative_shots_from_plan(plan)
+            stored_windows = sections.get("shot_windows") or {}
+            windows: dict[str, tuple[float, float]] = {}
+            references_by_shot: dict[str, list[str]] = {}
+            stored_references = sections.get("references") or {}
+            duration = float(
+                segment.get("duration") or segment.get("duration_seconds") or 0
+            ) or None
+            for planned, shot in zip(plan.shots, shots, strict=True):
+                raw_window = stored_windows.get(shot.shot_id)
+                start = float(
+                    raw_window[0]
+                    if isinstance(raw_window, (list, tuple)) and len(raw_window) == 2
+                    else planned.start_seconds or 0.0
+                )
+                end = float(
+                    raw_window[1]
+                    if isinstance(raw_window, (list, tuple)) and len(raw_window) == 2
+                    else planned.end_seconds or duration or (start + 1.0)
+                )
+                if end <= start:
+                    end = start + 1.0
+                windows[shot.shot_id] = (start, end)
+                references_by_shot[shot.shot_id] = list(
+                    stored_references.get(shot.shot_id) or planned.reference_labels
+                )
+            prompt = DeterministicH3Compiler().compile(
+                mode=mode,
+                plan=plan,
+                facts=facts,
+                shots=shots,
+                shot_windows=windows,
+                references=references_by_shot,
+                prepared_reference_labels=[
+                    str(reference["label"])
+                    for reference in resolved_references
+                    if isinstance(reference, dict) and reference.get("label")
+                ],
+                reference_metadata=resolved_references,
+                duration_seconds=duration,
+                dialogue_language=str(global_context.get("language") or "English"),
+                relay_segments=_normalize_relay_segments(segment),
+                speaker_bindings=speaker_bindings,
+            )
+            shape_issues = validate_h3_prompt_contract(
+                prompt,
+                mode=mode,
+                plan=plan,
+                reference_metadata=resolved_references,
+                duration_seconds=duration,
+            )
+            if shape_issues:
+                raise PromptContractError(shape_issues)
+            result = {
+                "prompt": prompt,
+                "references": resolved_references,
+                "prompt_contract": _valid_prompt_contract(prompt),
+                "segment_id": segment.get("segment_id"),
+                "sections": sections,
+                "continuation_intents": [
+                    asdict(intent) for intent in h3_sections.continuation_intents
+                ],
+                "prompt_provenance": {
+                    "compiler": H3_COMPILER_NAME,
+                    "compiler_version": H3_COMPILER_VERSION,
+                    "source": "resumed_dspy_section_plan",
+                },
+            }
+            judge_compiled = getattr(self.generator, "judge_compiled_prompt", None)
+            if callable(judge_compiled):
+                judged = judge_compiled(
+                    request={
+                        "mode": mode,
+                        "user_prompt": str(concept),
+                        "duration_seconds": duration,
+                        "strict_fidelity": True,
+                    },
+                    plan=plan,
+                    references=resolved_references,
+                    final_prompt=prompt,
+                )
+                if judged is not None:
+                    result["prompt_judge"] = judged.model_dump()
+                    result["prompt_judge_attempts"] = [judged.model_dump()]
+            return result
+
         from feverslop.prompting.dspy_h3_models import CreativeShotPayload
 
         shots = [
@@ -604,8 +1016,8 @@ class DspyH3PromptBuilder:
             "sections": sections,
             "continuation_intents": list(sections.get("continuation_intents") or []),
             "prompt_provenance": {
-                "compiler": "deterministic_h3_compiler",
-                "compiler_version": 1,
+                "compiler": H3_COMPILER_NAME,
+                "compiler_version": H3_COMPILER_VERSION,
                 "source": "structured_sections",
             },
         }
@@ -659,7 +1071,14 @@ class DspyH3PromptBuilder:
                     generator_revision=generator_revision or {},
                 )
                 if reuse_checkpoints:
-                    checkpoint = checkpoint_store.load(checkpoint_input)
+                    advisory_loader = getattr(checkpoint_store, "load_advisory", None)
+                    if (
+                        not bool(getattr(self.generator, "prompt_judge_blocking", True))
+                        and callable(advisory_loader)
+                    ):
+                        checkpoint = advisory_loader(checkpoint_input)
+                    else:
+                        checkpoint = checkpoint_store.load(checkpoint_input)
             if checkpoint is not None:
                 if status_callback is not None:
                     status_callback(current, total, "reused")
@@ -678,27 +1097,59 @@ class DspyH3PromptBuilder:
                     and stage_classifier(checkpoint_input, stale_checkpoint) == frozenset({"compiler"})
                     and isinstance(stale_checkpoint.generated.get("sections"), dict)
                 ):
-                    result = self.build_h3_prompt(
-                        segment=segment,
-                        concept=str(concept),
-                        scene_details=details,
-                        global_context=global_context,
-                        mode=mode,
-                        video_type=video_type,
-                        audio_paths=audio_paths,
-                        reference_root=reference_root,
-                        structured_sections=stale_checkpoint.generated["sections"],
-                    )
-                    if checkpoint_store is not None and checkpoint_input is not None:
-                        checkpoint_store.save(checkpoint_input, result)
-                    if status_callback is not None:
-                        status_callback(current, total, "recompiled")
-                    results.append({"segment_id": segment_id, **result})
-                    if progress_callback is not None:
-                        progress_callback(current, total)
-                    if status_callback is not None:
-                        status_callback(current, total, "completed")
-                    continue
+                    try:
+                        result = self.build_h3_prompt(
+                            segment=segment,
+                            concept=str(concept),
+                            scene_details=details,
+                            global_context=global_context,
+                            mode=mode,
+                            video_type=video_type,
+                            audio_paths=audio_paths,
+                            reference_root=reference_root,
+                            structured_sections={
+                                **stale_checkpoint.generated["sections"],
+                                "resolved_references": stale_checkpoint.generated.get("references") or [],
+                            },
+                        )
+                    except PromptContractError as exc:
+                        feedback = "; ".join(issue.code for issue in exc.issues)
+                        if warning_callback is not None:
+                            warning_callback(
+                                "Saved H3 structured plan fails the current deterministic "
+                                f"guide contract ({feedback}); regenerating creative fields.",
+                                title="H3 resume regeneration",
+                            )
+                        if status_callback is not None:
+                            status_callback(current, total, "regenerating")
+                    else:
+                        judge = result.get("prompt_judge") or {}
+                        if (
+                            judge.get("verdict") != "good"
+                            and bool(getattr(self.generator, "prompt_judge_blocking", True))
+                        ):
+                            feedback = "; ".join(
+                                str(issue) for issue in judge.get("issues") or []
+                            ) or "compiled prompt was not approved"
+                            if warning_callback is not None:
+                                warning_callback(
+                                    "Recompiled H3 prompt was not approved by the judge "
+                                    f"({feedback}); regenerating creative fields.",
+                                    title="H3 resume regeneration",
+                                )
+                            if status_callback is not None:
+                                status_callback(current, total, "regenerating")
+                        else:
+                            if checkpoint_store is not None and checkpoint_input is not None:
+                                checkpoint_store.save(checkpoint_input, result)
+                            if status_callback is not None:
+                                status_callback(current, total, "recompiled")
+                            results.append({"segment_id": segment_id, **result})
+                            if progress_callback is not None:
+                                progress_callback(current, total)
+                            if status_callback is not None:
+                                status_callback(current, total, "completed")
+                            continue
                 if status_callback is not None:
                     status_callback(current, total, "started")
                 result = self.build_h3_prompt(
@@ -746,4 +1197,41 @@ def build_dspy_generator(llm: Any) -> Callable[[dict[str, Any]], Any]:
         base_guide_path="minimax-h3-base.md",
         reference_guide_path="minimax-h3-references.md",
         llm=llm,
+    )
+
+
+def _valid_prompt_contract(prompt: str) -> dict[str, Any]:
+    return {
+        "valid": True,
+        "validator": "minimax_h3_guide_contract",
+        "compiler_version": H3_COMPILER_VERSION,
+        "prompt_sha256": "sha256:" + hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "issues": [],
+    }
+
+
+def _judge_feedback(judged: Any) -> str:
+    parts = [str(issue).strip() for issue in judged.issues if str(issue).strip()]
+    repair_instruction = str(judged.repair_instruction or "").strip()
+    if repair_instruction:
+        parts.append(repair_instruction)
+    parts.extend(
+        f"{issue.shot_id}.{issue.field}: {issue.repair_instruction}"
+        for issue in judged.field_issues
+    )
+    return "; ".join(dict.fromkeys(parts)) or "the prompt did not satisfy the guide"
+
+
+def _sanitize_judge_feedback(value: str) -> str:
+    """Keep compiler-owned labels out of planner repair instructions."""
+    return re.sub(
+        r"<(Subject|Picture|Video|Audio)\s+\d+>",
+        lambda match: {
+            "subject": "the referenced subject",
+            "picture": "the reference image",
+            "video": "the reference video",
+            "audio": "the reference audio",
+        }[match.group(1).casefold()],
+        str(value),
+        flags=re.IGNORECASE,
     )

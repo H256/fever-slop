@@ -21,6 +21,25 @@ def _fit_rotation(rotation: str, take_seconds: float) -> tuple[int, str]:
     return degrees, f"a {degrees}-degree turn" if degrees < 360 else "a complete 360-degree turn"
 
 
+def _random_expression():
+    import random
+
+    expressions = [
+        "frightened",
+        "neutral",
+        "joyful",
+        "angry",
+        "surprised",
+        "sad",
+        "disgusted",
+        "confused",
+        "excited",
+        "contemplative"
+    ]
+
+    return random.choice(expressions)
+
+
 def build_h3_character_prompt(
     description: str,
     *,
@@ -28,12 +47,12 @@ def build_h3_character_prompt(
     frames: int = 124,
     framing: str = "full body, generous margin",
     shot_seconds: float = 0.75,
-    scared_shot: bool = True,
+    expression_shot: bool = True,
     backdrop: str = "plain seamless neutral grey studio backdrop",
     visual_style: str = "Cinematic, live-action",
 ) -> H3SheetPrompt:
     duration = float(frames) / 24.0
-    total_shots = 6 if scared_shot else min(5, max(1, shots))
+    total_shots = 6 if expression_shot else min(5, max(1, shots))
     step = max(0.25, min(float(shot_seconds), duration / total_shots))
     at = [f"{int(i * step // 60):02d}:{i * step % 60:06.3f}" for i in range(total_shots)]
     subject = description.strip().rstrip(".") or "the character"
@@ -46,12 +65,12 @@ def build_h3_character_prompt(
         if framing == "full body, generous margin"
         else "Every full-body shot is tightly framed but never crops the figure."
     )
-    scared = (
+    expression = (
         f" [Shot 6] At {at[5]}, the shot cuts to a medium close-up of the face and shoulders, "
-        "still facing the camera, the expression now frightened: eyes wide and brows raised and "
+        f"still facing the camera, the expression now {_random_expression()}: eyes wide and brows raised and "
         "drawn together, mouth slightly open. Only the expression changes; the figure does not "
         "flinch, recoil, turn away or move."
-        if scared_shot and total_shots == 6 else ""
+        if expression_shot and total_shots == 6 else ""
     )
     prompt = (
         "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n"
@@ -72,7 +91,7 @@ def build_h3_character_prompt(
         "the mouth closed and a still neutral expression. [Shot 5] At "
         f"{at[4] if len(at) > 4 else '00:03.000'}, the shot cuts to a rear view of the full figure, the back "
         "of the body visible from head to toe with the same framing margin, the mouth closed and a still neutral expression."
-        f"{scared} {set_dressing}, even neutral lighting from every side, no props and no cast shadows. "
+        f"{expression} {set_dressing}, even neutral lighting from every side, no props and no cast shadows. "
         "Clothing, hair, colours, proportions and every visible detail remain identical across every shot.\n\n"
         "overall_soundscape: N/A\n\nnon_diegetic_music: N/A"
     )

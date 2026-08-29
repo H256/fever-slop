@@ -102,6 +102,7 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
                 video_pipeline=args.video_pipeline,
                 selected_scenes=selected,
                 render_settings=render_settings,
+                judge_blocking=app_config.llm.prompt_judge_blocking,
             )
         _render_plan(plan, output)
         if plan.blocked:
@@ -138,7 +139,11 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
             for stages, scenes in units:
                 run_args = argparse.Namespace(**vars(args))
                 run_args.stages = list(stages)
-                run_args.scenes = ",".join(str(scene) for scene in scenes) or None
+                run_args.scenes = (
+                    args.scenes
+                    if plan.mode == "compatibility"
+                    else ",".join(str(scene) for scene in scenes) or None
+                )
                 _apply_runner_defaults(run_args)
                 pipeline_run(run_args, on_stage_complete=remember)
         except Exception as exc:
@@ -163,6 +168,7 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
                     video_pipeline=args.video_pipeline,
                     selected_scenes=selected,
                     render_settings=render_settings,
+                    judge_blocking=app_config.llm.prompt_judge_blocking,
                 )
                 next_phase = _manual_phase(next_plan, app_config, compatibility=False)
                 if next_phase is not None and next_phase.stages:

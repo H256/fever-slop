@@ -88,6 +88,556 @@ class BuildH3VideoSystemPromptTests(unittest.TestCase):
 # ─── H3PromptBuilder compatibility export ───────────────────────────────────
 
 class H3PromptBuilderCompatibilityTests(unittest.TestCase):
+    def test_compiled_prompt_judge_accepts_runtime_reference_dicts(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptMode,
+            ResolvedPromptPlan,
+            ResolvedReference,
+        )
+
+        observed = {}
+        generator = VideoPromptGenerator.__new__(VideoPromptGenerator)
+        generator.judge = lambda **payload: observed.update(payload) or SimpleNamespace(
+            judge={"verdict": "good"},
+        )
+        generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
+        generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
+
+        @contextmanager
+        def lm_context(*, lm):
+            observed["lm_context"] = lm
+            yield
+
+        generator.lm = object()
+        generator.dspy_runtime = SimpleNamespace(context=lm_context)
+
+        plan = ResolvedPromptPlan(
+            creative_intent="intent",
+            shots=[PlannedShot(shot_number=1, description="action")],
+            overall_soundscape="sound",
+            music_intent=MusicIntent.NONE,
+        )
+        references = [{
+            "label": "<Picture 1>",
+            "kind": "picture",
+            "source": "reference.png",
+            "role": "subject",
+            "description": "a subject",
+        }]
+
+        result = generator.judge_compiled_prompt(
+            request={"mode": PromptMode.R2V.value, "user_prompt": "prompt"},
+            plan=plan,
+            references=references,
+            final_prompt="subject_definitions:\n<Picture 1> is a subject",
+        )
+
+        self.assertEqual("good", result.verdict)
+        self.assertEqual("<Picture 1>", observed["references"][0].label)
+        self.assertIsInstance(observed["references"][0], ResolvedReference)
+        self.assertIs(generator.lm, observed["lm_context"])
+        self.assertNotIn("\n  ", observed["authoritative_plan"])
+        self.assertNotIn("## 7. Complete Example", observed["guide"])
+
+    def test_judge_keeps_section_feedback_when_field_issue_is_not_repairable(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptMode,
+            ResolvedPromptPlan,
+        )
+
+        generator = VideoPromptGenerator.__new__(VideoPromptGenerator)
+        generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
+        generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
+        generator.judge = lambda **_payload: SimpleNamespace(judge={
+            "verdict": "bad",
+            "issues": ["section formatting needs repair"],
+            "field_issues": [{
+                "shot_id": "shot-0001",
+                "field": "detailed_description",
+                "issue_code": "missing_style",
+                "repair_instruction": "add the style sentence",
+            }],
+        })
+
+        @contextmanager
+        def lm_context(*, lm):
+            yield
+
+        generator.lm = object()
+        generator.dspy_runtime = SimpleNamespace(context=lm_context)
+        plan = ResolvedPromptPlan(
+            creative_intent="intent",
+            shots=[PlannedShot(shot_number=1, description="action")],
+            overall_soundscape="sound",
+            music_intent=MusicIntent.NONE,
+        )
+
+        result = generator.judge_compiled_prompt(
+            request={"mode": PromptMode.R2V.value, "user_prompt": "prompt"},
+            plan=plan,
+            references=[],
+            final_prompt="subject_definitions:\n<Subject 1> is a subject",
+        )
+
+        self.assertEqual("bad", result.verdict)
+        self.assertIn("section formatting needs repair", result.issues)
+        self.assertEqual([], result.field_issues)
+
+    def test_judge_normalizes_common_status_words_and_observation_only_results(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptMode,
+            ResolvedPromptPlan,
+        )
+
+        generator = VideoPromptGenerator.__new__(VideoPromptGenerator)
+        generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
+        generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
+        responses = iter((
+            {"verdict": "pass", "issues": []},
+            {"verdict": "fail", "issues": ["bad shape"]},
+            {"observations": {"issues": []}, "issues": []},
+        ))
+        generator.judge = lambda **_payload: SimpleNamespace(judge=next(responses))
+
+        @contextmanager
+        def lm_context(*, lm):
+            yield
+
+        generator.lm = object()
+        generator.dspy_runtime = SimpleNamespace(context=lm_context)
+        plan = ResolvedPromptPlan(
+            creative_intent="intent",
+            shots=[PlannedShot(shot_number=1, description="action")],
+            overall_soundscape="sound",
+            music_intent=MusicIntent.NONE,
+        )
+        request = {"mode": PromptMode.R2V.value, "user_prompt": "prompt"}
+
+        self.assertEqual("good", generator.judge_compiled_prompt(
+            request=request, plan=plan, references=[], final_prompt="prompt",
+        ).verdict)
+        self.assertEqual("bad", generator.judge_compiled_prompt(
+            request=request, plan=plan, references=[], final_prompt="prompt",
+        ).verdict)
+        self.assertEqual("good", generator.judge_compiled_prompt(
+            request=request, plan=plan, references=[], final_prompt="prompt",
+        ).verdict)
+
+    def test_typed_plan_is_compiled_then_judged_with_exact_final_prompt(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        plan = ResolvedPromptPlan(
+            creative_intent="CREATIVE INTENT",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="CREATIVE DESCRIPTION",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            overall_soundscape="CREATIVE SOUNDSCAPE",
+            music_intent=MusicIntent.NONE,
+        )
+        observed = {}
+
+        class Generator:
+            def __call__(self, _request):
+                return SimpleNamespace(plan=plan)
+
+            def judge_compiled_prompt(self, *, final_prompt, **_kwargs):
+                observed["prompt"] = final_prompt
+                return PromptJudgeResult(verdict="good")
+
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "s1", "duration": 2},
+            concept="concept",
+            scene_details={},
+            global_context={},
+            mode="t2v",
+        )
+
+        self.assertEqual(observed["prompt"], result["prompt"])
+        self.assertIn("integrated_multimodal_description:", result["prompt"])
+        self.assertIn("CREATIVE DESCRIPTION", result["prompt"])
+        self.assertEqual("good", result["prompt_judge"]["verdict"])
+
+    def test_typed_plan_recompiles_after_bad_judge_with_feedback(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            ContinuationIntent,
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        plan = ResolvedPromptPlan(
+            creative_intent="CREATIVE INTENT",
+            shots=[PlannedShot(shot_number=1, description="CREATIVE DESCRIPTION")],
+            continuation_intents=[ContinuationIntent("action-1", True, "crosses a cut")],
+            overall_soundscape="CREATIVE SOUNDSCAPE",
+            music_intent=MusicIntent.NONE,
+        )
+        requests = []
+        judges = iter((
+            PromptJudgeResult(verdict="bad", issues=["use the required guide label"]),
+            PromptJudgeResult(verdict="good"),
+        ))
+
+        class Generator:
+            judge_attempts = 2
+
+            def __call__(self, request):
+                requests.append(request)
+                return SimpleNamespace(plan=plan)
+
+            def judge_compiled_prompt(self, **_kwargs):
+                return next(judges)
+
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "s1", "duration": 2},
+            concept="concept",
+            scene_details={},
+            global_context={},
+            mode="t2v",
+        )
+
+        self.assertEqual(2, len(requests))
+        self.assertIn("use the required guide label", requests[1]["notes"])
+        self.assertIn("Do not add reference labels or timestamps", requests[1]["notes"])
+        self.assertIn("<d>[Language] ...</d>", requests[1]["notes"])
+        self.assertEqual("good", result["prompt_judge"]["verdict"])
+        self.assertEqual("action-1", result["continuation_intents"][0]["action_id"])
+
+    def test_advisory_judge_saves_bad_verdict_without_regenerating(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        plan = ResolvedPromptPlan(
+            creative_intent="CREATIVE INTENT",
+            shots=[PlannedShot(shot_number=1, description="CREATIVE DESCRIPTION")],
+            overall_soundscape="CREATIVE SOUNDSCAPE",
+            music_intent=MusicIntent.NONE,
+        )
+        requests = []
+
+        class Generator:
+            judge_attempts = 3
+            prompt_judge_blocking = False
+
+            def __call__(self, request):
+                requests.append(request)
+                return SimpleNamespace(plan=plan)
+
+            def judge_compiled_prompt(self, **_kwargs):
+                return PromptJudgeResult(verdict="bad", issues=["wording"])
+
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "s1", "duration": 2},
+            concept="concept",
+            scene_details={},
+            global_context={},
+            mode="t2v",
+        )
+
+        self.assertEqual(1, len(requests))
+        self.assertEqual("bad", result["prompt_judge"]["verdict"])
+
+    def test_judge_feedback_does_not_feed_compiler_labels_back_to_planner(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        plan = ResolvedPromptPlan(
+            creative_intent="CREATIVE INTENT",
+            shots=[PlannedShot(shot_number=1, description="CREATIVE DESCRIPTION")],
+            overall_soundscape="CREATIVE SOUNDSCAPE",
+            music_intent=MusicIntent.NONE,
+        )
+        requests = []
+        verdicts = iter((
+            PromptJudgeResult(
+                verdict="bad",
+                issues=["<Subject 2> must not be followed by He"],
+            ),
+            PromptJudgeResult(verdict="good"),
+        ))
+
+        class Generator:
+            judge_attempts = 2
+
+            def __call__(self, request):
+                requests.append(request)
+                return SimpleNamespace(plan=plan)
+
+            def judge_compiled_prompt(self, **_kwargs):
+                return next(verdicts)
+
+        DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "s1", "duration": 2},
+            concept="concept",
+            scene_details={},
+            global_context={},
+            mode="t2v",
+        )
+
+        self.assertNotIn("<Subject 2>", requests[1]["notes"])
+
+    def test_r2v_deterministic_contract_does_not_retry_for_creative_length(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        short_plan = ResolvedPromptPlan(
+            creative_intent="A short performance.",
+            style_opening="Live-action cinematic imagery uses cool practical lighting.",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="A performer turns toward the window.",
+                start_seconds=0,
+                end_seconds=5,
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+        rich_sentence = (
+            "A precisely framed physical action establishes composition, appearance, position, "
+            "lighting, environmental motion, performance detail, and deliberate camera movement."
+        )
+        rich_plan = short_plan.model_copy(update={
+            "shots": [short_plan.shots[0].model_copy(update={
+                "description": " ".join([rich_sentence] * 36),
+            })],
+        })
+        requests = []
+        judged_prompts = []
+
+        class Generator:
+            judge_attempts = 2
+
+            def __call__(self, request):
+                requests.append(request)
+                return SimpleNamespace(plan=short_plan if len(requests) == 1 else rich_plan)
+
+            def judge_compiled_prompt(self, *, final_prompt, **_kwargs):
+                judged_prompts.append(final_prompt)
+                return PromptJudgeResult(verdict="good")
+
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "s1", "duration": 5},
+            concept="concept",
+            scene_details={},
+            global_context={},
+            mode="r2v",
+        )
+
+        self.assertEqual(1, len(requests))
+        self.assertEqual(1, len(judged_prompts))
+        self.assertEqual(judged_prompts[0], result["prompt"])
+
+    def test_judge_field_issues_repair_only_addressed_creative_fields(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        sentence = (
+            "A precise cinematic composition establishes appearance, position, environment, "
+            "lighting, physical action, state change, camera movement, and current sound."
+        )
+        plan = ResolvedPromptPlan(
+            creative_intent="A complete performance.",
+            style_opening="Live-action imagery uses restrained amber practical lighting.",
+            shots=[PlannedShot(
+                shot_number=1,
+                description=" ".join([sentence] * 36),
+                start_seconds=0,
+                end_seconds=5,
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+        requests = []
+        judge_calls = []
+        repair_calls = []
+
+        class Generator:
+            judge_attempts = 2
+
+            def __call__(self, request):
+                requests.append(request)
+                return SimpleNamespace(plan=plan)
+
+            def repair_compiled_plan(self, **kwargs):
+                repair_calls.append(kwargs)
+                repaired_shot = kwargs["plan"].shots[0].model_copy(update={
+                    "camera_behavior": "The camera pushes in at slow speed.",
+                })
+                return kwargs["plan"].model_copy(update={"shots": [repaired_shot]})
+
+            def judge_compiled_prompt(self, **_kwargs):
+                judge_calls.append(1)
+                if len(judge_calls) == 1:
+                    return PromptJudgeResult(
+                        verdict="bad",
+                        repair_instruction="Repair only the affected shot field.",
+                        field_issues=[{
+                            "shot_id": "shot-0001",
+                            "field": "camera_behavior",
+                            "issue_code": "camera.missing_speed",
+                            "repair_instruction": "Specify camera speed.",
+                        }],
+                    )
+                return PromptJudgeResult(verdict="good")
+
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "s1", "duration": 5},
+            concept="concept",
+            scene_details={},
+            global_context={},
+            mode="r2v",
+        )
+
+        self.assertEqual(1, len(requests))
+        self.assertEqual(1, len(repair_calls))
+        self.assertEqual("camera_behavior", repair_calls[0]["field_issues"][0].field)
+        self.assertIn("pushes in at slow speed", result["prompt"])
+        self.assertEqual("good", result["prompt_judge"]["verdict"])
+
+    def test_production_builder_compiles_explicit_vocal_binding_from_relay(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+            SubjectDefinition,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        detail = (
+            "Cinematic lighting reveals precise appearance, position, physical action, "
+            "environmental response, camera movement, and a visible state change. "
+        )
+        plan = ResolvedPromptPlan(
+            creative_intent="The technician discovers a visual glitch.",
+            style_opening=(
+                "The target video uses a cinematic near-future style with controlled neon "
+                "contrast and precise practical lighting."
+            ),
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Jack",
+                description="a young technician with dark hair",
+            )],
+            shots=[
+                PlannedShot(
+                    shot_number=1, start_seconds=0, end_seconds=5.92,
+                    description=(detail * 18).strip(), involved_subjects=["Jack"],
+                ),
+                PlannedShot(
+                    shot_number=2, start_seconds=5.92, end_seconds=8.08,
+                    description=(detail * 18 + "Pixels dance on my").strip(),
+                    involved_subjects=["Jack"],
+                ),
+            ],
+            overall_soundscape="A low electronic ambience surrounds the performance.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        class Generator:
+            judge_attempts = 1
+
+            def __call__(self, _request):
+                return SimpleNamespace(plan=plan)
+
+            def judge_compiled_prompt(self, **_kwargs):
+                return PromptJudgeResult(verdict="good")
+
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={
+                "segment_id": "segment_003", "duration": 8.08, "fps": 24,
+                "references": {
+                    "actor_ids": ["singer"],
+                    "audio_subject_bindings": {
+                        "vocals": {"subject_id": "singer", "speaker_id": "S1"},
+                    },
+                },
+                "ltx": {"prompt_relay": [
+                    {
+                        "frame_start": 0, "frame_end": 142, "state": "instrumental",
+                        "prompt": "character is not singing, no lip movement",
+                    },
+                    {
+                        "frame_start": 142, "frame_end": 194, "state": "singing",
+                        "subject_label": "<Subject 1>", "speaker_id": "S1",
+                        "prompt": "performing the lyrics: Pixels dance on my",
+                    },
+                ]},
+            },
+            concept="concept",
+            scene_details={},
+            global_context={"language": "English"},
+            mode="r2v",
+            audio_paths={"vocals": Path("vocals.wav")},
+        )
+
+        self.assertIn("<Subject 1> (S1)", result["prompt"])
+        self.assertIn("<d>[English] Pixels dance on my.</d> from <Audio 1>", result["prompt"])
+        self.assertEqual(1, result["prompt"].count("Pixels dance on my"))
+        self.assertEqual("S1", result["sections"]["speaker_bindings"][0]["speaker_id"])
+
     def test_compatibility_export_delegates_to_canonical_generator(self):
         from unittest.mock import patch
 

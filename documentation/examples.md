@@ -73,6 +73,16 @@ configured for `minimax-h3-r2v` with the draft two-pass profile and contains
 the fixed benchmark track plus its lyrics. Use it to compare planner, prompt,
 workflow, and render changes without changing the source audio.
 
+Its story configuration demonstrates multi-character reference generation:
+Tamsin, an AR compliance inspector, follows maintenance worker and singer Soren through
+Mirrorline Central as they expose the physical station beneath its flawless
+augmented overlay. The project deliberately uses two stable actor definitions,
+one reusable empty-environment location, a recurring red-thread prop in the
+creative guidance, `sequence_sheet` references, and a 0.4-megapixel draft
+render target. Soren is explicitly the only visible singer for the track's male
+vocal; Tamsin never lip-syncs. Vocal timing still determines which shots show
+the performance.
+
 When the LLM and ComfyUI cannot keep their models loaded simultaneously, run
 the R2V pipeline in four resumable phases. This is also useful when debugging
 the hand-off artifacts:

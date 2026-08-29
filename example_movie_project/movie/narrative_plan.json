@@ -1,0 +1,63 @@
+{
+  "title": "Example Movie Project",
+  "sequences": [
+    {
+      "sequence_id": "sequence_0001",
+      "title": "Example Movie Project",
+      "scene_ids": [
+        "scene_0001",
+        "scene_0002",
+        "scene_0003",
+        "scene_0004",
+        "scene_0005",
+        "scene_0006"
+      ],
+      "dramatic_function": "Carry the movie premise through a causal beginning, middle, and resolution."
+    }
+  ],
+  "causal_chain": [
+    {
+      "scene_id": "scene_0001",
+      "story_state_before": "The movie begins from the stated premise.",
+      "story_state_after": "Mara, a maintenance engineer in an orange pressure suit, enters the powerless relay and seals the airlock behind her. Frost drifts from the ceiling while her helmet lamp searches the darkness.",
+      "cause_from_previous": "Opening scene establishes the premise.",
+      "sets_up_next": "Mara follows a weak red pulse through the corridor. She kneels beside a severed fiber cable and recognizes a deliberate distress rhythm."
+    },
+    {
+      "scene_id": "scene_0002",
+      "story_state_before": "Mara, a maintenance engineer in an orange pressure suit, enters the powerless relay and seals the airlock behind her. Frost drifts from the ceiling while her helmet lamp searches the darkness.",
+      "story_state_after": "Mara follows a weak red pulse through the corridor. She kneels beside a severed fiber cable and recognizes a deliberate distress rhythm.",
+      "cause_from_previous": "Previous scene leaves: Mara, a maintenance engineer in an orange pressure suit, enters the powerless relay and seals the airlock behind her. Frost drifts from the ceiling while her helmet lamp searches the darkness.",
+      "sets_up_next": "Mara connects her wrist terminal to the damaged console and watches the dead transmitter."
+    },
+    {
+      "scene_id": "scene_0003",
+      "story_state_before": "Mara follows a weak red pulse through the corridor. She kneels beside a severed fiber cable and recognizes a deliberate distress rhythm.",
+      "story_state_after": "Mara connects her wrist terminal to the damaged console and watches the dead transmitter.",
+      "cause_from_previous": "Previous scene leaves: Mara follows a weak red pulse through the corridor. She kneels beside a severed fiber cable and recognizes a deliberate distress rhythm.",
+      "sets_up_next": "The emergency batteries fail. Mara braces a sparking conduit with both hands and forces a manual bypass into place."
+    },
+    {
+      "scene_id": "scene_0004",
+      "story_state_before": "Mara connects her wrist terminal to the damaged console and watches the dead transmitter.",
+      "story_state_after": "The emergency batteries fail. Mara braces a sparking conduit with both hands and forces a manual bypass into place.",
+      "cause_from_previous": "Previous scene leaves: Mara connects her wrist terminal to the damaged console and watches the dead transmitter.",
+      "sets_up_next": "Power surges back through the room. The transmitter emits a fragile human heartbeat from a trapped survivor capsule beyond the station."
+    },
+    {
+      "scene_id": "scene_0005",
+      "story_state_before": "The emergency batteries fail. Mara braces a sparking conduit with both hands and forces a manual bypass into place.",
+      "story_state_after": "Power surges back through the room. The transmitter emits a fragile human heartbeat from a trapped survivor capsule beyond the station.",
+      "cause_from_previous": "Previous scene leaves: The emergency batteries fail. Mara braces a sparking conduit with both hands and forces a manual bypass into place.",
+      "sets_up_next": "Mara routes the rescued signal toward Earth as sunlight reaches the station and the transmission locks."
+    },
+    {
+      "scene_id": "scene_0006",
+      "story_state_before": "Power surges back through the room. The transmitter emits a fragile human heartbeat from a trapped survivor capsule beyond the station.",
+      "story_state_after": "Mara routes the rescued signal toward Earth as sunlight reaches the station and the transmission locks.",
+      "cause_from_previous": "Previous scene leaves: Power surges back through the room. The transmitter emits a fragile human heartbeat from a trapped survivor capsule beyond the station.",
+      "sets_up_next": "The final scene resolves the current arc."
+    }
+  ],
+  "open_threads": []
+}

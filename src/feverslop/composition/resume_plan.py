@@ -32,6 +32,7 @@ def build_resume_plan(
     video_pipeline: str,
     selected_scenes: Iterable[int] | None = None,
     render_settings: ProjectRenderSettings | None = None,
+    judge_blocking: bool = True,
 ) -> ExecutionPlan:
     root = Path(project).resolve()
     try:
@@ -40,6 +41,7 @@ def build_resume_plan(
             video_pipeline=video_pipeline,
             selected_scenes=selected_scenes,
             render_settings=render_settings,
+            judge_blocking=judge_blocking,
         )
     except (FeverSlopDataError, OSError, TypeError, ValueError, json.JSONDecodeError):
         return ExecutionPlan(root, "resume", (
@@ -57,6 +59,7 @@ def _build_resume_plan(
     video_pipeline: str,
     selected_scenes: Iterable[int] | None = None,
     render_settings: ProjectRenderSettings | None = None,
+    judge_blocking: bool = True,
 ) -> ExecutionPlan:
     root = project
     layout = SceneArtifactLayout(root)
@@ -145,7 +148,9 @@ def _build_resume_plan(
 
         h3_action = PlanAction.REUSE
         if video_pipeline in _H3_PIPELINES:
-            h3_action, h3_reason = _h3_state(layout, canonical_scene, number)
+            h3_action, h3_reason = _h3_state(
+                layout, canonical_scene, number, judge_blocking=judge_blocking,
+            )
             if (
                 reference_changed
                 and video_pipeline in _REFERENCE_PIPELINES
@@ -429,7 +434,13 @@ def _projection_stage(pipeline: str) -> str | None:
     return None
 
 
-def _h3_state(layout: SceneArtifactLayout, scene: Mapping[str, Any], number: int) -> tuple[PlanAction, str]:
+def _h3_state(
+    layout: SceneArtifactLayout,
+    scene: Mapping[str, Any],
+    number: int,
+    *,
+    judge_blocking: bool = True,
+) -> tuple[PlanAction, str]:
     role = (((scene.get("canonical") or {}).get("roles") or {}).get(str(PromptRole.H3_VIDEO)) or {})
     override = role.get("override")
     if isinstance(override, Mapping):
@@ -441,7 +452,10 @@ def _h3_state(layout: SceneArtifactLayout, scene: Mapping[str, Any], number: int
     expected = ((role.get("generated") or {}).get("provenance") or {}).get("input_fingerprint")
     if expected and expected != payload.get("input_fingerprint"):
         return PlanAction.RUN, "H3 input fingerprint changed"
-    if str(payload.get("status") or "").lower() not in {"good", "unjudged"}:
+    status = str(payload.get("status") or "").lower()
+    if status == "bad_exhausted" and not judge_blocking:
+        return PlanAction.REUSE, "advisory BAD H3 checkpoint is renderable"
+    if status != "good":
         return PlanAction.RUN, "H3 checkpoint is not renderable"
     return PlanAction.REUSE, "judged H3 checkpoint matches"
 

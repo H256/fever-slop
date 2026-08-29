@@ -4,9 +4,12 @@ from collections.abc import Callable
 from typing import Any
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.domain.h3_prompt_checkpoint import valid_h3_prompt_contract
+from feverslop.errors import FeverSlopDataError
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
 from feverslop.prompting.dspy_h3_models import PromptMode
 from feverslop.prompting.model_types import resolve_model_type
+from feverslop.prompting.scene_prompt_builder import normalize_scene_references
 from feverslop.utils.sub_step_progress import SubStepProgress
 
 
@@ -69,19 +72,48 @@ def _attach_beat_events(stage1_segments: list[dict], beat_data: dict[str, Any]) 
 
 
 def _attach_subject_directives(stage1_segments: list[dict], scene_prompts: list[dict]) -> list[dict]:
-    directives_by_segment = {
-        str(scene.get("segment_id")): scene.get("subject_directives")
+    prompts_by_segment = {
+        str(scene.get("segment_id")): scene
         for scene in scene_prompts
-        if scene.get("subject_directives") is not None
     }
     enriched = []
     for segment in stage1_segments:
         result = dict(segment)
-        directives = directives_by_segment.get(str(segment.get("segment_id")))
+        scene_prompt = prompts_by_segment.get(str(segment.get("segment_id"))) or {}
+        directives = scene_prompt.get("subject_directives")
         if directives is not None:
             result["subject_directives"] = directives
+        creative_prompt = next((
+            str(scene_prompt.get(key) or "").strip()
+            for key in (
+                "ltx_base_prompt",
+                "i2v_prompt_from_t2i",
+                "original_style_i2v_prompt",
+                "base_concept",
+            )
+            if str(scene_prompt.get(key) or "").strip()
+        ), "")
+        if creative_prompt:
+            result["h3_creative_prompt"] = creative_prompt
         enriched.append(result)
     return enriched
+
+
+def _normalize_h3_scene_references(
+    stage1_segments: list[dict],
+    global_context: dict[str, Any],
+) -> list[dict]:
+    return [
+        {
+            **segment,
+            "references": normalize_scene_references(
+                segment.get("references") or {},
+                global_context,
+                segment_type=str(segment.get("type") or ""),
+            ),
+        }
+        for segment in stage1_segments
+    ]
 
 
 def _configured_audio_paths(
@@ -151,6 +183,7 @@ class H3PromptPipeline:
         concept_prompts = context["concept_prompts"]
         scene_details = context["scene_details"]
         global_context = context["global_context"]
+        stage1_segments = _normalize_h3_scene_references(stage1_segments, global_context)
         h3_prompts_json = context["h3_prompts_json"]
         artifact_store = context["artifact_store"]
         log_step = context["log_step"]
@@ -202,6 +235,49 @@ class H3PromptPipeline:
             else None
         )
         generator_revision = _generator_revision(app_config, builder)
+        compiler_name = generator_revision.get("compiler")
+        compiler_version = generator_revision.get("compiler_version")
+        if (
+            reporter is not None
+            and model_spec is not None
+            and model_spec.is_minimax_h3
+            and compiler_name
+            and compiler_version is not None
+        ):
+            reporter.message(
+                f"[cyan]H3 prompt compiler: {compiler_name} v{compiler_version}. "
+                "Matching checkpoints are reused; stale compiler checkpoints are "
+                "invalidated and saved structured plans are recompiled.[/cyan]",
+            )
+        output_budget = getattr(llm, "max_tokens", None)
+        if (
+            reporter is not None
+            and model_spec is not None
+            and model_spec.is_minimax_h3
+            and output_budget is not None
+        ):
+            reporter.message(
+                f"[cyan]H3 planner output budget: {output_budget} tokens per structured plan.[/cyan]",
+            )
+        judge_output_budget = getattr(llm, "prompt_judge_max_tokens", None)
+        if (
+            reporter is not None
+            and model_spec is not None
+            and model_spec.is_minimax_h3
+            and judge_output_budget is not None
+        ):
+            reporter.message(
+                f"[cyan]H3 judge output budget: {judge_output_budget} tokens per verdict.[/cyan]",
+            )
+            reporter.message(
+                "[cyan]H3 judge mode: "
+                + (
+                    "blocking; BAD verdicts stop render preparation."
+                    if bool(getattr(llm, "prompt_judge_blocking", True))
+                    else "advisory; BAD verdicts are saved but do not stop the pipeline."
+                )
+                + "[/cyan]",
+            )
         selected_scene_numbers = (
             context["selected_scene_numbers"]
             if "selected_scene_numbers" in context.keys()
@@ -212,6 +288,8 @@ class H3PromptPipeline:
             if "selected_scene_selection_complete" in context.keys()
             else False
         )
+        request = context["request"] if "request" in context.keys() else None
+        resume_requested = bool(getattr(request, "resume", False))
 
         mode = model_spec.prompt_mode.value if model_spec else PromptMode.T2V.value
         stem_files = context["stem_files"] if "stem_files" in context.keys() else None
@@ -224,22 +302,31 @@ class H3PromptPipeline:
                     audio_paths["full_mix"] = config.input_audio
 
         progress = SubStepProgress(reporter, "H3 prompts", len(stage1_segments))
+        video_type = str(
+            global_context.get("video_type")
+            or getattr(config, "video_type", "")
+            or "video"
+        ).strip()
         builder.build_all_h3_prompts(
             stage1_segments=stage1_segments,
             concept_prompts=concept_prompts,
             scene_details=scene_details,
             global_context=global_context,
             mode=mode,
-            video_type="music_video",
+            video_type=video_type,
             output_json_path=h3_prompts_json,
             artifact_store=artifact_store,
             audio_paths=audio_paths,
             reference_root=getattr(config, "project_dir", None),
             progress_callback=lambda current, total: progress.update(current),
-            status_callback=lambda current, total, status: (
-                reporter.message(
-                    f"[cyan]H3 prompts: {current}/{total} scenes - "
-                    f"{'start' if status == 'started' else 'reused' if status == 'reused' else 'completed'}[/cyan]",
+            status_callback=(
+                lambda current, total, status: reporter.message(
+                    _h3_prompt_status_message(
+                        current,
+                        total,
+                        status,
+                        compiler_version=compiler_version,
+                    ),
                 )
                 if reporter is not None
                 else None
@@ -252,22 +339,47 @@ class H3PromptPipeline:
             checkpoint_store=checkpoint_store,
             generator_revision=generator_revision,
             preserve_existing_aggregate=selected_scene_numbers is not None,
-            reuse_checkpoints=selected_scene_numbers is None or selected_scene_selection_complete,
+            reuse_checkpoints=(
+                selected_scene_numbers is None
+                or selected_scene_selection_complete
+                or resume_requested
+            ),
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
-        if reporter is not None:
-            bad_judgements = []
-            for item in context["h3_prompts"]:
-                judge = item.get("prompt_judge") or {}
-                if judge.get("verdict") == "bad":
-                    bad_judgements.append(item)
-                    reporter.message(
-                        "[yellow]H3 prompt judge: BAD for "
-                        f"{item.get('segment_id')}; prompt saved and pipeline continues: "
-                        f"{'; '.join(str(issue) for issue in judge.get('issues') or [])}[/yellow]",
+        if model_spec and model_spec.is_minimax_h3:
+            app_config = context["app_config"]
+            llm_config = getattr(app_config, "llm", None)
+            judge_blocking = bool(
+                getattr(llm_config, "prompt_judge_blocking", True)
+            )
+            not_approved = [
+                str(item.get("segment_id"))
+                for item in context["h3_prompts"]
+                if (
+                    not valid_h3_prompt_contract(item)
+                    or (
+                        judge_blocking
+                        and (item.get("prompt_judge") or {}).get("verdict") != "good"
                     )
+                )
+            ]
+            if not_approved:
+                raise FeverSlopDataError(
+                    "MiniMax H3 prompt validation blocked render preparation for scenes: "
+                    + ", ".join(not_approved),
+                )
+        if reporter is not None:
+            bad_judgements = [
+                item for item in context["h3_prompts"]
+                if (item.get("prompt_judge") or {}).get("verdict") == "bad"
+            ]
             if bad_judgements:
+                reporter.table(
+                    "[yellow]H3 prompt judge findings[/yellow]",
+                    ["Scene", "Issue", "Finding"],
+                    _h3_judge_issue_rows(bad_judgements),
+                )
                 reporter.message(
                     "[yellow]H3 prompt judge summary: "
                     f"{len(bad_judgements)} scene(s) marked BAD. "
@@ -279,6 +391,53 @@ class H3PromptPipeline:
             else:
                 reporter.message("[green]H3 prompt judge summary: all generated prompts marked GOOD.[/green]")
         return context
+
+
+def _h3_judge_issue_rows(items: list[dict[str, Any]]) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for item in items:
+        segment_id = str(item.get("segment_id") or "unknown")
+        judge = item.get("prompt_judge") or {}
+        findings = [str(issue).strip() for issue in judge.get("issues") or []]
+        for issue in judge.get("field_issues") or []:
+            if not isinstance(issue, dict):
+                continue
+            location = ".".join(
+                value for value in (
+                    str(issue.get("shot_id") or "").strip(),
+                    str(issue.get("field") or "").strip(),
+                ) if value
+            )
+            detail = str(
+                issue.get("repair_instruction") or issue.get("issue_code") or "Field issue",
+            ).strip()
+            findings.append(f"{location}: {detail}" if location else detail)
+        for number, finding in enumerate(findings or ["No details returned."], start=1):
+            rows.append([segment_id, str(number), finding])
+    return rows
+
+
+def _h3_prompt_status_message(
+    current: int,
+    total: int,
+    status: str,
+    *,
+    compiler_version: Any = None,
+) -> str:
+    if status == "started":
+        label = "start"
+    elif status == "reused":
+        label = "reused (checkpoint matches current inputs and compiler)"
+    elif status == "recompiled":
+        version_suffix = f"; using v{compiler_version}" if compiler_version is not None else ""
+        label = f"recompiled (compiler checkpoint invalidated{version_suffix})"
+    elif status == "regenerating":
+        label = "regenerating (saved structured plan fails current guide contract)"
+    elif status == "completed":
+        label = "completed"
+    else:
+        label = status
+    return f"[cyan]H3 prompts: {current}/{total} scenes - {label}[/cyan]"
 
 
 def _generator_revision(app_config: Any, builder: Any) -> dict[str, Any]:
@@ -293,5 +452,11 @@ def _generator_revision(app_config: Any, builder: Any) -> dict[str, Any]:
             revision["model"] = str(model_for("structured"))
         revision["prompt_judge_attempts"] = int(
             getattr(llm_config, "prompt_judge_attempts", 3),
+        )
+        revision["prompt_judge_max_tokens"] = int(
+            getattr(llm_config, "prompt_judge_max_tokens", 8192),
+        )
+        revision["prompt_judge_blocking"] = bool(
+            getattr(llm_config, "prompt_judge_blocking", True),
         )
     return revision

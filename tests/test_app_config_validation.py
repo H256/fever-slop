@@ -429,6 +429,21 @@ class LLMConfigValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "llm.max_tokens must be > 0"):
                 AppConfig.load(config_path)
 
+    def test_rejects_zero_prompt_judge_max_tokens(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"prompt_judge_max_tokens": 0}}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                ValueError,
+                "llm.prompt_judge_max_tokens must be > 0",
+            ):
+                AppConfig.load(config_path)
+
     def test_rejects_zero_llm_max_concurrent_requests(self):
         from feverslop.config.app_config import AppConfig
 
