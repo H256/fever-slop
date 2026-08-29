@@ -1,0 +1,13 @@
+{
+  "project_type": "movie",
+  "display_name": "Example Movie Project",
+  "slug": "example_movie_project",
+  "movie": {
+    "source_type": "screenplay",
+    "story_text": "INT. ORBITAL RELAY - AIRLOCK - NIGHT\nMara, a maintenance engineer in an orange pressure suit, enters the powerless relay and seals the airlock behind her. Frost drifts from the ceiling while her helmet lamp searches the darkness.\n\nINT. ORBITAL RELAY - CONTROL CORRIDOR - NIGHT\nMara follows a weak red pulse through the corridor. She kneels beside a severed fiber cable and recognizes a deliberate distress rhythm.\n\nINT. ORBITAL RELAY - COMMUNICATIONS ROOM - NIGHT\nMara connects her wrist terminal to the damaged console and watches the dead transmitter.\nMARA\nRelay station, can you hear me?\n\nINT. ORBITAL RELAY - POWER CORE - NIGHT\nThe emergency batteries fail. Mara braces a sparking conduit with both hands and forces a manual bypass into place.\n\nINT. ORBITAL RELAY - COMMUNICATIONS ROOM - NIGHT\nPower surges back through the room. The transmitter emits a fragile human heartbeat from a trapped survivor capsule beyond the station.\n\nINT. ORBITAL RELAY - OBSERVATION WINDOW - DAWN\nMara routes the rescued signal toward Earth as sunlight reaches the station and the transmission locks.\nMARA\nI found you. Hold on.",
+    "desired_length": 60.0,
+    "width": 1280,
+    "height": 704,
+    "mode": "scaffold"
+  }
+}

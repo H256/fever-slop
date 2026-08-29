@@ -1,0 +1,109 @@
+{
+  "title": "Example Movie Project",
+  "source_type": "screenplay",
+  "dialogue_language": "English",
+  "scenes": [
+    {
+      "scene_id": "scene_0001",
+      "heading": "INT. ORBITAL RELAY - AIRLOCK - NIGHT",
+      "summary": "Mara, a maintenance engineer in an orange pressure suit, enters the powerless relay and seals the airlock behind her. Frost drifts from the ceiling while her helmet lamp searches the darkness.",
+      "action": "Mara, a maintenance engineer in an orange pressure suit, enters the powerless relay and seals the airlock behind her. Frost drifts from the ceiling while her helmet lamp searches the darkness.",
+      "dialogue": "",
+      "actor_ids": [
+        "mara"
+      ],
+      "location_id": "orbital_relay",
+      "source_span": "lines:1-2",
+      "dramatic_purpose": "Establish the central situation: Mara, a maintenance engineer in an orange pressure suit, enters the powerless relay and seals the airlock behind her. Frost drifts from the ceiling while her helmet lamp searches the darkness.",
+      "conflict": "The visible goal is pressured by opposition or uncertainty in: Mara, a maintenance engineer in an orange pressure suit, enters the powerless relay and seals the airlock behind her. Frost drifts from the ceiling while her helmet lamp searches the darkness.",
+      "emotional_turn": "The emotional state moves from orientation into tension.",
+      "subtext": "The scene carries its meaning through behavior, environment, and withheld emotion.",
+      "dialogue_function": "No spoken dialogue; silence and action carry the dramatic information."
+    },
+    {
+      "scene_id": "scene_0002",
+      "heading": "INT. ORBITAL RELAY - CONTROL CORRIDOR - NIGHT",
+      "summary": "Mara follows a weak red pulse through the corridor. She kneels beside a severed fiber cable and recognizes a deliberate distress rhythm.",
+      "action": "Mara follows a weak red pulse through the corridor. She kneels beside a severed fiber cable and recognizes a deliberate distress rhythm.",
+      "dialogue": "",
+      "actor_ids": [
+        "mara"
+      ],
+      "location_id": "orbital_relay",
+      "source_span": "lines:4-5",
+      "dramatic_purpose": "Escalate the premise through a concrete story beat: Mara follows a weak red pulse through the corridor. She kneels beside a severed fiber cable and recognizes a deliberate distress rhythm.",
+      "conflict": "The visible goal is pressured by opposition or uncertainty in: Mara follows a weak red pulse through the corridor. She kneels beside a severed fiber cable and recognizes a deliberate distress rhythm.",
+      "emotional_turn": "The emotional state changes under escalating pressure.",
+      "subtext": "The scene carries its meaning through behavior, environment, and withheld emotion.",
+      "dialogue_function": "No spoken dialogue; silence and action carry the dramatic information."
+    },
+    {
+      "scene_id": "scene_0003",
+      "heading": "INT. ORBITAL RELAY - COMMUNICATIONS ROOM - NIGHT",
+      "summary": "Mara connects her wrist terminal to the damaged console and watches the dead transmitter.",
+      "action": "Mara connects her wrist terminal to the damaged console and watches the dead transmitter.",
+      "dialogue": "MARA: Relay station, can you hear me?",
+      "actor_ids": [
+        "mara"
+      ],
+      "location_id": "orbital_relay",
+      "source_span": "lines:7-10",
+      "dramatic_purpose": "Escalate the premise through a concrete story beat: Mara connects her wrist terminal to the damaged console and watches the dead transmitter.",
+      "conflict": "The visible goal is pressured by opposition or uncertainty in: Mara connects her wrist terminal to the damaged console and watches the dead transmitter.",
+      "emotional_turn": "The emotional state changes under escalating pressure.",
+      "subtext": "Characters speak around the emotional cost rather than explaining it directly.",
+      "dialogue_function": "Dialogue reveals pressure, relationship, and decision rather than exposition."
+    },
+    {
+      "scene_id": "scene_0004",
+      "heading": "INT. ORBITAL RELAY - POWER CORE - NIGHT",
+      "summary": "The emergency batteries fail. Mara braces a sparking conduit with both hands and forces a manual bypass into place.",
+      "action": "The emergency batteries fail. Mara braces a sparking conduit with both hands and forces a manual bypass into place.",
+      "dialogue": "",
+      "actor_ids": [
+        "mara"
+      ],
+      "location_id": "orbital_relay",
+      "source_span": "lines:12-13",
+      "dramatic_purpose": "Escalate the premise through a concrete story beat: The emergency batteries fail. Mara braces a sparking conduit with both hands and forces a manual bypass into place.",
+      "conflict": "The visible goal is pressured by opposition or uncertainty in: The emergency batteries fail. Mara braces a sparking conduit with both hands and forces a manual bypass into place.",
+      "emotional_turn": "The emotional state changes under escalating pressure.",
+      "subtext": "The scene carries its meaning through behavior, environment, and withheld emotion.",
+      "dialogue_function": "No spoken dialogue; silence and action carry the dramatic information."
+    },
+    {
+      "scene_id": "scene_0005",
+      "heading": "INT. ORBITAL RELAY - COMMUNICATIONS ROOM - NIGHT",
+      "summary": "Power surges back through the room. The transmitter emits a fragile human heartbeat from a trapped survivor capsule beyond the station.",
+      "action": "Power surges back through the room. The transmitter emits a fragile human heartbeat from a trapped survivor capsule beyond the station.",
+      "dialogue": "",
+      "actor_ids": [
+        "mara"
+      ],
+      "location_id": "orbital_relay",
+      "source_span": "lines:15-16",
+      "dramatic_purpose": "Escalate the premise through a concrete story beat: Power surges back through the room. The transmitter emits a fragile human heartbeat from a trapped survivor capsule beyond the station.",
+      "conflict": "The visible goal is pressured by opposition or uncertainty in: Power surges back through the room. The transmitter emits a fragile human heartbeat from a trapped survivor capsule beyond the station.",
+      "emotional_turn": "The emotional state changes under escalating pressure.",
+      "subtext": "The scene carries its meaning through behavior, environment, and withheld emotion.",
+      "dialogue_function": "No spoken dialogue; silence and action carry the dramatic information."
+    },
+    {
+      "scene_id": "scene_0006",
+      "heading": "INT. ORBITAL RELAY - OBSERVATION WINDOW - DAWN",
+      "summary": "Mara routes the rescued signal toward Earth as sunlight reaches the station and the transmission locks.",
+      "action": "Mara routes the rescued signal toward Earth as sunlight reaches the station and the transmission locks.",
+      "dialogue": "MARA: I found you. Hold on.",
+      "actor_ids": [
+        "mara"
+      ],
+      "location_id": "orbital_relay",
+      "source_span": "lines:18-21",
+      "dramatic_purpose": "Resolve the dramatic consequence: Mara routes the rescued signal toward Earth as sunlight reaches the station and the transmission locks.",
+      "conflict": "The visible goal is pressured by opposition or uncertainty in: Mara routes the rescued signal toward Earth as sunlight reaches the station and the transmission locks.",
+      "emotional_turn": "The emotional state lands on the final consequence.",
+      "subtext": "Characters speak around the emotional cost rather than explaining it directly.",
+      "dialogue_function": "Dialogue reveals pressure, relationship, and decision rather than exposition."
+    }
+  ]
+}

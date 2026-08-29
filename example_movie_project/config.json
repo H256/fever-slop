@@ -1,0 +1,102 @@
+{
+  "project_name": "Example Movie Project",
+  "input_audio": "",
+  "silent_mode": false,
+  "lyrics": "",
+  "dialogue_language": "English",
+  "video": {
+    "fps": 24,
+    "width": 1280,
+    "height": 704
+  },
+  "audio": {
+    "demucs_model": "htdemucs_6s",
+    "whisper_model": "large-v3",
+    "language": "en"
+  },
+  "video_pipeline": "minimax-h3-r2v",
+  "render_profile": {
+    "quality": "draft",
+    "pass_strategy": "two_pass",
+    "postprocess": "none"
+  },
+  "scene_generation": {
+    "min_duration": 10.0,
+    "max_duration": 10.0,
+    "bias": 0.7,
+    "duration_preset": "impact_weighted",
+    "seed": 240829
+  },
+  "vocal_detection": {
+    "merge_gap": 0.5,
+    "min_vocal_duration": 0.4,
+    "min_silence_duration": 0.8,
+    "rms_low_percentile": 20,
+    "rms_high_percentile": 85,
+    "rms_ratio": 0.35,
+    "smooth_frames": 10
+  },
+  "story_idea": "A maintenance engineer boards a dead orbital relay and races to restore a distress signal from a trapped survivor capsule.",
+  "style": "Grounded near-future science fiction, cold industrial realism, restrained blue and amber lighting, realistic materials, cinematic contrast.",
+  "subject": "Mara remains the same maintenance engineer in the same orange pressure suit throughout all six scenes.",
+  "subject_mode": "single",
+  "max_scene_actors": 1,
+  "locations": [
+    "Abandoned Orbital Relay"
+  ],
+  "actors": [
+    {
+      "id": "mara",
+      "name": "Mara",
+      "role": "maintenance engineer and protagonist",
+      "visual_description": "A woman in her early thirties with a lean face, short black hair, tired brown eyes, and a weathered orange pressure suit with a compact wrist terminal."
+    }
+  ],
+  "steering": {
+    "global": "",
+    "story_idea": "A maintenance engineer boards a dead orbital relay and races to restore a distress signal from a trapped survivor capsule.",
+    "style": "",
+    "subject": "",
+    "locations": "",
+    "concepts": "",
+    "zimage": "",
+    "ltx": "",
+    "final_prompts": ""
+  },
+  "prompt_guidance": {
+    "character_visibility": "",
+    "shot_types": "",
+    "environments": "",
+    "lighting": "",
+    "camera_motion": "",
+    "physical_interaction": "",
+    "facial_expression": "",
+    "outfit_rules": "",
+    "prompt_structure": "",
+    "list_handling": "",
+    "word_count_min": 40,
+    "word_count_max": 50
+  },
+  "lora_1": {
+    "enabled": false,
+    "name": "",
+    "strength_model": 1.0,
+    "strength_clip": 1.0
+  },
+  "lora_split_enabled": false,
+  "loras": [],
+  "movie_video_workflow": "minimax-h3-r2v",
+  "planner_backend": "deterministic",
+  "reference_backend": "comfyui",
+  "reference_generation": "image_views",
+  "render_backend": "comfyui",
+  "r2v_workflow": "workflows/video/minimax_h3/r2v_audio_two_pass.json",
+  "sequence_to_sheet_workflow": "workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json",
+  "structured_locations": [
+    {
+      "id": "orbital_relay",
+      "name": "Abandoned Orbital Relay",
+      "visual_description": "A failing industrial orbital communications station with narrow metal corridors, frost, exposed cables, dark control rooms, red emergency lights, and a wide observation window above Earth."
+    }
+  ]
+}
