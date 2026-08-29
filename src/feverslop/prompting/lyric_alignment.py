@@ -13,7 +13,7 @@ class LyricTimelineAligner:
         self._modules = modules if modules is not None else GeneralPromptModules(llm)
 
     def align(self, timeline: list[TimelineSegment], reference_lyrics: str) -> list[TimelineSegment]:
-        reference_lyrics = str(reference_lyrics or "").strip()
+        reference_lyrics = _without_section_markers(reference_lyrics)
         vocal_segments = [segment for segment in timeline if segment.kind == "vocals"]
         if not reference_lyrics or not vocal_segments:
             return timeline
@@ -42,7 +42,7 @@ class LyricTimelineAligner:
 
         corrected_segments = {}
         for segment, key in zip(vocal_segments, expected_keys, strict=True):
-            aligned_text = str(corrected[key]).strip()
+            aligned_text = _without_section_markers(corrected[key])
             corrected_segments[id(segment)] = TimelineSegment(
                 start=segment.start,
                 end=segment.end,
@@ -145,3 +145,7 @@ class LyricTimelineAligner:
             for word, boundary in zip(words, boundaries, strict=True)
             if boundary is not None
         )
+
+
+def _without_section_markers(value: object) -> str:
+    return re.sub(r"(?m)^\s*\[[^]\r\n]+\]\s*$", "", str(value or "")).strip()

@@ -15,6 +15,7 @@ from feverslop.prompting.dspy_h3_models import AudioSubjectBinding, H3PromptSect
 from feverslop.prompting.deterministic_h3_compiler import (
     H3_COMPILER_NAME,
     H3_COMPILER_VERSION,
+    plan_with_authoritative_relay,
     DeterministicH3Compiler,
     creative_shots_from_plan,
 )
@@ -78,6 +79,7 @@ def _audio_subject_bindings(
     actor_labels = {value: f"<Subject {index}>" for index, value in enumerate(actor_ids, start=1)}
     result: dict[str, dict[str, str]] = {}
     seen_subjects: set[str] = set()
+    seen_speaker_ids: dict[str, str] = {}
     for stem, value in raw.items():
         stem_name = str(stem).strip()
         if not stem_name or not isinstance(value, dict):
@@ -102,12 +104,129 @@ def _audio_subject_bindings(
             raise ValueError(f"speaker_id does not identify a visible subject: {speaker_id}")
         if stem_name == "vocals" and not speaker_id:
             raise ValueError("vocal audio binding requires speaker_id")
+        other_subject = seen_speaker_ids.get(speaker_id) if speaker_id else None
+        if other_subject and other_subject != subject_label:
+            raise ValueError(
+                f"speaker ID {speaker_id} is bound to both "
+                f"{other_subject} and {subject_label}"
+            )
+        if speaker_id:
+            seen_speaker_ids[speaker_id] = subject_label
         result[stem_name] = {
             "subject_label": subject_label,
             "speaker_id": speaker_id,
             "subject_id": subject_id,
         }
     return result
+
+
+def _speaker_bindings_for_compile(
+    *,
+    segment: dict[str, Any],
+    references: list[dict[str, Any]],
+    stored_bindings: list[dict[str, Any]] | None,
+) -> list[dict[str, str]]:
+    """Return explicit generic speaker bindings, rebuilding stale checkpoint data."""
+    audio_references = {
+        str(reference.get("name") or "").strip(): str(reference.get("label") or "").strip()
+        for reference in references
+        if str(reference.get("kind") or "").casefold() == "audio"
+        and str(reference.get("name") or "").strip()
+        and str(reference.get("label") or "").strip()
+    }
+    raw = _audio_subject_bindings(
+        segment.get("references") or {},
+        available_stems=set(audio_references),
+    )
+    current = [
+        {
+            "audio_label": audio_references[stem],
+            "stem": stem,
+            "subject_label": binding["subject_label"],
+            "speaker_id": binding["speaker_id"],
+        }
+        for stem, binding in raw.items()
+        if stem in audio_references and binding.get("speaker_id")
+    ]
+    relay = (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    for item in relay:
+        if not isinstance(item, dict):
+            continue
+        subject_label = str(item.get("subject_label") or "").strip()
+        speaker_id = str(item.get("speaker_id") or "").strip()
+        if subject_label and speaker_id and not any(
+            binding["subject_label"] == subject_label
+            and binding["speaker_id"] == speaker_id
+            for binding in current
+        ):
+            current.append({
+                "subject_label": subject_label,
+                "speaker_id": speaker_id,
+            })
+    _validate_speaker_binding_bijection(current, source="current")
+    if not stored_bindings:
+        return sorted(current, key=_speaker_binding_sort_key)
+    stored = [
+        {
+            key: str(binding.get(key) or "").strip()
+            for key in ("audio_label", "stem", "subject_label", "speaker_id")
+            if str(binding.get(key) or "").strip()
+        }
+        for binding in stored_bindings
+        if isinstance(binding, dict)
+    ]
+    actor_count = len((segment.get("references") or {}).get("actor_ids") or [])
+    valid_audio_labels = set(audio_references.values())
+    for binding in stored:
+        subject_label = binding.get("subject_label", "")
+        speaker_id = binding.get("speaker_id", "")
+        subject_match = re.fullmatch(r"<Subject\s+([1-9][0-9]*)>", subject_label)
+        if not subject_match or (actor_count and int(subject_match.group(1)) > actor_count):
+            raise ValueError(f"stored speaker binding has unknown subject: {subject_label}")
+        if not re.fullmatch(r"S[1-9][0-9]*", speaker_id):
+            raise ValueError(f"stored speaker binding has invalid speaker ID: {speaker_id}")
+        audio_label = binding.get("audio_label", "")
+        if audio_label and audio_label not in valid_audio_labels:
+            raise ValueError(f"stored speaker binding has unknown audio reference: {audio_label}")
+    _validate_speaker_binding_bijection(stored, source="stored")
+    current = sorted(current, key=_speaker_binding_sort_key)
+    stored = sorted(stored, key=_speaker_binding_sort_key)
+    if stored != current:
+        raise ValueError("stored speaker binding conflicts with current config")
+    return stored
+
+
+def _speaker_binding_sort_key(binding: dict[str, str]) -> tuple[str, str, str, str]:
+    return tuple(
+        str(binding.get(key) or "")
+        for key in ("subject_label", "speaker_id", "audio_label", "stem")
+    )
+
+
+def _validate_speaker_binding_bijection(
+    bindings: list[dict[str, str]],
+    *,
+    source: str,
+) -> None:
+    by_subject: dict[str, str] = {}
+    by_speaker: dict[str, str] = {}
+    for binding in bindings:
+        subject_label = str(binding.get("subject_label") or "").strip()
+        speaker_id = str(binding.get("speaker_id") or "").strip()
+        if not subject_label or not speaker_id:
+            continue
+        other_id = by_subject.get(subject_label)
+        if other_id and other_id != speaker_id:
+            raise ValueError(
+                f"{source} subject {subject_label} has multiple speaker IDs"
+            )
+        other_subject = by_speaker.get(speaker_id)
+        if other_subject and other_subject != subject_label:
+            raise ValueError(
+                f"{source} speaker ID {speaker_id} is bound to multiple subjects"
+            )
+        by_subject[subject_label] = speaker_id
+        by_speaker[speaker_id] = subject_label
 
 
 def _audio_description(name: str, binding: dict[str, str] | None) -> str:
@@ -383,6 +502,13 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
         source_prompt = str(item.get("source_prompt") or "").strip()
         if source_prompt:
             shot["source_prompt"] = source_prompt
+        for key in (
+            "lyrics", "dialogue", "text",
+            "subject_id", "subject_label", "speaker_id", "speaker_description",
+        ):
+            value = str(item.get(key) or "").strip()
+            if value:
+                shot[key] = value
         shots.append(shot)
     return shots
 
@@ -546,8 +672,22 @@ class DspyH3PromptBuilder:
                 max_attempts = max(1, int(getattr(self.generator, "judge_attempts", 1)))
                 judge_attempts = []
                 current_plan = generated.plan
+                speaker_bindings = _speaker_bindings_for_compile(
+                    segment=segment,
+                    references=references,
+                    stored_bindings=[
+                        binding.model_dump()
+                        for binding in request.get("audio_subject_bindings") or ()
+                    ],
+                )
                 for attempt in range(max_attempts):
                     normalized_plan = _normalize_plan_audio_usage(current_plan, references)
+                    normalized_plan = plan_with_authoritative_relay(
+                        normalized_plan,
+                        request.get("relay_segments") or (),
+                        language=str(request.get("source_language") or "English"),
+                        speaker_bindings=speaker_bindings,
+                    )
                     sections = H3PromptSections.from_plan(normalized_plan)
                     plan = sections.to_plan()
                     shots = creative_shots_from_plan(plan)
@@ -567,6 +707,8 @@ class DspyH3PromptBuilder:
                         reference_metadata=references,
                         duration_seconds=float(segment.get("duration") or segment.get("duration_seconds") or 0) or None,
                         dialogue_language=str(request.get("source_language") or "English"),
+                        relay_segments=request.get("relay_segments") or (),
+                        speaker_bindings=speaker_bindings,
                     )
                     shape_issues = validate_h3_prompt_contract(
                         prompt,
@@ -608,6 +750,7 @@ class DspyH3PromptBuilder:
                             "shots": [shot.model_dump() for shot in shots],
                             "shot_windows": {key: list(value) for key, value in windows.items()},
                             "references": references_by_shot,
+                            "speaker_bindings": speaker_bindings,
                         },
                         "continuation_intents": [asdict(intent) for intent in sections.continuation_intents],
                         "prompt_provenance": {
@@ -744,6 +887,17 @@ class DspyH3PromptBuilder:
                 list(sections.get("resolved_references") or []),
             )
             plan = _normalize_plan_audio_usage(plan, resolved_references)
+            speaker_bindings = _speaker_bindings_for_compile(
+                segment=segment,
+                references=resolved_references,
+                stored_bindings=list(sections.get("speaker_bindings") or ()),
+            )
+            plan = plan_with_authoritative_relay(
+                plan,
+                _normalize_relay_segments(segment),
+                language=str(global_context.get("language") or "English"),
+                speaker_bindings=speaker_bindings,
+            )
             shots = creative_shots_from_plan(plan)
             stored_windows = sections.get("shot_windows") or {}
             windows: dict[str, tuple[float, float]] = {}
@@ -785,6 +939,8 @@ class DspyH3PromptBuilder:
                 reference_metadata=resolved_references,
                 duration_seconds=duration,
                 dialogue_language=str(global_context.get("language") or "English"),
+                relay_segments=_normalize_relay_segments(segment),
+                speaker_bindings=speaker_bindings,
             )
             shape_issues = validate_h3_prompt_contract(
                 prompt,

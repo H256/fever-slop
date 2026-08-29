@@ -29,6 +29,7 @@ class LyricTimelineAlignerTests(unittest.TestCase):
         self.assertEqual("second line", corrected[2].text)
         self.assertEqual((1.5, 3.0, "vocals"), (corrected[1].start, corrected[1].end, corrected[1].kind))
         self.assertIn("hello world", modules.calls[0].payload["REFERENCE_LYRICS"])
+        self.assertNotIn("[Verse]", modules.calls[0].payload["REFERENCE_LYRICS"])
         self.assertEqual("segment1", modules.calls[0].payload["WHISPER_SEGMENTS"][0]["key"])
 
     def test_project_lyrics_are_preserved_when_word_timestamps_are_incomplete(self):
@@ -104,3 +105,17 @@ class LyricTimelineAlignerTests(unittest.TestCase):
 
         self.assertIs(corrected, timeline)
         self.assertEqual([], modules.calls)
+
+    def test_removes_section_markers_returned_as_segment_text(self):
+        timeline = [TimelineSegment(start=0.0, end=2.0, kind="vocals", text="noise")]
+        aligner = LyricTimelineAligner(
+            object(),
+            modules=GeneralModulesFake(
+                lyric_alignment={"segments": {"segment1": "[Verse]"}},
+            ),
+        )
+
+        corrected = aligner.align(timeline, "[Verse]\nreal words")
+
+        self.assertEqual("", corrected[0].text)
+        self.assertEqual((), corrected[0].word_timestamps)

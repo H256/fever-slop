@@ -188,12 +188,23 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         pipeline.run(context)
 
         self.assertIs(sentinel_store, captured["checkpoint_store"])
+        self.assertEqual("video", captured["video_type"])
         self.assertTrue(captured["preserve_existing_aggregate"])
         self.assertFalse(captured["reuse_checkpoints"])
         self.assertEqual("checkpoint-model", captured["generator_revision"]["model"])
         self.assertEqual(4, captured["generator_revision"]["prompt_judge_attempts"])
         self.assertEqual(12288, captured["generator_revision"]["prompt_judge_max_tokens"])
         self.assertEqual("abc", captured["generator_revision"]["guide_sha256"])
+
+        context.request = SimpleNamespace(resume=True)
+        pipeline.run(context)
+
+        self.assertTrue(captured["reuse_checkpoints"])
+
+        context.global_context = {"video_type": "short_film"}
+        pipeline.run(context)
+
+        self.assertEqual("short_film", captured["video_type"])
 
     def test_run_reuses_checkpoints_for_a_complete_scene_selection(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline

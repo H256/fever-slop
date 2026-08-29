@@ -260,6 +260,8 @@ class H3PromptPipeline:
             if "selected_scene_selection_complete" in context.keys()
             else False
         )
+        request = context["request"] if "request" in context.keys() else None
+        resume_requested = bool(getattr(request, "resume", False))
 
         mode = model_spec.prompt_mode.value if model_spec else PromptMode.T2V.value
         stem_files = context["stem_files"] if "stem_files" in context.keys() else None
@@ -272,13 +274,18 @@ class H3PromptPipeline:
                     audio_paths["full_mix"] = config.input_audio
 
         progress = SubStepProgress(reporter, "H3 prompts", len(stage1_segments))
+        video_type = str(
+            global_context.get("video_type")
+            or getattr(config, "video_type", "")
+            or "video"
+        ).strip()
         builder.build_all_h3_prompts(
             stage1_segments=stage1_segments,
             concept_prompts=concept_prompts,
             scene_details=scene_details,
             global_context=global_context,
             mode=mode,
-            video_type="music_video",
+            video_type=video_type,
             output_json_path=h3_prompts_json,
             artifact_store=artifact_store,
             audio_paths=audio_paths,
@@ -304,7 +311,11 @@ class H3PromptPipeline:
             checkpoint_store=checkpoint_store,
             generator_revision=generator_revision,
             preserve_existing_aggregate=selected_scene_numbers is not None,
-            reuse_checkpoints=selected_scene_numbers is None or selected_scene_selection_complete,
+            reuse_checkpoints=(
+                selected_scene_numbers is None
+                or selected_scene_selection_complete
+                or resume_requested
+            ),
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)

@@ -468,6 +468,89 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertIn("pushes in at slow speed", result["prompt"])
         self.assertEqual("good", result["prompt_judge"]["verdict"])
 
+    def test_production_builder_compiles_explicit_vocal_binding_from_relay(self):
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptJudgeResult,
+            ResolvedPromptPlan,
+            SubjectDefinition,
+        )
+        from feverslop.prompting.h3_prompt_builder import DspyH3PromptBuilder
+
+        detail = (
+            "Cinematic lighting reveals precise appearance, position, physical action, "
+            "environmental response, camera movement, and a visible state change. "
+        )
+        plan = ResolvedPromptPlan(
+            creative_intent="The technician discovers a visual glitch.",
+            style_opening=(
+                "The target video uses a cinematic near-future style with controlled neon "
+                "contrast and precise practical lighting."
+            ),
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Jack",
+                description="a young technician with dark hair",
+            )],
+            shots=[
+                PlannedShot(
+                    shot_number=1, start_seconds=0, end_seconds=5.92,
+                    description=(detail * 18).strip(), involved_subjects=["Jack"],
+                ),
+                PlannedShot(
+                    shot_number=2, start_seconds=5.92, end_seconds=8.08,
+                    description=(detail * 18 + "Pixels dance on my").strip(),
+                    involved_subjects=["Jack"],
+                ),
+            ],
+            overall_soundscape="A low electronic ambience surrounds the performance.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        class Generator:
+            judge_attempts = 1
+
+            def __call__(self, _request):
+                return SimpleNamespace(plan=plan)
+
+            def judge_compiled_prompt(self, **_kwargs):
+                return PromptJudgeResult(verdict="good")
+
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+            segment={
+                "segment_id": "segment_003", "duration": 8.08, "fps": 24,
+                "references": {
+                    "actor_ids": ["singer"],
+                    "audio_subject_bindings": {
+                        "vocals": {"subject_id": "singer", "speaker_id": "S1"},
+                    },
+                },
+                "ltx": {"prompt_relay": [
+                    {
+                        "frame_start": 0, "frame_end": 142, "state": "instrumental",
+                        "prompt": "character is not singing, no lip movement",
+                    },
+                    {
+                        "frame_start": 142, "frame_end": 194, "state": "singing",
+                        "subject_label": "<Subject 1>", "speaker_id": "S1",
+                        "prompt": "performing the lyrics: Pixels dance on my",
+                    },
+                ]},
+            },
+            concept="concept",
+            scene_details={},
+            global_context={"language": "English"},
+            mode="r2v",
+            audio_paths={"vocals": Path("vocals.wav")},
+        )
+
+        self.assertIn("<Subject 1> (S1)", result["prompt"])
+        self.assertIn("<d>[English] Pixels dance on my.</d> from <Audio 1>", result["prompt"])
+        self.assertEqual(1, result["prompt"].count("Pixels dance on my"))
+        self.assertEqual("S1", result["sections"]["speaker_bindings"][0]["speaker_id"])
+
     def test_compatibility_export_delegates_to_canonical_generator(self):
         from unittest.mock import patch
 

@@ -5,6 +5,7 @@ from feverslop.prompting.dspy_h3_models import CreativeShotPayload
 from feverslop.prompting.deterministic_h3_compiler import (
     DeterministicH3Compiler,
     creative_shots_from_plan,
+    plan_with_authoritative_relay,
     validate_creative_shots_against_plan,
 )
 from feverslop.prompting.dspy_h3_models import (
@@ -382,6 +383,13 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             shot_windows={"shot-02": (0.0, 2.0)},
             prepared_reference_labels=["<Picture 1>", "<Audio 1>"],
             dialogue_language="German",
+            relay_segments=[{
+                "state": "singing", "lyrics": "So I blink",
+                "subject_label": "<Subject 1>", "speaker_id": "S1",
+            }],
+            speaker_bindings=[{
+                "subject_label": "<Subject 1>", "speaker_id": "S1",
+            }],
             reference_metadata=[{
                 "label": "<Audio 1>", "kind": "audio", "name": "vocals",
                 "description": "vocals stem", "copy_mode": "partially_copy",
@@ -392,6 +400,405 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertNotIn("<d>en So I blink</d>", prompt)
         self.assertIn("<Audio 1> is the vocal stem and is partially copied", prompt)
         self.assertNotIn("overall_soundscape: The vocal line So I blink", prompt)
+
+    def test_r2v_compiler_inserts_authoritative_relay_lyrics(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="The singer notices a visual glitch.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Jack", description="a young technician with dark hair",
+                source_references=["<Picture 1>"],
+            )],
+            reference_usage=[ReferenceUsage(
+                reference_label="<Audio 1>", purpose="vocals", details="vocals stem",
+            )],
+            shots=[
+                PlannedShot(
+                    shot_number=1, start_seconds=0, end_seconds=5.92,
+                    description=(
+                        "Jack watches the light and keeps his mouth closed while a display "
+                        "shows an LLM-authored <d>untagged invention</d>. "
+                        "A status panel says 'wrong fragment'."
+                    ),
+                ),
+                PlannedShot(
+                    shot_number=2, start_seconds=5.92, end_seconds=8.08,
+                    description=(
+                        "Jack sings invented words that are not in the relay. "
+                        "The camera moves closer while neon light pulses. "
+                        "He performs the lyrics: Pixels dance on my."
+                    ),
+                ),
+            ],
+            overall_soundscape="A low electronic ambience surrounds the performance.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots,
+            shot_windows={"shot-01": (0.0, 5.92), "shot-02": (5.92, 8.08)},
+            prepared_reference_labels=["<Picture 1>", "<Audio 1>"],
+            dialogue_language="English",
+            relay_segments=[
+                {
+                    "start_seconds": 0.0, "end_seconds": 5.92,
+                    "state": "instrumental",
+                    "prompt": "same scene, instrumental section, character is not singing",
+                },
+                {
+                    "start_seconds": 5.92, "end_seconds": 8.08,
+                    "state": "singing",
+                    "subject_label": "<Subject 1>", "speaker_id": "S1",
+                    "prompt": (
+                        "same scene, character sings with expressive lip sync, "
+                        "performing the lyrics: Pixels dance on my"
+                    ),
+                },
+            ],
+            speaker_bindings=[{
+                "audio_label": "<Audio 1>",
+                "subject_label": "<Subject 1>",
+                "speaker_id": "S1",
+            }],
+            reference_metadata=[{
+                "label": "<Audio 1>", "kind": "audio", "name": "vocals",
+                "description": "vocals stem", "copy_mode": "partially_copy",
+            }],
+        )
+
+        detailed = prompt.split("detailed_description: ", 1)[1].split(
+            "\n\noverall_soundscape:", 1,
+        )[0]
+        shot_1, shot_2 = detailed.split("[Shot 2]", 1)
+        self.assertNotIn("<d>", shot_1)
+        self.assertIn("untagged invention", shot_1)
+        self.assertIn("wrong fragment", shot_1)
+        self.assertIn("<Subject 1> (S1) sings", shot_2)
+        self.assertIn("<d>[English] Pixels dance on my.</d> from <Audio 1>", shot_2)
+        self.assertNotIn("invented words", shot_2)
+        self.assertIn("The camera moves closer while neon light pulses.", shot_2)
+        self.assertEqual(1, detailed.count("Pixels dance on my"))
+        self.assertIn(
+            "<Audio 1> is the voice-timbre reference for <Subject 1> (S1)",
+            prompt,
+        )
+
+    def test_r2v_compiler_does_not_guess_speakers_from_descriptions(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A figure speaks.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Unit Seven",
+                description="a robot performer", source_references=["<Picture 1>"],
+            )],
+            shots=[PlannedShot(
+                shot_number=1, start_seconds=0, end_seconds=2,
+                description="Unit Seven says <d>[English] Ready.</d>",
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+            prepared_reference_labels=["<Picture 1>"],
+            speaker_bindings=[{
+                "subject_label": "<Subject 1>", "speaker_id": "S1",
+            }],
+        )
+
+        self.assertNotIn("(S1)", prompt)
+
+    def test_relay_without_subject_does_not_select_the_only_bound_subject(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="An unseen voice speaks.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Unit Seven", description="a robot",
+            )],
+            shots=[PlannedShot(
+                shot_number=1, start_seconds=0, end_seconds=2,
+                description="Unit Seven faces the camera.",
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+            relay_segments=[{"state": "dialogue", "dialogue": "Ready"}],
+            speaker_bindings=[{
+                "subject_label": "<Subject 1>", "speaker_id": "S1",
+            }],
+        )
+
+        self.assertIn("The audible voice says, <d>[English] Ready.</d>", prompt)
+        self.assertNotIn("<Subject 1> (S1)", prompt)
+
+    def test_instrumental_relay_removes_vocal_claim_and_preserves_visual_action(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A platform scene.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Unit Seven", description="a robot",
+            )],
+            shots=[PlannedShot(
+                shot_number=1, start_seconds=0, end_seconds=2,
+                description=(
+                    "Unit Seven sings invented words. "
+                    "The camera circles the platform."
+                ),
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+            relay_segments=[{"state": "instrumental"}],
+        )
+
+        self.assertNotIn("sings invented words", prompt)
+        self.assertIn("The camera circles the platform.", prompt)
+
+    def test_relay_cleanup_preserves_visual_clause_and_removes_vocal_synonyms(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A platform scene.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Unit Seven", description="a robot",
+            )],
+            shots=[PlannedShot(
+                shot_number=1, start_seconds=0, end_seconds=2,
+                description=(
+                    "Unit Seven whispers invented words and raises a lantern. "
+                    "Unit Seven chants another invention."
+                ),
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+            relay_segments=[{
+                "state": "dialogue", "dialogue": "Authoritative line",
+                "subject_label": "<Subject 1>", "speaker_id": "S1",
+            }],
+            speaker_bindings=[{
+                "subject_label": "<Subject 1>", "speaker_id": "S1",
+            }],
+        )
+
+        self.assertNotIn("invented words", prompt)
+        self.assertNotIn("another invention", prompt)
+        self.assertIn("<Subject 1> raises a lantern.", prompt)
+
+    def test_relay_cleanup_is_actor_agnostic_and_removes_every_vocal_clause(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A platform scene.",
+            shots=[PlannedShot(
+                shot_number=1, start_seconds=0, end_seconds=2,
+                description=(
+                    "The camera circles while an android sings invented words. "
+                    "A child whispers one invention and chants another while the lantern rises."
+                ),
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+            relay_segments=[{"state": "instrumental"}],
+        )
+
+        self.assertNotRegex(prompt, r"(?i)\b(?:sings|whispers|chants)\b")
+        self.assertIn("The camera circles.", prompt)
+        self.assertIn("The lantern rises.", prompt)
+
+    def test_authoritative_plan_discards_section_marker_vocals(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A visual scene.",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="An android sings the lyrics [Verse] and raises a lantern.",
+                performance="Expressive lip-sync to [Verse].",
+            )],
+            overall_soundscape="Room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        normalized = plan_with_authoritative_relay(
+            plan,
+            [{"state": "singing", "prompt": "performing the lyrics: [Verse]"}],
+        )
+
+        self.assertNotIn("Verse", normalized.shots[0].description)
+        self.assertNotRegex(normalized.shots[0].description, r"(?i)\bsings?\b")
+        self.assertIn("raises a lantern", normalized.shots[0].description)
+
+    def test_authoritative_plan_replaces_malformed_dialogue_with_relay_words(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A visual scene.",
+            shots=[PlannedShot(
+                shot_number=1,
+                description=(
+                    "An android sings <d>en</d>can't unsee. So I blink and the frame<</d>. "
+                    "The camera pushes closer."
+                ),
+            )],
+            overall_soundscape="Room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        normalized = plan_with_authoritative_relay(
+            plan,
+            [{"state": "singing", "lyrics": "can't unsee. So I blink and the frame"}],
+        )
+
+        description = normalized.shots[0].description
+        self.assertNotIn("So<", description)
+        self.assertNotIn("audible voice the frame", description.casefold())
+        self.assertIn("The camera pushes closer.", description)
+        self.assertEqual(1, description.count("can't unsee. So I blink and the frame"))
+
+    def test_compiler_does_not_reparse_canonical_relay_words_as_visual_clauses(self):
+        lyrics = "can't unsee. So I blink and the frame"
+        plan = ResolvedPromptPlan(
+            creative_intent="A visual scene.",
+            shots=[PlannedShot(
+                shot_number=1,
+                description=(
+                    "The camera pushes closer. The audible voice sings, "
+                    f"<d>[English] {lyrics}.</d>"
+                ),
+            )],
+            overall_soundscape="Room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+            relay_segments=[{"state": "singing", "lyrics": lyrics}],
+        )
+
+        detailed = prompt.split("detailed_description: ", 1)[1].split(
+            "\n\noverall_soundscape:", 1,
+        )[0]
+        self.assertEqual(1, detailed.count(lyrics))
+        self.assertNotIn("audible voice the frame", detailed.casefold())
+        self.assertNotRegex(detailed, r"\[Shot 1\]\s+So\.")
+
+    def test_rejects_non_bijective_speaker_bindings_before_relay_processing(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="Two units wait.",
+            subjects=[
+                SubjectDefinition(label="<Subject 1>", name="One", description="a unit"),
+                SubjectDefinition(label="<Subject 2>", name="Two", description="a unit"),
+            ],
+            shots=[PlannedShot(
+                shot_number=1, start_seconds=0, end_seconds=2,
+                description="One and Two wait.",
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        with self.assertRaisesRegex(ValueError, "speaker ID S1"):
+            DeterministicH3Compiler().compile(
+                mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+                shot_windows={"shot-02": (0.0, 2.0)},
+                speaker_bindings=[
+                    {"subject_label": "<Subject 1>", "speaker_id": "S1"},
+                    {"subject_label": "<Subject 2>", "speaker_id": "S1"},
+                ],
+            )
+
+    def test_relay_uses_its_explicit_subject_with_multiple_speaker_bindings(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="Two robots exchange a line.",
+            subjects=[
+                SubjectDefinition(label="<Subject 1>", name="Unit One", description="a red robot"),
+                SubjectDefinition(label="<Subject 2>", name="Unit Two", description="a blue robot"),
+            ],
+            shots=[PlannedShot(
+                shot_number=1, start_seconds=0, end_seconds=2,
+                description="Unit Two looks toward Unit One and says Systems ready.",
+                involved_subjects=["Unit One", "Unit Two"],
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+            relay_segments=[{
+                "state": "dialogue", "dialogue": "Systems ready",
+                "subject_label": "<Subject 2>", "speaker_id": "S2",
+            }],
+            speaker_bindings=[
+                {"subject_label": "<Subject 1>", "speaker_id": "S1"},
+                {"subject_label": "<Subject 2>", "speaker_id": "S2"},
+            ],
+        )
+
+        self.assertIn("<Subject 2> (S2) says, <d>[English] Systems ready.</d>", prompt)
+        self.assertNotIn("<Subject 1> (S1)", prompt)
+
+    def test_rejects_conflicting_relay_and_speaker_binding_ids(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A bound speaker talks.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Unit One", description="a red robot",
+            )],
+            shots=[PlannedShot(
+                shot_number=1, start_seconds=0, end_seconds=2,
+                description="Unit One faces forward.",
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        with self.assertRaisesRegex(ValueError, "conflicting speaker ID"):
+            DeterministicH3Compiler().compile(
+                mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+                shot_windows={"shot-02": (0.0, 2.0)},
+                relay_segments=[{
+                    "state": "dialogue", "dialogue": "Ready",
+                    "subject_label": "<Subject 1>", "speaker_id": "S2",
+                }],
+                speaker_bindings=[{
+                    "subject_label": "<Subject 1>", "speaker_id": "S1",
+                }],
+            )
+
+    def test_removes_llm_dialogue_markup_outside_detailed_description(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A quiet scene <d>[Martian] invented summary words</d>.",
+            style_opening="A restrained style <d>[Martian] invented style words</d>.",
+            shots=[PlannedShot(
+                shot_number=1, start_seconds=0, end_seconds=2,
+                description="A silent figure waits.",
+            )],
+            overall_soundscape="Room tone <d>[Martian] invented sound words</d>.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+            relay_segments=[{
+                "state": "instrumental", "prompt": "no dialogue or singing",
+            }],
+        )
+
+        self.assertNotIn("<d>", prompt)
+        self.assertNotIn("invented summary words", prompt)
+        self.assertNotIn("invented style words", prompt)
+        self.assertNotIn("invented sound words", prompt)
 
     def test_r2v_compiler_states_audio_copy_relationship_outside_the_shot(self):
         plan = ResolvedPromptPlan(
@@ -617,13 +1024,20 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         prompt = DeterministicH3Compiler().compile(
             mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
             shot_windows={"shot-02": (0.0, 2.0)},
+            relay_segments=[{
+                "state": "singing", "lyrics": "So I blink",
+                "subject_label": "<Subject 1>", "speaker_id": "S1",
+            }],
+            speaker_bindings=[{
+                "subject_label": "<Subject 1>", "speaker_id": "S1",
+            }],
         )
 
         self.assertIn("<Subject 1> is a man with sharp features in <Picture 1>.", prompt)
         self.assertNotIn("<Subject 1> is <Subject 1> is", prompt)
         self.assertIn("<Subject 2> is visible", prompt)
         self.assertNotIn("<Subject 2> (S2)", prompt)
-        self.assertIn("<Subject 1> (S1) sings <d>[English] So I blink.</d>", prompt)
+        self.assertIn("<Subject 1> (S1) sings, <d>[English] So I blink.</d>", prompt)
 
     def test_r2v_compiler_canonicalizes_multishot_vocal_reference_plan(self):
         plan = ResolvedPromptPlan(
@@ -678,6 +1092,21 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         prompt = DeterministicH3Compiler().compile(
             mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
             shot_windows={"shot-02": (0.0, 5.0)}, dialogue_language="en",
+            relay_segments=[
+                {
+                    "state": "singing", "lyrics": "first line",
+                    "subject_label": "<Subject 1>", "speaker_id": "S1",
+                },
+                {"state": "instrumental"},
+                {
+                    "state": "singing", "lyrics": "second line",
+                    "subject_label": "<Subject 1>", "speaker_id": "S1",
+                },
+            ],
+            speaker_bindings=[{
+                "audio_label": "<Audio 1>",
+                "subject_label": "<Subject 1>", "speaker_id": "S1",
+            }],
             prepared_reference_labels=["<Picture 1>", "<Picture 2>", "<Audio 1>", "<Audio 2>"],
             reference_metadata=[
                 {"label": "<Audio 1>", "kind": "audio", "name": "vocals", "copy_mode": "partially_copy"},
@@ -687,7 +1116,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         detailed = prompt.split("detailed_description: ", 1)[1].split("\n\noverall_soundscape:", 1)[0]
 
         self.assertEqual(2, detailed.count("<Subject 1> (S1)"))
-        self.assertIn("<Subject 1> (S1) sings <d>[English] first line.</d>", detailed)
+        self.assertIn("<Subject 1> (S1) sings, <d>[English] first line.</d>", detailed)
         self.assertNotIn("<Subject 1> (S1) is silent", detailed)
         self.assertNotIn("(S2)", detailed)
         self.assertNotIn("(S3)", detailed)
@@ -701,7 +1130,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("<Subject 3> (appears in [Shot 1], [Shot 2], [Shot 3])", prompt)
         self.assertNotIn("overall_soundscape: A musical track", prompt)
 
-    def test_r2v_compiler_assigns_speaker_ids_by_first_vocal_event(self):
+    def test_r2v_compiler_uses_explicit_speaker_bindings(self):
         plan = ResolvedPromptPlan(
             creative_intent="Two people speak in a room.",
             subjects=[
@@ -725,10 +1154,24 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         prompt = DeterministicH3Compiler().compile(
             mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
             shot_windows={"shot-02": (0.0, 4.0)}, dialogue_language="en",
+            relay_segments=[
+                {
+                    "state": "dialogue", "dialogue": "Hello",
+                    "subject_label": "<Subject 2>", "speaker_id": "S1",
+                },
+                {
+                    "state": "dialogue", "dialogue": "Welcome",
+                    "subject_label": "<Subject 3>", "speaker_id": "S2",
+                },
+            ],
+            speaker_bindings=[
+                {"subject_label": "<Subject 2>", "speaker_id": "S1"},
+                {"subject_label": "<Subject 3>", "speaker_id": "S2"},
+            ],
         )
 
-        self.assertIn("<Subject 2> (S1) says <d>[English] Hello.</d>", prompt)
-        self.assertIn("<Subject 3> (S2) says <d>[English] Welcome.</d>", prompt)
+        self.assertIn("<Subject 2> (S1) says, <d>[English] Hello.</d>", prompt)
+        self.assertIn("<Subject 3> (S2) says, <d>[English] Welcome.</d>", prompt)
         self.assertNotIn("<Subject 1> (S", prompt)
 
     def test_compiles_mode_specific_frame_instructions(self):

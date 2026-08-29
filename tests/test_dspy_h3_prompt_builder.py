@@ -40,6 +40,7 @@ from feverslop.prompting.dspy_h3_prompt_builder import (
     _format_relay_shots,
     _normalize_relay_segments,
     _scene_references,
+    _speaker_bindings_for_compile,
 )
 from feverslop.prompting.scene_prompt_builder import normalize_scene_references
 from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures, build_h3_signature_bundle
@@ -82,6 +83,88 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_reconstructs_generic_speaker_bindings_for_stale_checkpoints(self):
+        bindings = _speaker_bindings_for_compile(
+            segment={"references": {
+                "actor_ids": ["hero"],
+                "audio_subject_bindings": {
+                    "vocals": {"subject_id": "hero", "speaker_id": "S1"},
+                },
+            }},
+            references=[{
+                "label": "<Audio 1>", "kind": "audio", "name": "vocals",
+            }],
+            stored_bindings=[],
+        )
+
+        self.assertEqual([{
+            "audio_label": "<Audio 1>", "stem": "vocals",
+            "subject_label": "<Subject 1>", "speaker_id": "S1",
+        }], bindings)
+
+    def test_rejects_stale_speaker_bindings_that_conflict_with_current_config(self):
+        with self.assertRaisesRegex(ValueError, "conflicts with current config"):
+            _speaker_bindings_for_compile(
+                segment={"references": {
+                    "actor_ids": ["hero"],
+                    "audio_subject_bindings": {
+                        "vocals": {"subject_id": "hero", "speaker_id": "S1"},
+                    },
+                }},
+                references=[{
+                    "label": "<Audio 1>", "kind": "audio", "name": "vocals",
+                }],
+                stored_bindings=[{
+                    "audio_label": "<Audio 1>", "stem": "vocals",
+                    "subject_label": "<Subject 1>", "speaker_id": "S2",
+                }],
+            )
+
+    def test_rejects_stored_speaker_binding_removed_from_current_config(self):
+        with self.assertRaisesRegex(ValueError, "conflicts with current config"):
+            _speaker_bindings_for_compile(
+                segment={"references": {"actor_ids": ["hero"]}},
+                references=[],
+                stored_bindings=[{
+                    "subject_label": "<Subject 1>", "speaker_id": "S1",
+                }],
+            )
+
+    def test_rejects_duplicate_speaker_ids_in_audio_bindings(self):
+        with self.assertRaisesRegex(ValueError, "speaker ID S1"):
+            _scene_references(
+                {
+                    "references": {
+                        "actor_ids": ["hero", "companion"],
+                        "reference_audio_paths": ["voice_a.wav", "voice_b.wav"],
+                        "_stem_audio_tags": {
+                            "voice_a.wav": "voice_a stem",
+                            "voice_b.wav": "voice_b stem",
+                        },
+                        "audio_subject_bindings": {
+                            "voice_a": {"subject_id": "hero", "speaker_id": "S1"},
+                            "voice_b": {"subject_id": "companion", "speaker_id": "S1"},
+                        },
+                    },
+                },
+                None,
+                None,
+            )
+
+    def test_rejects_duplicate_speaker_ids_from_current_relay_bindings(self):
+        with self.assertRaisesRegex(ValueError, "speaker ID S1"):
+            _speaker_bindings_for_compile(
+                segment={
+                    "references": {"actor_ids": ["hero", "companion"]},
+                    "prompt_relay": [
+                        {"subject_label": "<Subject 1>", "speaker_id": "S1"},
+                        {"subject_label": "<Subject 2>", "speaker_id": "S1"},
+                    ],
+                },
+                references=[],
+                stored_bindings=[],
+            )
+
     def test_audio_subject_bindings_are_serialized_without_inventing_full_mix_subject(self):
         from feverslop.prompting.dspy_h3_prompt_builder import _scene_references
 
@@ -153,7 +236,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
-        self.assertEqual(12, revision["compiler_version"])
+        self.assertEqual(24, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
@@ -645,6 +728,23 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         })
 
         self.assertIn("cooks a rabbit", _format_relay_shots(shots))
+
+    def test_normalizes_structured_vocal_fields_without_dropping_them(self):
+        shots = _normalize_relay_segments({
+            "duration_seconds": 2,
+            "fps": 24,
+            "ltx": {"prompt_relay": [{
+                "frame_start": 0, "frame_end": 48, "state": "dialogue",
+                "prompt": "structured dialogue event",
+                "dialogue": "Systems ready",
+                "subject_label": "<Subject 2>",
+                "speaker_id": "S2",
+            }]},
+        })
+
+        self.assertEqual("Systems ready", shots[0]["dialogue"])
+        self.assertEqual("<Subject 2>", shots[0]["subject_label"])
+        self.assertEqual("S2", shots[0]["speaker_id"])
 
     def test_passes_relay_segments_to_generator_without_appending_non_guide_sections(self):
         generator = FakeGenerator()
