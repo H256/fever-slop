@@ -102,6 +102,7 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
                 video_pipeline=args.video_pipeline,
                 selected_scenes=selected,
                 render_settings=render_settings,
+                judge_blocking=app_config.llm.prompt_judge_blocking,
             )
         _render_plan(plan, output)
         if plan.blocked:
@@ -167,6 +168,7 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
                     video_pipeline=args.video_pipeline,
                     selected_scenes=selected,
                     render_settings=render_settings,
+                    judge_blocking=app_config.llm.prompt_judge_blocking,
                 )
                 next_phase = _manual_phase(next_plan, app_config, compatibility=False)
                 if next_phase is not None and next_phase.stages:

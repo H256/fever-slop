@@ -8,7 +8,7 @@ from pathlib import Path
 
 from feverslop.application.effective_render_plan import project_effective_plan
 from feverslop.application.msr_prompt_enrichment import msr_prompt_input_fingerprint
-from feverslop.composition.resume_plan import build_resume_plan
+from feverslop.composition.resume_plan import _h3_state, build_resume_plan
 from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.domain.execution_plan import ExecutionPlan, ExecutionPlanItem, PlanAction
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
@@ -21,6 +21,30 @@ from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 class ExecutionPlanTests(unittest.TestCase):
+    def test_advisory_h3_bad_checkpoint_is_renderable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            layout = SceneArtifactLayout(Path(temp_dir))
+            checkpoint = layout.scene_h3_prompt(1)
+            checkpoint.parent.mkdir(parents=True)
+            checkpoint.write_text(
+                json.dumps({"status": "bad_exhausted", "input_fingerprint": "fp"}),
+                encoding="utf-8",
+            )
+            scene = {
+                "canonical": {
+                    "roles": {
+                        str(PromptRole.H3_VIDEO): {
+                            "generated": {"provenance": {"input_fingerprint": "fp"}},
+                        },
+                    },
+                },
+            }
+
+            action, reason = _h3_state(layout, scene, 1, judge_blocking=False)
+
+        self.assertIs(PlanAction.REUSE, action)
+        self.assertIn("advisory", reason)
+
     def test_plan_exposes_stable_runnable_stages_and_scene_union(self):
         plan = ExecutionPlan(
             project=Path("project"),

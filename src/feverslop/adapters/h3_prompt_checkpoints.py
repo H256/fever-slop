@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Mapping
 from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
 from feverslop.domain.canonical_render_plan import (
     PromptRole,
+    resolve_effective_role,
     stable_scene_id,
     validate_canonical_plan,
 )
@@ -192,9 +193,16 @@ class H3PromptCheckpointStore:
                     "input_fingerprint": checkpoint.input_fingerprint,
                 },
             }
-            if role.get("generated") == generated:
+            current_h3 = scene.get("h3")
+            current_prompt = current_h3.get("prompt") if isinstance(current_h3, dict) else None
+            current_effective = resolve_effective_role(scene, PromptRole.H3_VIDEO)
+            if role.get("generated") == generated and current_prompt == current_effective:
                 return
             role["generated"] = generated
+            h3 = scene.setdefault("h3", {})
+            if not isinstance(h3, dict):
+                raise FeverSlopDataError("H3 checkpoint canonical projection must be an object")
+            h3["prompt"] = resolve_effective_role(scene, PromptRole.H3_VIDEO)
             store.commit_regeneration(snapshot, scenes)
             return
 

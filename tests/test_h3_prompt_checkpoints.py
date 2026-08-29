@@ -288,10 +288,12 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
 
         saved = self.store.save(self.request(), {"prompt": "new judged prompt"})
 
-        role = json.loads(base.read_text(encoding="utf-8"))[0]["canonical"]["roles"][PromptRole.H3_VIDEO]
+        scene = json.loads(base.read_text(encoding="utf-8"))[0]
+        role = scene["canonical"]["roles"][PromptRole.H3_VIDEO]
         self.assertEqual("new judged prompt", role["generated"]["value"])
         self.assertEqual(expected_override, role["override"])
         self.assertEqual(saved.input_fingerprint, role["generated"]["provenance"]["input_fingerprint"])
+        self.assertEqual("human approved", scene["h3"]["prompt"])
 
     def test_reuse_syncs_checkpoint_created_before_canonical_base_existed(self):
         request = self.request()
