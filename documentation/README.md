@@ -14,6 +14,7 @@ Start here:
 - [Workflow model requirements](workflow-models.md) — model filenames, loader roles, and workflow coverage.
 - [Subject directive planning](subject-directive-planning.md) — model-neutral subject action planning.
 - [CLI and H3 compatibility](cli-and-h3-compatibility.md) — canonical CLI modules, compatibility facades, and location-only H3 scenes.
+- [Release gates](release-gates.md) — CPU, GPU smoke, quality, performance, and ordered migration checks for profile changes.
 
 Internal planning and development material is kept outside the repository. User-facing
 documentation requested for the project belongs in this directory.
