@@ -25,6 +25,13 @@ class ExampleProjectFixtureTests(unittest.TestCase):
         self.assertIn("symphonic power metal", config["music_style"])
         self.assertIn("operatic choir", config["music_style"])
         self.assertIn("dark grandeur", config["music_style"])
+        self.assertEqual("minimax-h3-r2v", config["video_pipeline"])
+        self.assertEqual("sequence_sheet", config["reference_generation"])
+        self.assertEqual("multi", config["subject_mode"])
+        self.assertEqual(2, config["max_scene_actors"])
+        self.assertEqual(0.4, config["video"]["megapixels"])
+        self.assertEqual({"elara", "soren"}, {actor["id"] for actor in config["actors"]})
+        self.assertEqual(["mirrorline_central"], [location["id"] for location in config["locations"]])
         self.assertTrue((EXAMPLE_PROJECT / "input" / "README.md").is_file())
         self.assertTrue((EXAMPLE_PROJECT / config["input_audio"]).is_file())
 
