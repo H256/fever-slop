@@ -658,6 +658,13 @@ class PromptGenerationPipeline:
             actors = list(global_resolution.actors) + actors
             structured_locations = list(global_resolution.locations) + structured_locations
 
+        audio_refs = get_config_value(config, "minimax_h3_audio_refs", None)
+        audio_subject_bindings = (
+            getattr(audio_refs, "subject_bindings", {})
+            if audio_refs is not None
+            else {}
+        )
+
         return {
             "story_idea": story_idea,
             "style": style_block,
@@ -670,6 +677,7 @@ class PromptGenerationPipeline:
             "global_asset_snapshots": list(global_resolution.snapshots) if global_resolution else [],
             "subject_mode": subject_mode,
             "max_scene_actors": max_scene_actors,
+            "audio_subject_bindings": audio_subject_bindings,
             "video_pipeline": str(get_config_value(config, "video_pipeline", "ltx_i2v") or "ltx_i2v").strip(),
             "language": language,
             "silent_mode": silent_mode,

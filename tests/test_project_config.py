@@ -1124,6 +1124,25 @@ class AudioRefsStemValidationTests(unittest.TestCase):
         config = ProjectConfig.load(config_path)
         self.assertEqual(["vocals", "full_mix"], config.minimax_h3_audio_refs.stems)
 
+    def test_loads_explicit_vocal_subject_binding(self):
+        config_path = self._mk_config({
+            "input_audio": "song.wav",
+            "actors": [{"id": "tamsin"}, {"id": "soren"}],
+            "minimax_h3_audio_refs": {
+                "stems": ["vocals", "full_mix"],
+                "subject_bindings": {
+                    "vocals": {"subject_id": "soren", "speaker_id": "S1"},
+                },
+            },
+        })
+
+        config = ProjectConfig.load(config_path)
+
+        self.assertEqual(
+            {"vocals": {"subject_id": "soren", "speaker_id": "S1"}},
+            config.minimax_h3_audio_refs.subject_bindings,
+        )
+
 
 class ScenePromptWordCountDefaultsTests(unittest.TestCase):
     def test_word_count_defaults_are_shared_across_builder_loader_and_scaffolds(self):

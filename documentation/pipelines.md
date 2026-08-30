@@ -167,7 +167,10 @@ Or configure in `config.json`:
 {
   "video_pipeline": "minimax-h3-r2v",
   "minimax_h3_audio_refs": {
-    "stems": ["vocals", "full_mix"]
+    "stems": ["vocals", "full_mix"],
+    "subject_bindings": {
+      "vocals": {"subject_id": "singer", "speaker_id": "S1"}
+    }
   }
 }
 ```
@@ -181,9 +184,11 @@ audio reference slots, regardless of list order. Up to 3 audio reference
 slots exist on the MiniMax H3 R2V node; the first is reserved for the main
 (comfy) audio, leaving slots 1–2 for stem audio.
 
-For scenes with multiple visible performers, an explicit optional binding can
-be stored in the scene references. It is validated before prompt generation
-and is serialized into the audio definition without changing slot numbering:
+For projects with a known vocalist, `minimax_h3_audio_refs.subject_bindings`
+applies the explicit binding to every vocal or mixed scene and ensures that
+the bound actor is visible. A scene can still provide a more specific binding
+in its own references. Bindings are validated before prompt generation and
+serialized into the audio definition without changing slot numbering:
 
 ```json
 {

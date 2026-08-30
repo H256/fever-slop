@@ -48,5 +48,11 @@
     "physical_interaction": "Show concrete hand and body actions around the red thread: marking a crack, blocking a hand, offering the thread, taking it, and pulling together.",
     "outfit_rules": "Tamsin always wears the ivory cyan-trim inspection coat and visor until she removes the visor; Soren always wears the rust-red utility jacket and carries the red thread.",
     "environments": "Use the same recognizable terminal landmarks throughout while progressively revealing the raw station beneath the augmented overlay."
+  },
+  "minimax_h3_audio_refs": {
+    "stems": ["vocals", "full_mix"],
+    "subject_bindings": {
+      "vocals": {"subject_id": "soren", "speaker_id": "S1"}
+    }
   }
 }
