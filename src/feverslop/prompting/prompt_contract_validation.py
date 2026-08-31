@@ -183,8 +183,17 @@ def validate_h3_prompt_contract(
     plan: ResolvedPromptPlan,
     reference_metadata: Sequence[Mapping[str, object]] | None = None,
     duration_seconds: float | None = None,
+    expected_vocal_events: int | None = None,
+    bound_vocal_subject: str | None = None,
 ) -> list[PromptContractIssue]:
-    """Validate compiler-owned MiniMax H3 grammar against its structured plan."""
+    """Validate compiler-owned MiniMax H3 grammar against its structured plan.
+
+    ``expected_vocal_events`` and ``bound_vocal_subject`` enable relay-aware
+    checks: the compiled prompt must carry one dialogue event per sung relay
+    window, and when the vocal stem is bound to a visible subject the events
+    must be anchored to that subject rather than an unanchored audible voice.
+    Both default to off, preserving the legacy validation for non-relay prompts.
+    """
     issues = validate_h3_prompt_shape(prompt, mode=mode)
     if issues:
         return issues
@@ -192,10 +201,21 @@ def validate_h3_prompt_contract(
         raise TypeError("plan must be a ResolvedPromptPlan")
     normalized = str(mode).strip().lower()
     if normalized in {"r2v", "ref", "reference"}:
-        issues.extend(_validate_r2v_contract(prompt, plan, reference_metadata or ()))
+        issues.extend(_validate_r2v_contract(
+            prompt,
+            plan,
+            reference_metadata or (),
+            expected_vocal_events=expected_vocal_events,
+            bound_vocal_subject=bound_vocal_subject,
+        ))
     else:
         issues.extend(_validate_base_contract(
-            prompt, normalized, plan, duration_seconds=duration_seconds,
+            prompt,
+            normalized,
+            plan,
+            duration_seconds=duration_seconds,
+            expected_vocal_events=expected_vocal_events,
+            bound_vocal_subject=bound_vocal_subject,
         ))
     return issues
 
@@ -204,6 +224,9 @@ def _validate_r2v_contract(
     text: str,
     plan: ResolvedPromptPlan,
     reference_metadata: Sequence[Mapping[str, object]],
+    *,
+    expected_vocal_events: int | None = None,
+    bound_vocal_subject: str | None = None,
 ) -> list[PromptContractIssue]:
     issues: list[PromptContractIssue] = []
     definitions = _h3_section(text, "subject_definitions:", "summary:")
@@ -314,7 +337,11 @@ def _validate_r2v_contract(
                 "audio reference must state whether its signal is copied or referenced",
                 label,
             ))
-    issues.extend(_validate_dialogue(detailed))
+    issues.extend(_validate_dialogue(
+        detailed,
+        expected_vocal_events=expected_vocal_events,
+        bound_vocal_subject=bound_vocal_subject,
+    ))
     return issues
 
 
@@ -324,6 +351,8 @@ def _validate_base_contract(
     plan: ResolvedPromptPlan,
     *,
     duration_seconds: float | None,
+    expected_vocal_events: int | None = None,
+    bound_vocal_subject: str | None = None,
 ) -> list[PromptContractIssue]:
     issues: list[PromptContractIssue] = []
     detailed = _h3_section(text, "integrated_multimodal_description:", "overall_soundscape:")
@@ -362,7 +391,11 @@ def _validate_base_contract(
             issues.append(PromptContractIssue(
                 "h3.frame_anchor.missing", "integrated_multimodal_description", "frame anchor is absent from the timeline", label,
             ))
-    issues.extend(_validate_dialogue(detailed))
+    issues.extend(_validate_dialogue(
+        detailed,
+        expected_vocal_events=expected_vocal_events,
+        bound_vocal_subject=bound_vocal_subject,
+    ))
     return issues
 
 
@@ -394,7 +427,12 @@ def _validate_shots(text: str, plan: ResolvedPromptPlan) -> list[PromptContractI
     return issues
 
 
-def _validate_dialogue(text: str) -> list[PromptContractIssue]:
+def _validate_dialogue(
+    text: str,
+    *,
+    expected_vocal_events: int | None = None,
+    bound_vocal_subject: str | None = None,
+) -> list[PromptContractIssue]:
     issues: list[PromptContractIssue] = []
     if text.count("<d>") != text.count("</d>"):
         return [PromptContractIssue(
@@ -411,6 +449,24 @@ def _validate_dialogue(text: str) -> list[PromptContractIssue]:
             issues.append(PromptContractIssue(
                 "h3.dialogue.punctuation", "detailed_description", "complete dialogue must end with punctuation before </d>",
             ))
+    if expected_vocal_events is not None:
+        events = text.count("<d>")
+        if events != expected_vocal_events:
+            issues.append(PromptContractIssue(
+                "h3.dialogue.relay_mismatch",
+                "detailed_description",
+                f"prompt has {events} dialogue events but the relay defines {expected_vocal_events} vocal windows",
+            ))
+    if (
+        bound_vocal_subject
+        and text.count("<d>")
+        and re.search(r"\bThe audible voice\b", text)
+    ):
+        issues.append(PromptContractIssue(
+            "h3.dialogue.unbound_source",
+            "detailed_description",
+            "a vocal event is not anchored to the bound on-screen subject",
+        ))
     return issues
 
 

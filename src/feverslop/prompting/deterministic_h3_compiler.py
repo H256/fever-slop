@@ -12,7 +12,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 27
+H3_COMPILER_VERSION = 28
 
 
 def plan_with_authoritative_relay(
@@ -939,6 +939,19 @@ def _remove_vocal_clause(sentence: str) -> str:
         if verb.group().casefold() in {"say", "says", "said"} and re.search(
             r"(?i)\b(?:display|panel|screen|sign|caption|title|text)\b",
             before,
+        ):
+            break
+        # A negated vocal clause is the instrumental instruction itself
+        # ("is not singing", "never sings"); removing it would flip an
+        # instrumental window into a vocal one, so keep it verbatim.
+        if re.search(r"(?i)\b(?:not|never|without|no)\s*$|n't\s*$", before):
+            break
+        # "perform" is a general stage action, not necessarily a vocal claim.
+        # Only remove it when it is directed at a vocal object; otherwise the
+        # clause is a meaningful visual action to keep.
+        if verb.group().casefold().startswith("perform") and not re.search(
+            r"(?i)\b(?:lyrics?|songs?|vocals?|vocal)\b",
+            retained[verb.end():],
         ):
             break
         split = list(re.finditer(r"(?i)\b(?:and|while|as)\s+", before))
