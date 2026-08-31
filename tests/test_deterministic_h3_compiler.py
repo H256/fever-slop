@@ -4,6 +4,8 @@ from feverslop.domain.locked_scene_facts import LockedSceneFacts
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload
 from feverslop.prompting.deterministic_h3_compiler import (
     DeterministicH3Compiler,
+    _insert_authoritative_vocal_event,
+    _remove_vocal_clause,
     creative_shots_from_plan,
     plan_with_authoritative_relay,
     validate_creative_shots_against_plan,
@@ -1388,6 +1390,51 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             )
         with self.assertRaisesRegex(ValueError, "missing creative shot payload: shot-0002"):
             validate_creative_shots_against_plan(plan, valid[:1])
+
+    def test_remove_vocal_clause_keeps_negated_instrumental_clause(self):
+        # Negated vocal clauses ARE the instrumental instruction; removing one
+        # would flip an instrumental window into a vocal one.
+        self.assertEqual(
+            "The performer is not singing",
+            _remove_vocal_clause("The performer is not singing"),
+        )
+        self.assertEqual(
+            "The performer never sings",
+            _remove_vocal_clause("The performer never sings"),
+        )
+
+    def test_remove_vocal_clause_keeps_non_vocal_performance_action(self):
+        # "perform" without a vocal object is a stage action to keep.
+        self.assertEqual(
+            "The performer performs on stage",
+            _remove_vocal_clause("The performer performs on stage"),
+        )
+
+    def test_remove_vocal_clause_removes_vocal_performance_action(self):
+        # "perform" directed at a vocal object is a vocal claim to strip.
+        self.assertEqual("", _remove_vocal_clause("The performer performs the lyrics"))
+
+    def test_insert_authoritative_vocal_event_anchors_to_bound_subject(self):
+        result = _insert_authoritative_vocal_event(
+            "[Shot 1] The singer raises a lantern.",
+            {
+                "state": "singing",
+                "lyrics": "Hold on",
+                "subject_label": "<Subject 1>",
+                "speaker_id": "S1",
+            },
+            bound_speaker_ids={"<Subject 1>": "S1"},
+        )
+        self.assertIn("<Subject 1> (S1) sings, <d>Hold on</d>", result)
+        self.assertNotIn("The audible voice", result)
+
+    def test_insert_authoritative_vocal_event_falls_back_to_audible_voice(self):
+        result = _insert_authoritative_vocal_event(
+            "[Shot 1] The singer raises a lantern.",
+            {"state": "singing", "lyrics": "Hold on"},
+            bound_speaker_ids={},
+        )
+        self.assertIn("The audible voice sings, <d>Hold on</d>", result)
 
 
 if __name__ == "__main__":

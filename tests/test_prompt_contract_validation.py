@@ -3,6 +3,7 @@ import unittest
 from feverslop.domain.locked_scene_facts import LockedSceneFacts
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload
 from feverslop.prompting.prompt_contract_validation import (
+    _validate_dialogue,
     validate_h3_prompt_contract,
     validate_h3_prompt_shape,
     validate_prompt_contract,
@@ -179,6 +180,92 @@ class PromptContractValidationTests(unittest.TestCase):
         issues = validate_h3_prompt_contract(prompt, mode="r2v", plan=plan)
 
         self.assertNotIn("h3.detail.too_short", [issue.code for issue in issues])
+
+    def _dialogue_r2v_prompt(self, shot_line):
+        return (
+            "subject_definitions:\n"
+            "<Subject 1> is the singer in <Picture 1>, wearing a silver coat.\n\n"
+            "summary: [reference generation] <Subject 1> performs.\n\n"
+            "retention_analysis:\n"
+            "<Subject 1> (appears in [Shot 1]): fully_preserved - identity retained.\n\n"
+            "detailed_description: The target video is cinematic.\n"
+            f"{shot_line}\n\n"
+            "overall_soundscape: Room tone.\n\n"
+            "non_diegetic_music: N/A"
+        )
+
+    def _dialogue_plan(self):
+        return ResolvedPromptPlan(
+            creative_intent="A performance.",
+            style_opening="The target video is cinematic.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>",
+                name="Lead Singer",
+                description="the singer in a silver coat",
+                source_references=["<Picture 1>"],
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="First.",
+                start_seconds=0,
+                end_seconds=3,
+                reference_labels=["<Picture 1>"],
+            )],
+            overall_soundscape="Room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+
+    def test_validate_dialogue_flags_relay_event_count_mismatch(self):
+        issues = _validate_dialogue(
+            "The singer acts, <d>[English] Hold on.</d>",
+            expected_vocal_events=2,
+        )
+        self.assertIn("h3.dialogue.relay_mismatch", [issue.code for issue in issues])
+
+    def test_validate_dialogue_allows_matching_relay_event_count(self):
+        issues = _validate_dialogue(
+            "The singer acts, <d>[English] Hold on.</d>",
+            expected_vocal_events=1,
+        )
+        self.assertNotIn("h3.dialogue.relay_mismatch", [issue.code for issue in issues])
+
+    def test_validate_dialogue_flags_unbound_source_when_subject_bound(self):
+        issues = _validate_dialogue(
+            "The audible voice sings, <d>[English] Hold on.</d>",
+            bound_vocal_subject="<Subject 1>",
+        )
+        self.assertIn("h3.dialogue.unbound_source", [issue.code for issue in issues])
+
+    def test_validate_dialogue_allows_unanchored_voice_when_unbound(self):
+        issues = _validate_dialogue("The audible voice sings, <d>[English] Hold on.</d>")
+        self.assertNotIn("h3.dialogue.unbound_source", [issue.code for issue in issues])
+
+    def test_validate_dialogue_checks_inactive_by_default(self):
+        issues = _validate_dialogue("The singer acts, <d>[English] Hold on.</d>")
+        codes = [issue.code for issue in issues]
+        self.assertNotIn("h3.dialogue.relay_mismatch", codes)
+        self.assertNotIn("h3.dialogue.unbound_source", codes)
+
+    def test_contract_threads_relay_mismatch_for_r2v(self):
+        prompt = self._dialogue_r2v_prompt("[Shot 1] <Subject 1> sings, <d>[English] Hold on.</d>")
+        issues = validate_h3_prompt_contract(
+            prompt, mode="r2v", plan=self._dialogue_plan(), expected_vocal_events=2,
+        )
+        self.assertIn("h3.dialogue.relay_mismatch", [issue.code for issue in issues])
+
+    def test_contract_threads_unbound_source_for_r2v(self):
+        prompt = self._dialogue_r2v_prompt("[Shot 1] The audible voice sings, <d>[English] Hold on.</d>")
+        issues = validate_h3_prompt_contract(
+            prompt, mode="r2v", plan=self._dialogue_plan(), bound_vocal_subject="<Subject 1>",
+        )
+        self.assertIn("h3.dialogue.unbound_source", [issue.code for issue in issues])
+
+    def test_contract_leaves_relay_checks_off_without_new_args(self):
+        prompt = self._dialogue_r2v_prompt("[Shot 1] The audible voice sings, <d>[English] Hold on.</d>")
+        issues = validate_h3_prompt_contract(prompt, mode="r2v", plan=self._dialogue_plan())
+        codes = [issue.code for issue in issues]
+        self.assertNotIn("h3.dialogue.relay_mismatch", codes)
+        self.assertNotIn("h3.dialogue.unbound_source", codes)
 
 
 if __name__ == "__main__":

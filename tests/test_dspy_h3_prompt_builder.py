@@ -41,6 +41,7 @@ from feverslop.prompting.dspy_h3_prompt_builder import (
     _normalize_relay_segments,
     _scene_references,
     _speaker_bindings_for_compile,
+    _stamp_relay_speaker_binding,
 )
 from feverslop.prompting.scene_prompt_builder import normalize_scene_references
 from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures, build_h3_signature_bundle
@@ -755,6 +756,76 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         })
 
         self.assertEqual("Systems ready", shots[0]["dialogue"])
+        self.assertEqual("<Subject 2>", shots[0]["subject_label"])
+        self.assertEqual("S2", shots[0]["speaker_id"])
+
+    def test_stamps_singing_relay_window_to_vocal_subject(self):
+        shots = _normalize_relay_segments({
+            "duration_seconds": 6.0,
+            "fps": 24,
+            "ltx": {"prompt_relay": [
+                {"frame_start": 0, "frame_end": 72, "state": "singing", "prompt": "The singer turns."},
+                {"frame_start": 72, "frame_end": 144, "state": "instrumental", "prompt": "The camera pulls back."},
+            ]},
+        })
+        _stamp_relay_speaker_binding(
+            shots,
+            {"vocals": {"subject_label": "<Subject 1>", "speaker_id": "S1", "subject_id": "hero"}},
+        )
+
+        self.assertEqual("<Subject 1>", shots[0]["subject_label"])
+        self.assertEqual("S1", shots[0]["speaker_id"])
+        self.assertNotIn("subject_label", shots[1])
+        self.assertNotIn("speaker_id", shots[1])
+
+    def test_stamping_only_affects_singing_states(self):
+        shots = _normalize_relay_segments({
+            "duration_seconds": 6.0,
+            "fps": 24,
+            "ltx": {"prompt_relay": [
+                {"frame_start": 0, "frame_end": 72, "state": "dialogue", "prompt": "structured line"},
+                {"frame_start": 72, "frame_end": 144, "state": "instrumental", "prompt": "no vocals"},
+            ]},
+        })
+        _stamp_relay_speaker_binding(
+            shots,
+            {"vocals": {"subject_label": "<Subject 1>", "speaker_id": "S1", "subject_id": "hero"}},
+        )
+
+        for shot in shots:
+            self.assertNotIn("subject_label", shot)
+            self.assertNotIn("speaker_id", shot)
+
+    def test_stamping_is_noop_without_a_vocal_binding(self):
+        shots = _normalize_relay_segments({
+            "duration_seconds": 3.0,
+            "fps": 24,
+            "ltx": {"prompt_relay": [
+                {"frame_start": 0, "frame_end": 72, "state": "singing", "prompt": "The singer turns."},
+            ]},
+        })
+        _stamp_relay_speaker_binding(shots, {})
+
+        self.assertNotIn("subject_label", shots[0])
+        self.assertNotIn("speaker_id", shots[0])
+
+    def test_stamping_preserves_an_existing_subject_label(self):
+        shots = _normalize_relay_segments({
+            "duration_seconds": 3.0,
+            "fps": 24,
+            "ltx": {"prompt_relay": [
+                {
+                    "frame_start": 0, "frame_end": 72, "state": "singing",
+                    "prompt": "The singer turns.",
+                    "subject_label": "<Subject 2>", "speaker_id": "S2",
+                },
+            ]},
+        })
+        _stamp_relay_speaker_binding(
+            shots,
+            {"vocals": {"subject_label": "<Subject 1>", "speaker_id": "S1", "subject_id": "hero"}},
+        )
+
         self.assertEqual("<Subject 2>", shots[0]["subject_label"])
         self.assertEqual("S2", shots[0]["speaker_id"])
 
