@@ -60,7 +60,11 @@ def plan_with_authoritative_relay(
             speaker_id = str(relay.get("speaker_id") or speaker_ids.get(subject) or "").strip()
             source = f"{subject} ({speaker_id})" if subject and speaker_id else "The audible voice"
             state = str(relay.get("state") or "").strip().casefold()
-            verb = "sings" if state in {"singing", "vocals", "vocal"} else "says"
+            verb = (
+                "sings with visible mouth movements precisely synchronized to the vocal"
+                if state in {"singing", "vocals", "vocal"}
+                else "says"
+            )
             event = f"{source} {verb}, <d>[{language or 'English'}] {_ensure_dialogue_punctuation(content)}</d>"
             values["description"] = " ".join(
                 part for part in (values.get("description"), event) if part
@@ -897,7 +901,11 @@ def _insert_authoritative_vocal_event(
     speaker_id = str(relay.get("speaker_id") or "").strip()
     if speaker and not speaker_id:
         speaker_id = str((bound_speaker_ids or {}).get(speaker) or "").strip()
-    verb = "sings" if state in {"singing", "vocals", "vocal"} else "says"
+    verb = (
+        "sings with visible mouth movements precisely synchronized to the vocal"
+        if state in {"singing", "vocals", "vocal"}
+        else "says"
+    )
     source = f"{speaker} ({speaker_id})" if speaker and speaker_id else speaker
     source = source or "The audible voice"
     return f"{normalized.rstrip()} {source} {verb}, {tagged}"

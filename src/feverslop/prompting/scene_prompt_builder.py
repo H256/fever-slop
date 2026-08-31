@@ -96,6 +96,26 @@ def normalize_scene_references(
             output["actor_ids"] = (selected or [actors[0]])[:max_scene_actors]
 
     selected_actors = output.get("actor_ids") or []
+    configured_audio_bindings = global_context.get("audio_subject_bindings") or {}
+    if (
+        segment_type in {"vocals", "mixed"}
+        and not output.get("audio_subject_bindings")
+        and isinstance(configured_audio_bindings, dict)
+    ):
+        vocal_binding = configured_audio_bindings.get("vocals")
+        if isinstance(vocal_binding, dict):
+            vocalist_id = str(vocal_binding.get("subject_id") or "").strip()
+            speaker_id = str(vocal_binding.get("speaker_id") or "").strip()
+            if vocalist_id in actors and speaker_id:
+                selected_actors = list(selected_actors)
+                if vocalist_id not in selected_actors:
+                    if len(selected_actors) >= max_scene_actors:
+                        selected_actors = selected_actors[:max_scene_actors - 1]
+                    selected_actors.append(vocalist_id)
+                output["actor_ids"] = selected_actors
+                output["audio_subject_bindings"] = {
+                    "vocals": {"subject_id": vocalist_id, "speaker_id": speaker_id},
+                }
     if (
         segment_type == "vocals"
         and len(selected_actors) == 1
