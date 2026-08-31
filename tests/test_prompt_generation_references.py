@@ -169,6 +169,6 @@ class PromptGenerationReferencesTests(unittest.TestCase):
         self.assertEqual(1, prompt_pipeline.subject_locations_calls)
         self.assertEqual("male", actor["gender"])
         self.assertEqual("lead vocalist", actor["role"])
-        self.assertEqual("short dark hair and a silver stage coat", actor["visual_description"])
-        self.assertEqual("cinematic portrait of a singer in a silver stage coat", actor["image_prompt"])
+        self.assertEqual("male short dark hair and a silver stage coat", actor["visual_description"])
+        self.assertEqual("male cinematic portrait of a singer in a silver stage coat", actor["image_prompt"])
         self.assertIn("role=lead vocalist; gender=male", prompt_pipeline.last_notes)

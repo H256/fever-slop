@@ -2,6 +2,7 @@
 
 import inspect
 import json
+import re
 from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any
 from feverslop.application.global_cast_resolver import materialize_global_assets
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.domain.prompt_constraints import build_location_constraint
+from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.generate_pipeline import (
     ConceptBatcherFactory,
     LLMFactory,
@@ -120,6 +122,75 @@ def _merge_configured_actors(configured: list[dict], generated: Any) -> list[dic
                     actor[field] = value
         merged.append(actor)
     return merged
+
+
+_GENDER_WORDS = ("female", "male")
+_GENDER_WORD_RE = re.compile(
+    r"\b(?:" + "|".join(_GENDER_WORDS) + r")\b",
+    re.IGNORECASE,
+)
+_PERSON_WORD_RE = re.compile(r"\b(?:person|individual)\b", re.IGNORECASE)
+
+
+def _find_explicit_gender(text: str) -> str | None:
+    """Return the first explicit gender word in text, or None when absent."""
+    match = _GENDER_WORD_RE.search(text)
+    return match.group(0).lower() if match else None
+
+
+def _insert_gender_word(text: str, gender: str) -> str:
+    """Insert a gender word before the first person word, or prepend it."""
+    match = _PERSON_WORD_RE.search(text)
+    if match is None:
+        return f"{gender} {text}"
+    word = match.group(0)
+    replacement = f"{gender} {word.lower()}"
+    if word[:1].isupper():
+        replacement = replacement.capitalize()
+    return text[: match.start()] + replacement + text[match.end():]
+
+
+def enforce_explicit_cast_attributes(
+    actors: list[dict],
+    configured_actors: list[dict],
+) -> None:
+    """Keep explicit cast attributes in LLM-origin actor free text.
+
+    Repairs a dropped gender word in generated visual_description/image_prompt
+    text and raises FeverSlopValidationError when the generated text states a
+    gender that contradicts the actor's gender. Configured non-empty free text
+    is authoritative user data and is never touched.
+    """
+    configured_by_key = {}
+    for configured_actor in configured_actors:
+        for key in (
+            str(configured_actor.get("id") or "").strip().casefold(),
+            str(configured_actor.get("name") or "").strip().casefold(),
+        ):
+            if key:
+                configured_by_key[key] = configured_actor
+    for actor in actors:
+        gender = str(actor.get("gender") or "").strip().lower()
+        if not gender or gender in ("none", "not_applicable"):
+            continue
+        key = str(actor.get("id") or actor.get("name") or "").strip().casefold()
+        configured = configured_by_key.get(key)
+        for field in ("visual_description", "image_prompt"):
+            if configured is not None and str(configured.get(field) or "").strip():
+                continue
+            text = str(actor.get(field) or "").strip()
+            if not text:
+                continue
+            explicit_gender = _find_explicit_gender(text)
+            if explicit_gender and explicit_gender != gender:
+                label = str(actor.get("name") or actor.get("id") or "actor")
+                raise FeverSlopValidationError(
+                    f"Cast constraint conflict for '{label}': explicit gender "
+                    f"'{gender}' contradicts '{explicit_gender}' in {field}. "
+                    "Fix the configured cast or the story idea."
+                )
+            if explicit_gender is None:
+                actor[field] = _insert_gender_word(text, gender)
 
 
 def normalize_location_names(items: Any) -> list[str]:
@@ -645,6 +716,7 @@ class PromptGenerationPipeline:
             _merge_configured_actors(actors, generated_actors)
             if actors else generated_actors
         )
+        enforce_explicit_cast_attributes(actors, configured_actor_items)
         structured_locations = (
             config_items_as_dicts(config_structured_locations)
             or config_items_as_dicts(subject_locations.get("locations", []))

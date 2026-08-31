@@ -8,12 +8,39 @@ from unittest.mock import Mock, patch
 from rich.console import Console
 from rich.progress import SpinnerColumn
 
+from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
+from feverslop.application.reference_bible import ReferenceBibleGenerator
+from feverslop.config.project_config import ActorConfig, ProjectConfig
 from feverslop.tools.reference_bible import (
     build_arg_parser,
     load_reference_subjects,
     resolve_view_names,
     run,
 )
+
+
+class _GenericSingerPromptPipeline:
+    """Fake prompt pipeline that writes generic 'A person' actor text."""
+
+    def create_story_idea(self, lyrics, notes):
+        return "a female lead singer on a mirror stage"
+
+    def create_style_block(self, lyrics, notes):
+        return "cinematic concert film"
+
+    def create_subject_and_locations(self, story_idea, notes):
+        return {
+            "subject": "a lead singer on a mirror stage",
+            "actors": [{
+                "id": "singer",
+                "name": "Lead Singer",
+                "role": "lead singer",
+                "gender": "female",
+                "visual_description": "A person in a silver coat",
+                "image_prompt": "A person on a mirror stage",
+            }],
+            "locations": [{"id": "stage", "name": "Mirror Stage"}],
+        }
 
 
 class ReferenceBibleToolTests(unittest.TestCase):
@@ -166,6 +193,48 @@ class ReferenceBibleToolTests(unittest.TestCase):
 
             self.assertEqual("mara", subjects[0].id)
             self.assertEqual("stage", locations[0].id)
+
+    def test_reference_actor_prompt_includes_preserved_explicit_cast_attribute(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            pipeline = PromptGenerationPipeline(
+                llm_factory=lambda app_config: None,
+                prompt_pipeline_factory=lambda llm: None,
+                concept_batcher_factory=lambda llm, size: None,
+                scene_prompt_builder_factory=lambda llm: None,
+            )
+            context = pipeline.build_resolved_global_context(
+                config=ProjectConfig(
+                    project_dir=Path(),
+                    project_name="test",
+                    input_audio=Path("song.mp3"),
+                    actors=(ActorConfig(id="singer", name="Lead Singer", role="lead singer", gender="female"),),
+                ),
+                prompt_pipeline=_GenericSingerPromptPipeline(),
+                all_lyrics="",
+                run_spinner=lambda _description, func: func(),
+                console=None,
+            )
+
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"input_audio": "input/song.mp3", "subject": ""}),
+                encoding="utf-8",
+            )
+            prompts_dir = temp / "output" / "prompts"
+            prompts_dir.mkdir(parents=True)
+            (prompts_dir / "resolved_context_song.json").write_text(
+                json.dumps(context),
+                encoding="utf-8",
+            )
+
+            subjects, _locations = load_reference_subjects(config_path)
+
+            self.assertEqual("singer", subjects[0].id)
+            self.assertEqual("A female person on a mirror stage", subjects[0].image_prompt)
+            actor_prompt = ReferenceBibleGenerator._view_prompt(subjects[0], "hero")
+            self.assertIn("A female person on a mirror stage", actor_prompt)
+            self.assertIn("female", actor_prompt)
 
     def test_run_fails_loudly_when_no_reference_subjects_exist(self):
         with tempfile.TemporaryDirectory() as temp_dir:
