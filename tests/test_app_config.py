@@ -419,6 +419,41 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual("ideogram4_prompt_debug", transform.debug_dir)
         self.assertEqual(150, transform.max_words)
 
+    def test_loads_chat_template_kwargs(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                json.dumps({
+                    "llm": {
+                        "chat_template_kwargs": {
+                            "enable_thinking": True,
+                            "reasoning_effort": "xhigh",
+                        },
+                    },
+                }),
+                encoding="utf-8",
+            )
+            config = AppConfig.load(config_path)
+
+        self.assertEqual(
+            {"enable_thinking": True, "reasoning_effort": "xhigh"},
+            config.llm.chat_template_kwargs,
+        )
+
+    def test_rejects_non_dict_chat_template_kwargs(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"chat_template_kwargs": "not-a-dict"}}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "llm.chat_template_kwargs must be an object"):
+                AppConfig.load(config_path)
+
 
 @contextmanager
 def working_directory(path: Path):

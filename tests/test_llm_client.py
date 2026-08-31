@@ -433,6 +433,42 @@ class LLMClientRetryTests(unittest.TestCase):
         self.assertEqual(result, "hello")
         self.assertEqual(mock_client.chat.completions.create.call_count, 1)
 
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_forwards_chat_template_kwargs_via_extra_body_when_configured(self, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=MagicMock(content="hello"))]
+        mock_client.chat.completions.create.return_value = mock_resp
+
+        client = LocalOpenAIClient(
+            api_key="test-key",
+            chat_template_kwargs={"enable_thinking": True, "reasoning_effort": "high"},
+        )
+        client.client = mock_client
+        result = client.complete_prompt(system_prompt="system", prompt="hi")
+        self.assertEqual(result, "hello")
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        self.assertEqual(
+            {"chat_template_kwargs": {"enable_thinking": True, "reasoning_effort": "high"}},
+            call_kwargs.get("extra_body"),
+        )
+
+    @patch("feverslop.adapters.llm_client.OpenAI")
+    def test_omits_extra_body_when_chat_template_kwargs_not_configured(self, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=MagicMock(content="hello"))]
+        mock_client.chat.completions.create.return_value = mock_resp
+
+        client = LocalOpenAIClient(api_key="test-key")
+        client.client = mock_client
+        result = client.complete_prompt(system_prompt="system", prompt="hi")
+        self.assertEqual(result, "hello")
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        self.assertNotIn("extra_body", call_kwargs)
+
 
 if __name__ == "__main__":
     unittest.main()

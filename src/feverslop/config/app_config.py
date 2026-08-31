@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from feverslop.config.comfyui import ComfyUIModelOverride
 from feverslop.domain.video_workflow_profile import VideoWorkflowProfile
@@ -25,6 +26,7 @@ class LLMConfig:
     prompt_judge_attempts: int = 3
     prompt_judge_max_tokens: int = 8192
     prompt_judge_blocking: bool = True
+    chat_template_kwargs: dict[str, Any] = field(default_factory=dict)
     models: dict[str, str] = field(default_factory=dict)
     _local_api_key: str | None = field(default=None, repr=False)
 
@@ -222,6 +224,7 @@ class AppConfig:
         execution_raw = raw.get("execution", {})
         if not isinstance(execution_raw, dict):
             raise ValueError("execution must be an object")
+
         raw_vram_handoff = execution_raw.get("vram_handoff", "continuous")
         try:
             vram_handoff = VramHandoffMode(raw_vram_handoff)
@@ -267,6 +270,10 @@ class AppConfig:
             llm_raw.get("prompt_judge_blocking", True),
             "llm.prompt_judge_blocking",
         )
+        llm_chat_template_kwargs_raw = llm_raw.get("chat_template_kwargs", {})
+        if not isinstance(llm_chat_template_kwargs_raw, dict):
+            raise ValueError("llm.chat_template_kwargs must be an object")
+        llm_chat_template_kwargs: dict[str, Any] = dict(llm_chat_template_kwargs_raw)
         llm_models_raw = llm_raw.get("models", {})
         if not isinstance(llm_models_raw, dict):
             raise ValueError("llm.models must be an object")
@@ -308,6 +315,7 @@ class AppConfig:
                 prompt_judge_attempts=llm_prompt_judge_attempts,
                 prompt_judge_max_tokens=llm_prompt_judge_max_tokens,
                 prompt_judge_blocking=llm_prompt_judge_blocking,
+                chat_template_kwargs=llm_chat_template_kwargs,
                 models=llm_models,
                 _local_api_key=_optional_secret(llm_raw.get("api_key")) or dotenv_api_key,
             ),

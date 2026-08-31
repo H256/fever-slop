@@ -76,6 +76,42 @@ class DspyRuntimeTests(unittest.TestCase):
         self.assertEqual(2, calls[0][1]["num_retries"])
         self.assertFalse(calls[0][1]["cache"])
 
+    def test_make_lm_passes_chat_template_kwargs_when_present(self):
+        calls = []
+
+        class LLM:
+            model = "gemma4-26b-a4b"
+            max_tokens = 2048
+            chat_template_kwargs = {"enable_thinking": True}
+
+        runtime = DspyRuntime(
+            signatures=H3SignatureBundle(object, object, object, object),
+            lm_factory=lambda *args, **kwargs: calls.append((args, kwargs)) or "lm",
+            predict_factory=lambda signature: signature,
+            context_factory=lambda **kwargs: nullcontext(kwargs),
+        )
+
+        self.assertEqual("lm", runtime.make_lm(LLM()))
+        self.assertEqual({"enable_thinking": True}, calls[0][1].get("chat_template_kwargs"))
+
+    def test_make_lm_omits_chat_template_kwargs_when_empty(self):
+        calls = []
+
+        class LLM:
+            model = "gemma4-26b-a4b"
+            max_tokens = 2048
+            chat_template_kwargs = {}
+
+        runtime = DspyRuntime(
+            signatures=H3SignatureBundle(object, object, object, object),
+            lm_factory=lambda *args, **kwargs: calls.append((args, kwargs)) or "lm",
+            predict_factory=lambda signature: signature,
+            context_factory=lambda **kwargs: nullcontext(kwargs),
+        )
+
+        self.assertEqual("lm", runtime.make_lm(LLM()))
+        self.assertNotIn("chat_template_kwargs", calls[0][1])
+
     def test_generator_accepts_fake_runtime_and_loads_h3_guides_without_live_endpoint(self):
         class FakePredict:
             def __init__(self, signature):

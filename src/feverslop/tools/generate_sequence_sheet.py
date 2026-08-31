@@ -71,6 +71,7 @@ def _resolve_description(args: argparse.Namespace) -> tuple[str, dict[str, str]]
         temperature=app_config.llm.temperature,
         max_tokens=app_config.llm.max_tokens,
         request_timeout_seconds=app_config.llm.request_timeout_seconds,
+        chat_template_kwargs=app_config.llm.chat_template_kwargs,
     )
     description = describe_image_with_llm(llm, args.source_image)
     if not description.strip():

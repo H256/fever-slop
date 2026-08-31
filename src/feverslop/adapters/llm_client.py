@@ -7,6 +7,7 @@ import random
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import httpx
 from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
@@ -132,6 +133,7 @@ class LocalOpenAIClient:
         prompt_judge_attempts: int = 3,
         prompt_judge_max_tokens: int = 8192,
         prompt_judge_blocking: bool = True,
+        chat_template_kwargs: dict[str, Any] | None = None,
         metrics: APIMetrics | None = None,
         auth_headers: dict[str, str] | None = None,
         min_request_interval_seconds: float = 0.0,
@@ -162,6 +164,7 @@ class LocalOpenAIClient:
         self.prompt_judge_attempts = int(prompt_judge_attempts)
         self.prompt_judge_max_tokens = int(prompt_judge_max_tokens)
         self.prompt_judge_blocking = bool(prompt_judge_blocking)
+        self.chat_template_kwargs = dict(chat_template_kwargs or {})
         self.request_rate_limiter = RequestRateLimiter(min_request_interval_seconds)
         self.llm_limiter = get_shared_llm_concurrency_limiter(self.max_concurrent_requests)
         self.metrics = metrics or default_api_metrics
@@ -219,14 +222,19 @@ class LocalOpenAIClient:
             for attempt in range(self.max_retries):
                 try:
                     self.request_rate_limiter.wait()
-                    response = self.client.chat.completions.create(
-                        model=self.model,
-                        messages=messages,
-                        temperature=self.temperature,
-                        max_tokens=self.max_tokens,
-                        stream=False,
-                        timeout=request_timeout,
-                    )
+                    completion_kwargs: dict[str, Any] = {
+                        "model": self.model,
+                        "messages": messages,
+                        "temperature": self.temperature,
+                        "max_tokens": self.max_tokens,
+                        "stream": False,
+                        "timeout": request_timeout,
+                    }
+                    if self.chat_template_kwargs:
+                        completion_kwargs["extra_body"] = {
+                            "chat_template_kwargs": self.chat_template_kwargs,
+                        }
+                    response = self.client.chat.completions.create(**completion_kwargs)
                     choices = getattr(response, "choices", None)
                     if not isinstance(choices, list) or not choices:
                         raise FeverSlopLMLError("LLM response missing choices")

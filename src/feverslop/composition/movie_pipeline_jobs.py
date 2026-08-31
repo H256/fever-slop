@@ -530,6 +530,7 @@ def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
                 request_timeout_seconds=app_config.llm.request_timeout_seconds,
                 dspy_cache=app_config.llm.dspy_cache,
                 max_concurrent_requests=app_config.llm.max_concurrent_requests,
+                chat_template_kwargs=app_config.llm.chat_template_kwargs,
             ),
         )
     return MovieReferenceSheetGenerator(

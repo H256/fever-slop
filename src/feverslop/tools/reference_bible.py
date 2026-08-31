@@ -169,6 +169,7 @@ def run(args: argparse.Namespace) -> list[Path]:
                 request_timeout_seconds=app_config.llm.request_timeout_seconds,
                 dspy_cache=app_config.llm.dspy_cache,
                 max_concurrent_requests=app_config.llm.max_concurrent_requests,
+                chat_template_kwargs=app_config.llm.chat_template_kwargs,
             ),
         )
     hero_anchors = WorkflowAnchorConfig(positive_prompt_title=args.hero_positive_title)
