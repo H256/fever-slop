@@ -71,6 +71,13 @@ This is the resolved global prompt context derived from `config.json`.
 
 It is useful for inspection and debugging, but not the best long-term edit target. Edit `config.json` instead if you want a normal pipeline run to preserve the change.
 
+Actor records in the resolved context preserve explicit cast attributes such
+as gender from the story idea or `config.json` actors, and the preserved text
+is what actor reference prompts are built from. When generated actor text
+contradicts an explicit cast attribute, the prompt stage stops before image
+generation with a `Cast constraint conflict` diagnostic naming the role and
+the conflicting values; fix the configured cast or the story idea.
+
 ### `output/prompts/concept_prompts_*.json`
 
 This maps each segment to a high-level scene concept and reference IDs.
