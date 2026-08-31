@@ -11,16 +11,22 @@ class LLMTaskPolicy:
 
 # Music-video task names mirror the music-video signature bundle keys. The
 # constants live here because music_video_modules already imports this module.
+CONCEPT_MAP = "concept_map"
+DETAIL = "detail"
+I2V = "i2v"
+I2V_PROMPT = "i2v_prompt"
+LYRIC_ALIGNMENT = "lyric_alignment"
+REPAIR_CONCEPTS = "repair_concepts"
+SONG_BRIEF = "song_brief"
+STORYBOARD_TRANSFORM = "storyboard_transform"
 STORY_IDEA = "story_idea"
 STYLE_BLOCK = "style_block"
 SUBJECT_LOCATIONS = "subject_locations"
-CONCEPT_MAP = "concept_map"
-REPAIR_CONCEPTS = "repair_concepts"
 SUMMARY = "summary"
-DETAIL = "detail"
 T2I = "t2i"
-I2V = "i2v"
+ZIMAGE_PROMPT = "zimage_prompt"
 
+# set some limits for structured and creative tasks
 _STRUCTURED = LLMTaskPolicy("structured", max_tokens=4096)
 _CREATIVE = LLMTaskPolicy("creative", max_tokens=4096)
 
@@ -39,20 +45,20 @@ MSR_PER_RELAY_TOKENS = 2048
 BATCHED_TASK_NAMES = frozenset({CONCEPT_MAP, "lyric_alignment"})
 
 _POLICIES = {
-    "song_brief": _CREATIVE,
-    "lyric_alignment": _STRUCTURED,
-    "zimage_prompt": _STRUCTURED,
-    "i2v_prompt": _STRUCTURED,
-    "storyboard_transform": _STRUCTURED,
+    CONCEPT_MAP: _STRUCTURED,
+    DETAIL: _STRUCTURED,
+    I2V: _STRUCTURED,
+    I2V_PROMPT: _STRUCTURED,
+    LYRIC_ALIGNMENT: _STRUCTURED,
+    REPAIR_CONCEPTS: _STRUCTURED,
+    SONG_BRIEF: _CREATIVE,
+    STORYBOARD_TRANSFORM: _STRUCTURED,
     STORY_IDEA: _CREATIVE,
     STYLE_BLOCK: _CREATIVE,
     SUBJECT_LOCATIONS: _STRUCTURED,
-    CONCEPT_MAP: _STRUCTURED,
-    REPAIR_CONCEPTS: _STRUCTURED,
     SUMMARY: _STRUCTURED,
-    DETAIL: _STRUCTURED,
     T2I: _STRUCTURED,
-    I2V: _STRUCTURED,
+    ZIMAGE_PROMPT: _STRUCTURED,
 }
 
 
@@ -66,11 +72,6 @@ def _calculate_batch_token_budget(count: int, tokens_per_item: int,
 def policy_for(task: str) -> LLMTaskPolicy:
     """Return the explicit policy for a known task, or a conservative default."""
     return _POLICIES.get(str(task).strip().lower(), _STRUCTURED)
-
-
-def known_task_names() -> frozenset[str]:
-    """Return every task name that has an explicit policy entry."""
-    return frozenset(_POLICIES)
 
 
 def concept_batch_max_tokens(batch_size: int) -> int:
