@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -48,7 +49,18 @@ class SequenceToSheetBackendTests(unittest.TestCase):
         self.assertEqual(124, prompt.frames)
         self.assertIn("hard cuts", prompt.prompt)
         self.assertIn("tight close-up of the face", prompt.prompt)
-        self.assertIn("expression now frightened", prompt.prompt)
+        # The expression shot picks a random expression for casting variety,
+        # so assert the structure and the known expression set instead of one
+        # specific word.
+        match = re.search(r"the expression now (\w+):", prompt.prompt)
+        self.assertIsNotNone(match)
+        self.assertIn(
+            match.group(1),
+            {
+                "frightened", "neutral", "joyful", "angry", "surprised",
+                "sad", "disgusted", "confused", "excited", "contemplative",
+            },
+        )
         self.assertIn("<Picture 1>", prompt.prompt)
         self.assertIn("rear", prompt.prompt)
 

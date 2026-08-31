@@ -1425,7 +1425,11 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             },
             bound_speaker_ids={"<Subject 1>": "S1"},
         )
-        self.assertIn("<Subject 1> (S1) sings, <d>Hold on</d>", result)
+        self.assertIn(
+            "<Subject 1> (S1) sings with visible mouth movements precisely "
+            "synchronized to the vocal, <d>Hold on</d>",
+            result,
+        )
         self.assertNotIn("The audible voice", result)
 
     def test_insert_authoritative_vocal_event_falls_back_to_audible_voice(self):
@@ -1434,7 +1438,11 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             {"state": "singing", "lyrics": "Hold on"},
             bound_speaker_ids={},
         )
-        self.assertIn("The audible voice sings, <d>Hold on</d>", result)
+        self.assertIn(
+            "The audible voice sings with visible mouth movements precisely "
+            "synchronized to the vocal, <d>Hold on</d>",
+            result,
+        )
 
 
 if __name__ == "__main__":
