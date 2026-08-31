@@ -28,12 +28,11 @@ class LLMPolicyTests(unittest.TestCase):
         from feverslop.prompting.general_signatures import (
             build_general_signature_bundle,
         )
-        from feverslop.prompting.llm_policy import BATCHED_TASK_NAMES, known_task_names
+        from feverslop.prompting.llm_policy import _POLICIES, BATCHED_TASK_NAMES
         from feverslop.prompting.music_video_signatures import (
             build_music_video_signature_bundle,
         )
 
-        known = known_task_names()
         bundles = (
             build_music_video_signature_bundle(),
             build_general_signature_bundle(),
@@ -42,7 +41,7 @@ class LLMPolicyTests(unittest.TestCase):
             for name in bundle:
                 if name in BATCHED_TASK_NAMES:
                     continue
-                self.assertIn(name, known)
+                self.assertIn(name, _POLICIES)
 
     def test_creative_and_structured_defaults_have_headroom(self):
         from feverslop.prompting.llm_policy import policy_for
