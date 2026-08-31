@@ -84,7 +84,13 @@ def lyrics_for_time_range(
                 word = str(item.get("word", "")).strip()
                 if word:
                     selected.append(word)
-        return " ".join(selected)
+        if selected:
+            return " ".join(selected)
+        # Word timestamps exist but none fall inside this window (typically a
+        # sub-window cut inside a longer vocal line whose words sit just outside
+        # the cut). Fall through to the proportional split so the window keeps
+        # its share of the line instead of silently dropping the lyrics and
+        # being marked instrumental.
 
     # Legacy timeline files do not contain word timestamps.
     words = str(lyrics or "").split()

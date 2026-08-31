@@ -4,6 +4,7 @@ from pathlib import Path
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 from feverslop.config.project_config import (
     ActorConfig,
+    AudioRefsConfig,
     ProjectConfig,
     StructuredLocationConfig,
 )
@@ -61,6 +62,9 @@ class PromptGenerationReferencesTests(unittest.TestCase):
             structured_locations=(StructuredLocationConfig(
                 id="stage", name="Mirror Stage", visual_description="a mirror stage", image_prompt="stage",
             ),),
+            minimax_h3_audio_refs=AudioRefsConfig(subject_bindings={
+                "vocals": {"subject_id": "singer", "speaker_id": "S1"},
+            }),
         )
         pipeline = PromptGenerationPipeline(
             llm_factory=lambda app_config: None,
@@ -83,6 +87,10 @@ class PromptGenerationReferencesTests(unittest.TestCase):
         self.assertEqual("stage", context["structured_locations"][0]["id"])
         self.assertEqual("multi", context["subject_mode"])
         self.assertEqual(4, context["max_scene_actors"])
+        self.assertEqual(
+            {"vocals": {"subject_id": "singer", "speaker_id": "S1"}},
+            context["audio_subject_bindings"],
+        )
         self.assertNotIn("reference_profile", context)
         self.assertEqual("en", context["language"])
         self.assertEqual(0, prompt_pipeline.subject_locations_calls)

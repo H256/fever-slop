@@ -15,6 +15,7 @@ from feverslop.domain.execution_plan import ExecutionPlan, ExecutionPlanItem, Pl
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
 from feverslop.domain.project_render_settings import ProjectRenderSettings
 from feverslop.errors import FeverSlopDataError
+from feverslop.prompting.deterministic_h3_compiler import H3_COMPILER_VERSION
 from feverslop.scene_artifacts import SceneArtifactLayout
 
 
@@ -449,6 +450,12 @@ def _h3_state(
     if not checkpoint.is_file():
         return PlanAction.RUN, "judged H3 checkpoint missing"
     payload = json.loads(checkpoint.read_text(encoding="utf-8-sig"))
+    checkpoint_compiler_version = (payload.get("provenance") or {}).get("compiler_version")
+    if (
+        checkpoint_compiler_version is not None
+        and checkpoint_compiler_version != H3_COMPILER_VERSION
+    ):
+        return PlanAction.RUN, "H3 compiler version changed"
     expected = ((role.get("generated") or {}).get("provenance") or {}).get("input_fingerprint")
     if expected and expected != payload.get("input_fingerprint"):
         return PlanAction.RUN, "H3 input fingerprint changed"

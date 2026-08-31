@@ -513,6 +513,41 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
     return shots
 
 
+# Relay states that represent a sung vocal event, i.e. the states the
+# deterministic compiler turns into a "sings" event and that therefore belong
+# to the "vocals" audio stem rather than a spoken/dialogue stem.
+_SING_RELAY_STATES = frozenset({"singing", "vocals", "vocal"})
+
+
+def _stamp_relay_speaker_binding(
+    relay_segments: list[dict[str, Any]],
+    raw_bindings: dict[str, dict[str, str]],
+) -> None:
+    """Bind sung relay windows to the vocal stem's on-screen subject.
+
+    The deterministic compiler only anchors an event's source to a visible
+    subject when the relay shot carries a ``subject_label`` and ``speaker_id``;
+    otherwise it falls back to the unanchored ``The audible voice`` source, which
+    leaves the model free to pick any mouth (or none) and breaks lip-sync. The
+    relay producer never emits those keys, so even a correctly bound vocal scene
+    compiled to an unanchored source. Stamping the already-validated binding here
+    is the single point that fixes both the primary build and the structured
+    resume path without inventing subjects.
+    """
+    vocal = raw_bindings.get("vocals") or {}
+    subject_label = str(vocal.get("subject_label") or "").strip()
+    speaker_id = str(vocal.get("speaker_id") or "").strip()
+    if not subject_label or not speaker_id:
+        return
+    for shot in relay_segments:
+        if str(shot.get("state") or "").strip().casefold() not in _SING_RELAY_STATES:
+            continue
+        if not str(shot.get("subject_label") or "").strip():
+            shot["subject_label"] = subject_label
+        if not str(shot.get("speaker_id") or "").strip():
+            shot["speaker_id"] = speaker_id
+
+
 def _format_relay_shots(shots: list[dict[str, Any]]) -> str:
     if not shots:
         return ""
@@ -601,6 +636,7 @@ class DspyH3PromptBuilder:
             for stem, binding in raw_bindings.items()
         ]
         relay_segments = _normalize_relay_segments(segment)
+        _stamp_relay_speaker_binding(relay_segments, raw_bindings)
         directive_plan = subject_directives_from_scene(segment)
         generator_references = [dict(reference) for reference in references]
         directing_lines = [
@@ -680,6 +716,18 @@ class DspyH3PromptBuilder:
                         for binding in request.get("audio_subject_bindings") or ()
                     ],
                 )
+                # The relay marks a window "singing" only when it carries lyrics,
+                # and the compiler emits exactly one dialogue event per sung
+                # window. Both counts must agree, and a bound vocal stem must be
+                # anchored to its visible subject rather than an audible voice.
+                relay_vocal_events = sum(
+                    1
+                    for shot in relay_segments
+                    if str(shot.get("state") or "").strip().casefold() in _SING_RELAY_STATES
+                )
+                bound_vocal_subject = (
+                    str((raw_bindings.get("vocals") or {}).get("subject_label") or "").strip() or None
+                )
                 for attempt in range(max_attempts):
                     normalized_plan = _normalize_plan_audio_usage(current_plan, references)
                     normalized_plan = plan_with_authoritative_relay(
@@ -718,6 +766,8 @@ class DspyH3PromptBuilder:
                         duration_seconds=float(
                             segment.get("duration") or segment.get("duration_seconds") or 0
                         ) or None,
+                        expected_vocal_events=relay_vocal_events,
+                        bound_vocal_subject=bound_vocal_subject,
                     )
                     if shape_issues:
                         if attempt == max_attempts - 1:
@@ -902,9 +952,28 @@ class DspyH3PromptBuilder:
                 references=resolved_references,
                 stored_bindings=list(sections.get("speaker_bindings") or ()),
             )
+            raw_bindings = _audio_subject_bindings(
+                segment.get("references") or {},
+                available_stems={
+                    str(reference.get("name") or "").strip()
+                    for reference in resolved_references
+                    if str(reference.get("kind") or "").casefold() == "audio"
+                    and str(reference.get("name") or "").strip()
+                },
+            )
+            relay_segments = _normalize_relay_segments(segment)
+            _stamp_relay_speaker_binding(relay_segments, raw_bindings)
+            relay_vocal_events = sum(
+                1
+                for shot in relay_segments
+                if str(shot.get("state") or "").strip().casefold() in _SING_RELAY_STATES
+            )
+            bound_vocal_subject = (
+                str((raw_bindings.get("vocals") or {}).get("subject_label") or "").strip() or None
+            )
             plan = plan_with_authoritative_relay(
                 plan,
-                _normalize_relay_segments(segment),
+                relay_segments,
                 language=str(global_context.get("language") or "English"),
                 speaker_bindings=speaker_bindings,
             )
@@ -949,7 +1018,7 @@ class DspyH3PromptBuilder:
                 reference_metadata=resolved_references,
                 duration_seconds=duration,
                 dialogue_language=str(global_context.get("language") or "English"),
-                relay_segments=_normalize_relay_segments(segment),
+                relay_segments=relay_segments,
                 speaker_bindings=speaker_bindings,
             )
             shape_issues = validate_h3_prompt_contract(
@@ -958,6 +1027,8 @@ class DspyH3PromptBuilder:
                 plan=plan,
                 reference_metadata=resolved_references,
                 duration_seconds=duration,
+                expected_vocal_events=relay_vocal_events,
+                bound_vocal_subject=bound_vocal_subject,
             )
             if shape_issues:
                 raise PromptContractError(shape_issues)
