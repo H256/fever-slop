@@ -34,7 +34,7 @@ class MultiItemDspyLimitTests(unittest.TestCase):
         )
         modules.lyric_alignment({"WHISPER_SEGMENTS": [{"key": str(i)} for i in range(13)]})
 
-        self.assertEqual(4352, calls[0]["config"]["max_tokens"])
+        self.assertEqual(15360, calls[0]["config"]["max_tokens"])
 
     def test_msr_segments_scales_limit_by_relay_count(self):
         calls = []
@@ -49,7 +49,7 @@ class MultiItemDspyLimitTests(unittest.TestCase):
         )
         modules.segments({"relay_segments": [{"index": i} for i in range(4)]})
 
-        self.assertEqual(9216, calls[0]["config"]["max_tokens"])
+        self.assertEqual(10240, calls[0]["config"]["max_tokens"])
 
 
 if __name__ == "__main__":

@@ -622,6 +622,7 @@ def _run_relay_compact_stage(state: PipelineRunState) -> None:
         max_tokens=app_config.llm.max_tokens,
         request_timeout_seconds=app_config.llm.request_timeout_seconds,
         max_concurrent_requests=app_config.llm.max_concurrent_requests,
+        chat_template_kwargs=app_config.llm.chat_template_kwargs,
     )
     state.plan_for_next_step = RelayDirectionBuilder(llm=llm).compact_render_plan_file(
         input_render_plan=state.plan_for_next_step,
@@ -830,6 +831,7 @@ def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
         max_tokens=app_config.llm.max_tokens,
         request_timeout_seconds=app_config.llm.request_timeout_seconds,
         max_concurrent_requests=app_config.llm.max_concurrent_requests,
+        chat_template_kwargs=app_config.llm.chat_template_kwargs,
     )
     msr_prompt_total = count_render_plan_items(state.plan_for_next_step)
     with RenderProgressReporter("Enriching MSR prompts", msr_prompt_total) as msr_prompt_progress:
@@ -867,6 +869,7 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
         max_tokens=app_config.llm.max_tokens,
         request_timeout_seconds=app_config.llm.request_timeout_seconds,
         max_concurrent_requests=app_config.llm.max_concurrent_requests,
+        chat_template_kwargs=app_config.llm.chat_template_kwargs,
     )
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
     ingredients_total = count_render_plan_items(state.plan_for_next_step)

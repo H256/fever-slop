@@ -208,6 +208,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
                 max_tokens=app_config.llm.max_tokens,
                 request_timeout_seconds=app_config.llm.request_timeout_seconds,
                 max_concurrent_requests=app_config.llm.max_concurrent_requests,
+                chat_template_kwargs=app_config.llm.chat_template_kwargs,
             )
         except (OSError, ValueError):
             return None

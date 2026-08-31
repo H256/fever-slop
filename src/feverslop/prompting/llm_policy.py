@@ -27,8 +27,8 @@ T2I = "t2i"
 ZIMAGE_PROMPT = "zimage_prompt"
 
 # set some limits for structured and creative tasks
-_STRUCTURED = LLMTaskPolicy("structured", max_tokens=4096)
-_CREATIVE = LLMTaskPolicy("creative", max_tokens=4096)
+_STRUCTURED = LLMTaskPolicy("structured", max_tokens=2048)
+_CREATIVE = LLMTaskPolicy("creative", max_tokens=2048)
 
 # Concept batches return one structured value per scene. The per-scene budget
 # must be multiplied by the batch size because max_tokens limits the complete

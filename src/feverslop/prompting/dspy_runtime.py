@@ -69,6 +69,13 @@ class DspyRuntime:
             # path retry budget (SDK max_retries=0 + app-level backoff).
             "num_retries": getattr(llm, "max_retries", 3),
         }
+
+        # Shape is validated at the config boundary (AppConfig); LocalOpenAIClient
+        # always stores a dict, so forward as-is and omit when unset.
+        chat_template_kwargs = getattr(llm, "chat_template_kwargs", None)
+        if chat_template_kwargs:
+            kwargs["chat_template_kwargs"] = dict(chat_template_kwargs)
+
         if inject:
             kwargs["client"] = client
         timeout = getattr(llm, "request_timeout_seconds", None)
