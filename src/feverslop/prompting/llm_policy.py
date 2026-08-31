@@ -21,8 +21,8 @@ DETAIL = "detail"
 T2I = "t2i"
 I2V = "i2v"
 
-_STRUCTURED = LLMTaskPolicy("structured", max_tokens=2048)
-_CREATIVE = LLMTaskPolicy("creative", max_tokens=2048)
+_STRUCTURED = LLMTaskPolicy("structured", max_tokens=4096)
+_CREATIVE = LLMTaskPolicy("creative", max_tokens=4096)
 
 # Concept batches return one structured value per scene. The per-scene budget
 # must be multiplied by the batch size because max_tokens limits the complete
