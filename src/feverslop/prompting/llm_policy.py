@@ -29,8 +29,8 @@ _CREATIVE = LLMTaskPolicy("creative", max_tokens=2048)
 # response, not each item in the response. The overhead covers JSON keys and
 # delimiters; callers should not use the global llm.max_tokens for this.
 CONCEPT_PER_SCENE_TOKENS = 2048
-CONCEPT_BATCH_JSON_OVERHEAD = 1024
-LYRIC_ALIGNMENT_PER_SEGMENT_TOKENS = 256
+CONCEPT_BATCH_JSON_OVERHEAD = 2048
+LYRIC_ALIGNMENT_PER_SEGMENT_TOKENS = 1024
 MSR_PER_RELAY_TOKENS = 2048
 
 # Batched tasks are budgeted by the per-call-site multiplier functions
@@ -56,6 +56,13 @@ _POLICIES = {
 }
 
 
+def _calculate_batch_token_budget(count: int, tokens_per_item: int,
+                                  overhead_tokens: int = CONCEPT_BATCH_JSON_OVERHEAD) -> int:
+    """Calculate total token budget ensuring at least a single-item budget plus overhead."""
+    effective_count = max(1, count)
+    return (tokens_per_item * effective_count) + overhead_tokens
+
+
 def policy_for(task: str) -> LLMTaskPolicy:
     """Return the explicit policy for a known task, or a conservative default."""
     return _POLICIES.get(str(task).strip().lower(), _STRUCTURED)
@@ -68,20 +75,14 @@ def known_task_names() -> frozenset[str]:
 
 def concept_batch_max_tokens(batch_size: int) -> int:
     """Return the complete output budget for a concept batch."""
-    if batch_size < 1:
-        return CONCEPT_PER_SCENE_TOKENS
-    return (CONCEPT_PER_SCENE_TOKENS * batch_size) + CONCEPT_BATCH_JSON_OVERHEAD
+    return _calculate_batch_token_budget(batch_size, CONCEPT_PER_SCENE_TOKENS)
 
 
 def lyric_alignment_max_tokens(segment_count: int) -> int:
     """Return the complete output budget for lyric corrections."""
-    if segment_count < 1:
-        return LYRIC_ALIGNMENT_PER_SEGMENT_TOKENS
-    return (LYRIC_ALIGNMENT_PER_SEGMENT_TOKENS * segment_count) + CONCEPT_BATCH_JSON_OVERHEAD
+    return _calculate_batch_token_budget(segment_count, LYRIC_ALIGNMENT_PER_SEGMENT_TOKENS)
 
 
 def msr_segments_max_tokens(relay_count: int) -> int:
     """Return the complete output budget for MSR relay prompts."""
-    if relay_count < 1:
-        return MSR_PER_RELAY_TOKENS
-    return (MSR_PER_RELAY_TOKENS * relay_count) + CONCEPT_BATCH_JSON_OVERHEAD
+    return _calculate_batch_token_budget(relay_count, MSR_PER_RELAY_TOKENS)
