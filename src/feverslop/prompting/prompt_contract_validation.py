@@ -235,7 +235,7 @@ def _validate_r2v_contract(
     detailed = _h3_section(text, "detailed_description:", "overall_soundscape:")
     soundscape = _h3_section(text, "overall_soundscape:", "non_diegetic_music:")
     music = text.partition("non_diegetic_music:")[2]
-    style_opening = str(plan.style_opening or "").strip()
+    style_opening = _canonical_subject_labels(str(plan.style_opening or ""), plan).strip()
     before_first_shot = detailed.partition("[Shot 1]")[0].strip()
     if not style_opening or before_first_shot != style_opening:
         issues.append(PromptContractIssue(
@@ -343,6 +343,20 @@ def _validate_r2v_contract(
         bound_vocal_subject=bound_vocal_subject,
     ))
     return issues
+
+
+def _canonical_subject_labels(text: str, plan: ResolvedPromptPlan) -> str:
+    """Match the compiler's subject-name normalization for validation."""
+    for subject in sorted(plan.subjects, key=lambda item: len(item.name), reverse=True):
+        name = re.sub(r"^(?:the\s+)", "", subject.name.strip(), flags=re.IGNORECASE)
+        if name:
+            text = re.sub(
+                rf"(?<![\w>])(?:the\s+)?{re.escape(name)}(?=\b|'s\b)",
+                subject.label,
+                text,
+                flags=re.IGNORECASE,
+            )
+    return text
 
 
 def _validate_base_contract(

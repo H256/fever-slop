@@ -1084,7 +1084,19 @@ def _remove_sentence_containing(text: str, phrase: str) -> str:
 
 def _remove_music_sentences(text: str) -> str:
     text = re.sub(
-        r"(?:,\s*)?(?:while\s+)?[^,.;]*\bvocals?\b[^.;]*[.;]?",
+        r"(?:,\s*)?\b(?:featuring|with)\b[^.;]*?\bvocals?\b[^,.;]*(?:,\s*)?",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+    text = re.sub(
+        r"(?:,\s*)?while\s+[^,.;]*\bvocals?\b[^,.;]*[.;]?",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+    text = re.sub(
+        r"(?:^|(?<=[.;]))\s*[^,.;]*\bvocals?\b[^,.;]*[.;]?",
         "",
         text,
         flags=re.IGNORECASE,
