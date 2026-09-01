@@ -76,7 +76,7 @@ class DspyRuntimeTests(unittest.TestCase):
         self.assertEqual(2, calls[0][1]["num_retries"])
         self.assertFalse(calls[0][1]["cache"])
 
-    def test_make_lm_passes_chat_template_kwargs_as_request_body(self):
+    def test_make_lm_passes_chat_template_kwargs_to_dspy(self):
         calls = []
 
         class LLM:
@@ -92,10 +92,7 @@ class DspyRuntimeTests(unittest.TestCase):
         )
 
         self.assertEqual("lm", runtime.make_lm(LLM()))
-        self.assertEqual(
-            {"chat_template_kwargs": {"enable_thinking": False}},
-            calls[0][1].get("extra_body"),
-        )
+        self.assertEqual({"enable_thinking": False}, calls[0][1].get("chat_template_kwargs"))
 
     def test_make_lm_omits_chat_template_kwargs_when_empty(self):
         calls = []
