@@ -12,7 +12,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 29
+H3_COMPILER_VERSION = 30
 
 
 def plan_with_authoritative_relay(
@@ -1084,7 +1084,19 @@ def _remove_sentence_containing(text: str, phrase: str) -> str:
 
 def _remove_music_sentences(text: str) -> str:
     text = re.sub(
-        r"(?:,\s*)?(?:while\s+)?[^,.;]*\bvocals?\b[^.;]*[.;]?",
+        r"(?:,\s*)?\b(?:featuring|with)\b[^.;]*?\bvocals?\b[^,.;]*(?:,\s*)?",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+    text = re.sub(
+        r"(?:,\s*)?while\s+[^,.;]*\bvocals?\b[^,.;]*[.;]?",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+    text = re.sub(
+        r"(?:^|(?<=[.;]))\s*[^,.;]*\bvocals?\b[^,.;]*[.;]?",
         "",
         text,
         flags=re.IGNORECASE,

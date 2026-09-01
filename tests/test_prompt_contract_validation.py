@@ -154,6 +154,41 @@ class PromptContractValidationTests(unittest.TestCase):
         self.assertIn("h3.subject.alias", codes)
         self.assertIn("h3.retention.speaker", codes)
 
+    def test_h3_contract_accepts_canonicalized_subject_in_style_opening(self):
+        prompt = (
+            "subject_definitions:\n"
+            "<Subject 1> is a shadowy figure in <Picture 1>.\n\n"
+            "summary: [reference generation] <Subject 1> performs.\n\n"
+            "retention_analysis:\n"
+            "<Subject 1> (appears in [Shot 1]): fully_preserved - identity retained.\n\n"
+            "detailed_description: <Subject 1> is framed in severe blue light.\n"
+            "[Shot 1] <Subject 1> holds a rigid pose.\n\n"
+            "overall_soundscape: A low electrical hum continues.\n\n"
+            "non_diegetic_music: N/A"
+        )
+        plan = ResolvedPromptPlan(
+            creative_intent="A performance.",
+            style_opening="Dark Entity 1 is framed in severe blue light.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>",
+                name="Dark Entity 1",
+                description="a shadowy figure",
+                source_references=["<Picture 1>"],
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="<Subject 1> holds a rigid pose.",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            overall_soundscape="A low electrical hum continues.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        issues = validate_h3_prompt_contract(prompt, mode="r2v", plan=plan)
+
+        self.assertNotIn("h3.detail.style_opening", [issue.code for issue in issues])
+
     def test_h3_contract_does_not_apply_generation_word_floor_to_video_editing(self):
         prompt = (
             "subject_definitions:\n\n"

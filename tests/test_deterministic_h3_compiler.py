@@ -407,6 +407,27 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("Subtle digital static and rhythmic glitching sounds", prompt)
         self.assertNotIn("No additional diegetic ambience", prompt)
 
+    def test_soundscape_preserves_following_ambience_after_vocal_clause(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A cathedral performance.",
+            shots=[PlannedShot(shot_number=1, description="A figure waits.")],
+            overall_soundscape=(
+                "A heavy, atmospheric soundscape featuring guttural, emotive vocals "
+                "that resonate through a vast space, punctuated by the roaring of "
+                "electrical storms and crystalline rhythmic chiming."
+            ),
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 2.0)},
+            relay_segments=[{"state": "singing", "lyrics": "Hold on"}],
+        )
+
+        self.assertIn("punctuated by the roaring of electrical storms", prompt)
+        self.assertNotIn("featuring guttural\n", prompt)
+
     def test_base_modes_compile_exact_shot_timestamps_and_frame_relationships(self):
         plan = ResolvedPromptPlan(
             creative_intent="A continuous movement.",
