@@ -76,13 +76,13 @@ class DspyRuntimeTests(unittest.TestCase):
         self.assertEqual(2, calls[0][1]["num_retries"])
         self.assertFalse(calls[0][1]["cache"])
 
-    def test_make_lm_passes_chat_template_kwargs_when_present(self):
+    def test_make_lm_passes_chat_template_kwargs_as_request_body(self):
         calls = []
 
         class LLM:
             model = "gemma4-26b-a4b"
             max_tokens = 2048
-            chat_template_kwargs = {"enable_thinking": True}
+            chat_template_kwargs = {"enable_thinking": False}
 
         runtime = DspyRuntime(
             signatures=H3SignatureBundle(object, object, object, object),
@@ -92,7 +92,10 @@ class DspyRuntimeTests(unittest.TestCase):
         )
 
         self.assertEqual("lm", runtime.make_lm(LLM()))
-        self.assertEqual({"enable_thinking": True}, calls[0][1].get("chat_template_kwargs"))
+        self.assertEqual(
+            {"chat_template_kwargs": {"enable_thinking": False}},
+            calls[0][1].get("extra_body"),
+        )
 
     def test_make_lm_omits_chat_template_kwargs_when_empty(self):
         calls = []
