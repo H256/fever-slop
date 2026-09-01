@@ -853,12 +853,11 @@ class DspyH3PromptBuilder:
                         generated = self.generator(request)
                         current_plan = generated.plan
                     except Exception as repair_exc:
-                        if self.warning_callback is not None:
-                            self.warning_callback(
-                                "H3 judge repair was rejected; preserving the valid compiled "
-                                f"prompt and BAD verdict: {_safe_error_message(repair_exc)}",
-                                title="H3 judge repair",
-                            )
+                        self._report_warning(
+                            "H3 judge repair was rejected; preserving the valid compiled "
+                            f"prompt and BAD verdict: {_safe_error_message(repair_exc)}",
+                            title="H3 judge repair",
+                        )
                         break
                 return result
             prompt = getattr(generated, "rendered_prompt", None)
@@ -902,21 +901,22 @@ class DspyH3PromptBuilder:
             result["prompt_judge_attempts"] = [item.model_dump() for item in judge_attempts]
         return result
 
-    def _report_judge_retry(self, attempt: int, total: int, feedback: str) -> None:
+    def _report_warning(self, message: str, *, title: str) -> None:
         warning = getattr(self.generator, "_warning", None)
         if callable(warning):
-            warning(
-                f"H3 compiled prompt judge retry {attempt}/{total}: {feedback}",
-                title="H3 compiled prompt judge retry",
-            )
+            warning(message, title=title)
+
+    def _report_judge_retry(self, attempt: int, total: int, feedback: str) -> None:
+        self._report_warning(
+            f"H3 compiled prompt judge retry {attempt}/{total}: {feedback}",
+            title="H3 compiled prompt judge retry",
+        )
 
     def _report_contract_retry(self, attempt: int, total: int, feedback: str) -> None:
-        warning = getattr(self.generator, "_warning", None)
-        if callable(warning):
-            warning(
-                f"H3 deterministic contract retry {attempt}/{total}: {feedback}",
-                title="H3 deterministic contract retry",
-            )
+        self._report_warning(
+            f"H3 deterministic contract retry {attempt}/{total}: {feedback}",
+            title="H3 deterministic contract retry",
+        )
 
     def _build_structured_prompt(
         self,

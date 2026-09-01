@@ -404,6 +404,80 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertIsNotNone(generator.warning_callback)
 
+    def test_preserves_valid_prompt_when_judge_repair_generation_fails(self):
+        from types import SimpleNamespace
+
+        plan = ResolvedPromptPlan(
+            creative_intent="A short performance.",
+            style_opening="Live-action cinematic imagery uses cool practical lighting.",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="A performer turns toward the window.",
+                start_seconds=0,
+                end_seconds=5,
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+        warnings = []
+
+        class RepairFailingGenerator:
+            judge_attempts = 2
+
+            def __init__(self):
+                self.calls = 0
+                self.warning_callback = None
+
+            def __call__(self, request):
+                self.calls += 1
+                if self.calls > 1:
+                    raise RuntimeError("planner unavailable")
+                return SimpleNamespace(plan=plan)
+
+            def set_warning_callback(self, callback):
+                self.warning_callback = callback
+
+            def _warning(self, message, *, title="H3 warning"):
+                if self.warning_callback is not None:
+                    self.warning_callback(message, title=title)
+
+            def judge_compiled_prompt(self, **_kwargs):
+                return PromptJudgeResult(
+                    verdict="bad",
+                    issues=["shot 1 lacks camera motion"],
+                )
+
+        generator = RepairFailingGenerator()
+
+        class Store:
+            def write_json(self, _path, payload):
+                return payload
+
+        result = DspyH3PromptBuilder(generator, allow_fallback=False).build_all_h3_prompts(
+            stage1_segments=[{"segment_id": "seg-1", "duration": 5}],
+            concept_prompts={"seg-1": "A performer turns toward the window."},
+            scene_details={},
+            global_context={},
+            mode="r2v",
+            output_json_path="prompts.json",
+            artifact_store=Store(),
+            warning_callback=lambda text, title=None: warnings.append((title, text)),
+        )
+
+        self.assertEqual(2, generator.calls)
+        self.assertEqual([
+            ("H3 compiled prompt judge retry",
+             "H3 compiled prompt judge retry 2/2: shot 1 lacks camera motion"),
+            ("H3 judge repair",
+             "H3 judge repair was rejected; preserving the valid compiled prompt "
+             "and BAD verdict: planner unavailable"),
+        ], warnings)
+        self.assertEqual(1, len(result))
+        entry = result[0]
+        self.assertEqual("seg-1", entry["segment_id"])
+        self.assertNotEqual("", entry["prompt"])
+        self.assertEqual("bad", entry["prompt_judge"]["verdict"])
+
     def test_reference_signature_requires_explicit_spatial_subject_placement(self):
         signature = build_dspy_signatures()[3]
         instructions = signature.__doc__ or ""
