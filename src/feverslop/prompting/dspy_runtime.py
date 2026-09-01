@@ -74,7 +74,7 @@ class DspyRuntime:
         # always stores a dict, so forward as-is and omit when unset.
         chat_template_kwargs = getattr(llm, "chat_template_kwargs", None)
         if chat_template_kwargs:
-            kwargs["extra_body"] = {"chat_template_kwargs": dict(chat_template_kwargs)}
+            kwargs["chat_template_kwargs"] = dict(chat_template_kwargs)
 
         if inject:
             kwargs["client"] = client
