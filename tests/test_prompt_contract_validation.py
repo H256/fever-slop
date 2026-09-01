@@ -189,6 +189,41 @@ class PromptContractValidationTests(unittest.TestCase):
 
         self.assertNotIn("h3.detail.style_opening", [issue.code for issue in issues])
 
+    def test_h3_contract_allows_subject_name_in_verbatim_dialogue(self):
+        prompt = (
+            "subject_definitions:\n"
+            "<Subject 1> is a luminous entity in <Picture 1>.\n\n"
+            "summary: [reference generation] <Subject 1> performs.\n\n"
+            "retention_analysis:\n"
+            "<Subject 1> (appears in [Shot 1]): fully_preserved - identity retained.\n\n"
+            "detailed_description: A high-contrast scene.\n"
+            "[Shot 1] <Subject 1> sings, <d>[English] I am Lyra.</d>\n\n"
+            "overall_soundscape: Electrical ambience continues.\n\n"
+            "non_diegetic_music: N/A"
+        )
+        plan = ResolvedPromptPlan(
+            creative_intent="A performance.",
+            style_opening="A high-contrast scene.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>",
+                name="Lyra",
+                description="a luminous entity",
+                source_references=["<Picture 1>"],
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="<Subject 1> sings.",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            overall_soundscape="Electrical ambience continues.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        issues = validate_h3_prompt_contract(prompt, mode="r2v", plan=plan)
+
+        self.assertNotIn("h3.subject.alias", [issue.code for issue in issues])
+
     def test_h3_contract_does_not_apply_generation_word_floor_to_video_editing(self):
         prompt = (
             "subject_definitions:\n\n"

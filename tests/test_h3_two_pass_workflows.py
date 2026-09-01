@@ -30,6 +30,8 @@ class H3TwoPassWorkflowTests(unittest.TestCase):
                 upscaler = next(node for node in workflow.values() if node.get("class_type") == "MinimaxH3LatentUpscaler3D")
                 self.assertEqual("scale by multiplier", upscaler["inputs"]["mode"])
                 self.assertEqual(2, upscaler["inputs"]["mode.scale"])
+                self.assertTrue(upscaler["inputs"]["keep_proportion"])
+                self.assertFalse(upscaler["inputs"]["offload_after_upscale"])
                 self.assertNotIn("scale", upscaler["inputs"])
                 self.assertNotIn("width", upscaler["inputs"])
                 self.assertNotIn("height", upscaler["inputs"])

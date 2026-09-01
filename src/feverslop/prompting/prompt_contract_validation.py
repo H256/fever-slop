@@ -252,6 +252,9 @@ def _validate_r2v_contract(
         issues.append(PromptContractIssue(
             "h3.retention.speaker", "retention_analysis", "speaker IDs are forbidden in retention_analysis",
         ))
+    detailed_without_dialogue = re.sub(
+        r"<d>.*?</d>", "", detailed, flags=re.IGNORECASE | re.DOTALL,
+    )
     for subject in plan.subjects:
         definition_line = _line_for_label(definitions, subject.label)
         retention_line = _line_for_label(retention, subject.label)
@@ -273,7 +276,11 @@ def _validate_r2v_contract(
                 "h3.subject.retention_missing", "retention_analysis", "subject has no retention entry", subject.label,
             ))
         alias = re.sub(r"^(?:the\s+)", "", subject.name.strip(), flags=re.IGNORECASE)
-        if alias and re.search(rf"(?<![\w>])(?:the\s+)?{re.escape(alias)}\b", detailed, re.IGNORECASE):
+        if alias and re.search(
+            rf"(?<![\w>])(?:the\s+)?{re.escape(alias)}\b",
+            detailed_without_dialogue,
+            re.IGNORECASE,
+        ):
             issues.append(PromptContractIssue(
                 "h3.subject.alias",
                 "detailed_description",
