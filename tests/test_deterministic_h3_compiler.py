@@ -126,6 +126,41 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("Loose paper circles through the cold backlight", prompt)
         self.assertIn("settles into a held final pose", prompt)
 
+    def test_r2v_compiler_replaces_subject_names_in_style_opening(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A reference-guided performance.",
+            style_opening="Dark Entity 1 is framed in severe blue light.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>",
+                name="Dark Entity 1",
+                description="a shadowy gothic figure",
+                source_references=["<Picture 1>"],
+            )],
+            reference_usage=[],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="The figure holds a rigid pose.",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            overall_soundscape="A low electrical hum continues.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v",
+            plan=plan,
+            facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 2.0)},
+        )
+
+        detailed = prompt.split("detailed_description:", 1)[1].split(
+            "overall_soundscape:", 1,
+        )[0]
+        self.assertIn("<Subject 1> is framed in severe blue light.", detailed)
+        self.assertNotIn("Dark Entity 1", detailed)
+
     def test_r2v_compiler_turns_possessive_action_phrase_into_natural_prose(self):
         plan = ResolvedPromptPlan(
             creative_intent="A tired performer studies the skyline.",
