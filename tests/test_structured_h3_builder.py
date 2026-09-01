@@ -96,7 +96,7 @@ class StructuredH3BuilderTests(unittest.TestCase):
         self.assertIn("FULL REFERENCE PROMPT", result["prompt"])
         self.assertIn("The singer raises the lantern.", result["prompt"])
         self.assertEqual("deterministic_h3_compiler", result["prompt_provenance"]["compiler"])
-        self.assertEqual(28, result["prompt_provenance"]["compiler_version"])
+        self.assertEqual(29, result["prompt_provenance"]["compiler_version"])
 
     def test_checkpoint_revision_tracks_the_deterministic_compiler(self):
         builder = DspyH3PromptBuilder(lambda _request: None)
@@ -104,7 +104,7 @@ class StructuredH3BuilderTests(unittest.TestCase):
         revision = builder.checkpoint_revision()
 
         self.assertEqual("deterministic_h3_compiler", revision["compiler"])
-        self.assertEqual(28, revision["compiler_version"])
+        self.assertEqual(29, revision["compiler_version"])
 
     def test_resume_recompiles_saved_plan_with_guide_compiler_and_rejudges(self):
         class JudgeOnlyGenerator:

@@ -12,7 +12,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 28
+H3_COMPILER_VERSION = 29
 
 
 def plan_with_authoritative_relay(
@@ -309,7 +309,9 @@ class DeterministicH3Compiler:
                 )
                 retention_lines.append(f"{label}: {marker} - reference is applied in the target video.")
             retention_lines.extend(usage_retention_lines)
-            detailed_parts = [_remove_authored_dialogue_blocks(plan.style_opening or "")]
+            detailed_parts = [_replace_subject_names(
+                _remove_authored_dialogue_blocks(plan.style_opening or ""), plan,
+            )]
             rendered_shots = [
                 _render_shot_with_references(
                     index,
