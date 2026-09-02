@@ -327,6 +327,8 @@
       "offload_after_upscale": false,
       "align": 32,
       "enable_chunking": false,
+      "force_unload": true,
+      "enable_temporal_chunking": true,
       "device": "cuda",
       "precision": "bf16"
     },
