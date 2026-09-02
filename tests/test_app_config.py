@@ -360,6 +360,63 @@ class AppConfigTests(unittest.TestCase):
 
         self.assertEqual(1800, config.comfyui.prompt_timeout_seconds)
 
+    def test_missing_comfyui_latent_upscaler_device_defaults_to_none(self):
+        from feverslop.config.app_config import AppConfig
+
+        config = AppConfig.load(Path("does-not-exist.json"))
+
+        self.assertIsNone(config.comfyui.latent_upscaler_device)
+
+    def test_loads_comfyui_latent_upscaler_device(self):
+        from feverslop.config.app_config import AppConfig
+
+        for value in ("cuda", "rocm", "cpu"):
+            with self.subTest(device=value):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    config_path = Path(temp_dir) / "app_config.json"
+                    config_path.write_text(
+                        json.dumps({"comfyui": {"latent_upscaler_device": value}}),
+                        encoding="utf-8",
+                    )
+
+                    config = AppConfig.load(config_path)
+
+                self.assertEqual(value, config.comfyui.latent_upscaler_device)
+
+    def test_invalid_comfyui_latent_upscaler_device_rejected(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                json.dumps({"comfyui": {"latent_upscaler_device": "tpu"}}),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "comfyui.latent_upscaler_device must be 'cuda', 'rocm', or 'cpu'",
+            ):
+                AppConfig.load(config_path)
+
+    def test_non_string_comfyui_latent_upscaler_device_rejected(self):
+        from feverslop.config.app_config import AppConfig
+
+        for value in (5, True):
+            with self.subTest(value=value):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    config_path = Path(temp_dir) / "app_config.json"
+                    config_path.write_text(
+                        json.dumps({"comfyui": {"latent_upscaler_device": value}}),
+                        encoding="utf-8",
+                    )
+
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "comfyui.latent_upscaler_device must be a string",
+                    ):
+                        AppConfig.load(config_path)
+
     def test_load_accepts_windows_relative_app_config_path(self):
         from feverslop.config.app_config import AppConfig
 

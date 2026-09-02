@@ -80,6 +80,7 @@ class ComfyUIConfig:
     model_overrides: list[ComfyUIModelOverride] = field(default_factory=list)
     default_max_render_duration_seconds: float | None = None
     video_workflow_limits: tuple[VideoWorkflowLimitConfig, ...] = field(default_factory=tuple)
+    latent_upscaler_device: str | None = None
 
 
 class VramHandoffMode(str, Enum):
@@ -246,6 +247,18 @@ class AppConfig:
         if not math.isfinite(prompt_timeout) or prompt_timeout <= 0:
             raise ValueError("comfyui.prompt_timeout_seconds must be greater than zero")
 
+        raw_latent_upscaler_device = comfyui_raw.get("latent_upscaler_device")
+        if raw_latent_upscaler_device is None:
+            latent_upscaler_device: str | None = None
+        elif not isinstance(raw_latent_upscaler_device, str):
+            raise ValueError("comfyui.latent_upscaler_device must be a string")
+        else:
+            latent_upscaler_device = raw_latent_upscaler_device.strip()
+            if latent_upscaler_device not in ("cuda", "rocm", "cpu"):
+                raise ValueError(
+                    "comfyui.latent_upscaler_device must be 'cuda', 'rocm', or 'cpu'"
+                )
+
         video_workflow_limits = tuple(
             VideoWorkflowLimitConfig.from_dict(item)
             for item in comfyui_raw.get("video_workflow_limits") or []
@@ -328,6 +341,7 @@ class AppConfig:
                 ],
                 default_max_render_duration_seconds=default_max_render_duration,
                 video_workflow_limits=video_workflow_limits,
+                latent_upscaler_device=latent_upscaler_device,
             ),
             execution=ExecutionConfig(vram_handoff=vram_handoff),
             global_library_path=library_path.resolve(),

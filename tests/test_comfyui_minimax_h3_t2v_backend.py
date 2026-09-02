@@ -5,6 +5,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from feverslop.adapters.comfyui_minimax_h3_i2v_backend import (
+    ComfyUIMiniMaxH3I2VBackend,
+)
 from feverslop.adapters.comfyui_minimax_h3_t2v_backend import (
     ComfyUIMiniMaxH3T2VBackend,
 )
@@ -444,6 +447,50 @@ class BuildWorkflowTests(unittest.TestCase):
             prompt="test",
         )
         self.assertEqual("scene_0042/raw", result["135"]["inputs"]["filename_prefix"])
+
+
+# ---------------------------------------------------------------------------
+# latent upscaler device tests
+# ---------------------------------------------------------------------------
+
+class LatentUpscalerDeviceTests(unittest.TestCase):
+    def _template(self, name: str) -> dict:
+        workflow_path = Path(__file__).parents[1] / "workflows" / "video" / "minimax_h3" / name
+        return json.loads(workflow_path.read_text(encoding="utf-8"))
+
+    def _latent_upscale_node(self, result: dict) -> dict:
+        return next(
+            node
+            for node in result.values()
+            if node.get("_meta", {}).get("title") == "#LATENT_UPSCALE"
+        )
+
+    def test_rocm_override_patches_latent_upscale_device(self):
+        backend = ComfyUIMiniMaxH3T2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=FakeAssetUploader(),
+            workflow=self._template("t2v_two_pass.json"),
+            latent_upscaler_device="rocm",
+        )
+        result = backend.build_workflow({"scene": 1}, prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("rocm", node["inputs"]["device"])
+        self.assertEqual("scale by multiplier", node["inputs"]["mode"])
+
+    def test_i2v_backend_inherits_device_override(self):
+        backend = ComfyUIMiniMaxH3I2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=FakeAssetUploader(),
+            workflow=self._template("t2v_two_pass.json"),
+            latent_upscaler_device="rocm",
+        )
+        result = backend.build_workflow({"scene": 1}, prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("rocm", node["inputs"]["device"])
 
 
 # ---------------------------------------------------------------------------

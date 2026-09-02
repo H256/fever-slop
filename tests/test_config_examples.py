@@ -81,6 +81,7 @@ class ConfigExampleTests(unittest.TestCase):
             {
                 "base_url", "prompt_timeout_seconds", "model_overrides",
                 "default_max_render_duration_seconds", "video_workflow_limits",
+                "latent_upscaler_device",
             },
             set(raw["comfyui"]),
         )

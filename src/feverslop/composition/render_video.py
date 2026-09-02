@@ -176,6 +176,7 @@ def build_render_video_scenes_use_case(
             video_settings=video_settings,
             audio_ref_stems=stem_list,
             input_audio=project_config.input_audio if project_config is not None else None,
+            latent_upscaler_device=app_config.comfyui.latent_upscaler_device,
         )
     elif options.video_pipeline in {"minimax-h3-t2v", "minimax-h3-i2v"}:
         project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")
@@ -201,6 +202,7 @@ def build_render_video_scenes_use_case(
             ffmpeg_debug=options.ffmpeg_debug,
             model_resolver=model_resolver,
             video_settings=video_settings,
+            latent_upscaler_device=app_config.comfyui.latent_upscaler_device,
         )
     else:
         backend = ComfyUIVideoRenderBackend(

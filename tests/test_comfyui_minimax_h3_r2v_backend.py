@@ -12,6 +12,7 @@ from feverslop.adapters.comfyui_minimax_h3_r2v_backend import (
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.domain.audio_timing_contract import AudioTimingWindow
 from feverslop.domain.continuity import BoundaryFrameManifest
+from feverslop.domain.h3_two_pass import default_h3_two_pass_spec
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
@@ -833,6 +834,76 @@ class BuildWorkflowTests(unittest.TestCase):
                 {"scene": 1},
                 prompt="test",
             )
+
+
+# ---------------------------------------------------------------------------
+# latent upscaler device tests
+# ---------------------------------------------------------------------------
+
+class LatentUpscalerDeviceTests(unittest.TestCase):
+    def _template(self, name: str) -> dict:
+        workflow_path = Path(__file__).parents[1] / "workflows" / "video" / "minimax_h3" / name
+        return json.loads(workflow_path.read_text(encoding="utf-8"))
+
+    def _backend(self, workflow: dict, latent_upscaler_device: str | None = None):
+        return ComfyUIMiniMaxH3R2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=FakeAssetUploader(),
+            workflow=workflow,
+            latent_upscaler_device=latent_upscaler_device,
+        )
+
+    def _scene(self) -> dict:
+        return {"scene": 1, "references": {"actor_sheet_paths": ["/tmp/a.png"]}}
+
+    def _latent_upscale_node(self, result: dict) -> dict:
+        return next(
+            node
+            for node in result.values()
+            if node.get("_meta", {}).get("title") == "#LATENT_UPSCALE"
+        )
+
+    def test_rocm_override_patches_latent_upscale_device(self):
+        for template_name in ("r2v_two_pass.json", "r2v_audio_two_pass.json"):
+            with self.subTest(template=template_name):
+                backend = self._backend(self._template(template_name), latent_upscaler_device="rocm")
+                result = backend.build_workflow(self._scene(), prompt="test")
+                node = self._latent_upscale_node(result)
+                self.assertEqual("rocm", node["inputs"]["device"])
+                self.assertEqual("scale by multiplier", node["inputs"]["mode"])
+
+    def test_default_keeps_template_cuda_device(self):
+        backend = self._backend(self._template("r2v_two_pass.json"))
+        result = backend.build_workflow(self._scene(), prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("cuda", node["inputs"]["device"])
+
+    def test_single_pass_template_ignores_device_override(self):
+        overridden = self._backend(
+            self._template("r2v_v1.json"), latent_upscaler_device="rocm",
+        ).build_workflow(self._scene(), prompt="test")
+        titles = {node.get("_meta", {}).get("title") for node in overridden.values()}
+        self.assertNotIn("#LATENT_UPSCALE", titles)
+        plain = self._backend(self._template("r2v_v1.json")).build_workflow(self._scene(), prompt="test")
+        self.assertEqual(plain, overridden)
+
+    def test_device_override_applies_with_two_pass_spec(self):
+        backend = self._backend(self._template("r2v_two_pass.json"), latent_upscaler_device="rocm")
+        result = backend.build_workflow(
+            self._scene(),
+            prompt="test",
+            two_pass_spec=default_h3_two_pass_spec("draft"),
+        )
+        node = self._latent_upscale_node(result)
+        self.assertEqual("rocm", node["inputs"]["device"])
+        pass1 = next(
+            node
+            for node in result.values()
+            if node.get("_meta", {}).get("title") == "#PASS1"
+        )
+        self.assertEqual("res_multistep", pass1["inputs"]["sampler"])
 
 
 # ---------------------------------------------------------------------------
