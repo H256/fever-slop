@@ -24,16 +24,15 @@ Used by `audio_song_v2.json` and the historical `old/audio_song.json`:
 
 ## MiniMax H3 two-pass generation
 
-Die Zwei-Pass-Profile trennen den AV-Latent mit den eingebauten ComfyUI-Nodes
-`LTXVSeparateAVLatent` und `LTXVConcatAVLatent`. Dadurch bleibt der Audio-Latent
-unverändert und wird nicht durch den räumlichen Upscaler geführt. Für das
-neuronale H3-Upscaling ist zusätzlich die H3-spezifische Node
-`MinimaxH3LatentUpscaler3D` sowie das Modell
-`minimax_h3_latent_upscaler_3d_bf16.safetensors` erforderlich. Die Profile
-benötigen keine VRGDG-H3-Wrapper-Nodes mehr. Der Upscaler unterstützt in den
-Workflows die Betriebsart `scale by multiplier` mit dem bestehenden
-`#LATENT_UPSCALE_SCALE`-Anker; Zielgröße, Ausrichtung, Gerät und Präzision sind
-explizit im Node hinterlegt.
+The two-pass profiles separate the AV latent with the built-in ComfyUI nodes
+`LTXVSeparateAVLatent` and `LTXVConcatAVLatent`. This leaves the audio latent
+unchanged and prevents it from passing through the spatial upscaler. Neural H3
+upscaling also requires the H3-specific `MinimaxH3LatentUpscaler3D` node and
+the `minimax_h3_latent_upscaler_3d_bf16.safetensors` model. The profiles no
+longer require VRGDG H3 wrapper nodes. In the workflows, the upscaler supports
+the `scale by multiplier` mode using the existing `#LATENT_UPSCALE_SCALE`
+anchor; target size, orientation, device, and precision are explicitly set on
+the node.
 
 ## LTX video generation
 
