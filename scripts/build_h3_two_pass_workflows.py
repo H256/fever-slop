@@ -57,6 +57,8 @@ def build(template: Path, output: Path, *, audio: bool = False) -> None:
         "mode.scale": 2.0,
         "align": 32,
         "enable_chunking": False,
+        "force_unload": True,
+        "enable_temporal_chunking": True,
         "device": "cuda",
         "precision": "bf16",
     })

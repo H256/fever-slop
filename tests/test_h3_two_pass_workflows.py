@@ -15,6 +15,18 @@ class H3TwoPassWorkflowTests(unittest.TestCase):
                 workflow = json.loads(path.read_text(encoding="utf-8"))
                 validate_h3_two_pass_topology(workflow, default_h3_two_pass_spec("draft"))
 
+    def test_generated_profiles_declare_upscaler_memory_inputs(self):
+        # MinimaxH3LatentUpscaler3D requires force_unload and
+        # enable_temporal_chunking; ComfyUI rejects prompts missing them.
+        root = Path(__file__).resolve().parents[1]
+        paths = sorted((root / "workflows" / "video" / "minimax_h3").glob("*_two_pass.json"))
+        for path in paths:
+            with self.subTest(path=path.name):
+                workflow = json.loads(path.read_text(encoding="utf-8"))
+                upscaler = next(node for node in workflow.values() if node.get("class_type") == "MinimaxH3LatentUpscaler3D")
+                self.assertTrue(upscaler["inputs"]["force_unload"])
+                self.assertTrue(upscaler["inputs"]["enable_temporal_chunking"])
+
     def test_generated_profiles_use_builtin_av_boundary_without_vrgdg_wrappers(self):
         root = Path(__file__).resolve().parents[1]
         paths = sorted((root / "workflows" / "video" / "minimax_h3").glob("*_two_pass.json"))
