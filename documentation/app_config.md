@@ -102,6 +102,7 @@ contracts and do not enable or disable server-side Thinking.
 | `model_overrides` | array | `[]` | Optional strict model replacement rules; see the fields below. |
 | `default_max_render_duration_seconds` | number or `null` | `null` | Fallback maximum render duration when no workflow-specific limit applies. |
 | `video_workflow_limits` | array | `[]` | Per-workflow maximum render durations; see the fields below. |
+| `latent_upscaler_device` | string or `null` | `null` | ComfyUI device for the `#LATENT_UPSCALE` node in MiniMax H3 two-pass video workflows. One of `"cuda"`, `"rocm"`, or `"cpu"`. `null` keeps the template default (`"cuda"`), which is correct on NVIDIA machines. |
 
 Each `model_overrides` item has all of these string fields:
 
@@ -127,6 +128,21 @@ Each `video_workflow_limits` item has:
 
 Workflow paths in these settings are repository-relative. Durations must be
 finite and greater than zero. Duplicate workflow limits are rejected.
+
+Set `comfyui.latent_upscaler_device` only when ComfyUI runs the MiniMax H3
+two-pass latent upscaler on a non-CUDA device. For example, on an AMD/ROCm
+machine:
+
+```json
+{
+  "comfyui": {
+    "latent_upscaler_device": "rocm"
+  }
+}
+```
+
+The value is applied to the `#LATENT_UPSCALE` node at queue time and has no
+effect on single-pass workflows, which do not contain that node.
 
 ## `video_workflow_profiles`
 

@@ -19,7 +19,8 @@
     "prompt_timeout_seconds": 1800,
     "model_overrides": [],
     "default_max_render_duration_seconds": 18.0,
-    "video_workflow_limits": []
+    "video_workflow_limits": [],
+    "latent_upscaler_device": null
   },
   "execution": {
     "vram_handoff": "continuous"

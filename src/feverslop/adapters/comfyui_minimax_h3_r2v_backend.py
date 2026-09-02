@@ -67,6 +67,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         workflow_label: str | Path | None = None,
         audio_ref_stems: list[str] | None = None,
         input_audio: str | Path | None = None,
+        latent_upscaler_device: str | None = None,
     ):
         super().__init__(
             client=client,
@@ -93,6 +94,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
         self.audio_ref_stems = audio_ref_stems
         self.input_audio = Path(input_audio) if input_audio is not None else None
+        self.latent_upscaler_device = latent_upscaler_device
 
     # -----------------------------------------------------------------------
     # High-level entry points
@@ -206,6 +208,14 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             self._progress("h3_passes_validating")
             patcher = WorkflowPatcher(apply_h3_two_pass_patch(patcher.get(), spec))
             self._progress("h3_passes_ready")
+
+        # -- latent upscaler device (two-pass templates only) ----------------
+        # The device allowlist is enforced at config load time; single-pass
+        # templates have no #LATENT_UPSCALE node, so the patch is a no-op there.
+        if self.latent_upscaler_device is not None:
+            patcher.try_set_existing_input_by_title(
+                "#LATENT_UPSCALE", "device", self.latent_upscaler_device,
+            )
 
         # -- output filename --------------------------------------------------
         self._patch_save_video(patcher, scene_number)
