@@ -1,29 +1,28 @@
-# Strukturierte H3-Prompt-Erzeugung
+# Structured H3 prompt generation
 
-FeverSlop kann H3-Prompts in zwei Stufen erzeugen:
+FeverSlop can generate H3 prompts in two stages:
 
-1. Ein Planner erzeugt ausschließlich strukturierte Sections (`facts`, `shots`,
-   `shot_windows` und optionale Referenzbindungen).
-2. `DeterministicH3Compiler` sortiert, validiert und formatiert diese Sections zu
-   einem stabilen Base- oder Full-Reference-Prompt.
+1. A planner produces only structured sections (`facts`, `shots`, `shot_windows`,
+   and optional reference bindings).
+2. `DeterministicH3Compiler` sorts, validates, and formats these sections into a
+   stable base or full-reference prompt.
 
-Der strukturierte Pfad wird über `DspyH3PromptBuilder.build_h3_prompt` mit
-`structured_sections` aktiviert. Für Batch-Verarbeitung kann
-`build_all_h3_prompts` ein Mapping `structured_sections_by_segment` erhalten.
-Wenn kein Mapping übergeben wird, bleibt der bestehende DSPy-Renderer aktiv.
+The structured path is enabled with `structured_sections` through
+`DspyH3PromptBuilder.build_h3_prompt`. For batch processing,
+`build_all_h3_prompts` can receive a `structured_sections_by_segment` mapping.
+When no mapping is provided, the existing DSPy renderer remains active.
 
 ## Contract
 
-- Locked facts benötigen `scene_id`, Kategorie, Schlüssel, Wert und `source_id`.
-- Jeder Creative-Shot benötigt eine eindeutige `shot_id`, sichtbare Aktion und
-  Performance-Beschreibung.
-- Für jeden Shot muss ein gültiges Zeitfenster existieren.
-- Backend-Labels und Timecodes gehören nicht in kreative Felder; sie werden erst
-  beim deterministischen Zusammenbau eingefügt.
-- Die Ausgabe enthält `prompt_provenance` mit Compilername und Version, damit
-  spätere Render-Ergebnisse reproduzierbar einem Prompt-Compiler zugeordnet
-  werden können.
+- Locked facts require `scene_id`, category, key, value, and `source_id`.
+- Each creative shot requires a unique `shot_id`, a visible action, and a
+  performance description.
+- Every shot must have a valid time window.
+- Backend labels and timecodes do not belong in creative fields; they are added
+  only during deterministic assembly.
+- The output includes `prompt_provenance` with the compiler name and version, so
+  later render results can be reproducibly associated with a prompt compiler.
 
-Der Legacy-Pfad wird dadurch nicht automatisch umgestellt. Ein Workflow-Profil
-oder Planner kann den strukturierten Pfad gezielt aktivieren, sobald dessen
-Sections vollständig vorliegen.
+This does not automatically migrate the legacy path. A workflow profile or
+planner can explicitly enable the structured path once its sections are
+complete.

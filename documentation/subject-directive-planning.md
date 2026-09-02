@@ -1,23 +1,23 @@
 # Model-neutral subject/action planning
 
-Die Pipeline erzeugt im Prompt-Generierungsschritt pro Szene einen gemeinsamen
-Subject-/Action-Plan. Erst danach werden Backend-Prompts komponiert. Einzelne
-Subjects werden nicht unabhängig voneinander geplant.
+During prompt generation, the pipeline creates a shared subject/action plan for
+each scene. Backend prompts are composed only afterward. Individual subjects
+are not planned independently from one another.
 
-## Ablauf
+## Process
 
-1. DSPy erhält Szene, Konzept, Scene-Details, Referenzen und globalen Kontext.
-2. DSPy erzeugt einen versionierten `subject-directives/v1`-Plan.
-3. Der Plan wird im Scene-Prompt-Artefakt unter `subject_directives` gespeichert.
-4. H3, LTX T2V, LTX MSR und Ingredients projizieren denselben Plan.
-5. Deterministische Prüfungen verwerfen fehlende Subjects, Actions, Props,
-   Zeitabdeckung oder widersprüchliche Relationen vor dem Rendering.
+1. DSPy receives the scene, concept, scene details, references, and global context.
+2. DSPy produces a versioned `subject-directives/v1` plan.
+3. The plan is stored under `subject_directives` in the scene prompt artifact.
+4. H3, LTX T2V, LTX MSR, and Ingredients project the same plan.
+5. Deterministic checks reject missing subjects, actions, or props; incomplete
+   time coverage; and contradictory relations before rendering.
 
-Legacy-Szenen ohne `subject_directives` bleiben kompatibel. Bei einer echten
-LLM-Konfiguration wird die Erzeugung automatisch ausgeführt; ein fehlerhafter
-strukturierter DSPy-Output wird nicht stillschweigend als gültiger Plan übernommen.
+Legacy scenes without `subject_directives` remain compatible. With a real LLM
+configuration, generation runs automatically; malformed structured DSPy output
+is not silently accepted as a valid plan.
 
-## Contract-Beispiel
+## Contract example
 
 ```json
 {
@@ -56,11 +56,11 @@ strukturierter DSPy-Output wird nicht stillschweigend als gültiger Plan überno
 }
 ```
 
-`prop_bindings` unterscheidet bewusst zwischen `held`, `played`, `attached`,
-`placed` und `absent`. Ein fehlender Prop-Eintrag bedeutet nicht dasselbe wie
+`prop_bindings` deliberately distinguishes between `held`, `played`, `attached`,
+`placed`, and `absent`. A missing prop entry does not mean the same thing as
 `{"state": "absent"}`.
 
-## Python-Projektion
+## Python projection
 
 ```python
 from feverslop.domain.subject_directives import SubjectDirectivePlan
@@ -73,18 +73,17 @@ h3 = project_subject_directives(plan, backend="minimax-h3-r2v")
 msr = project_subject_directives(plan, backend="ltx-msr")
 ```
 
-Die Backend-Projektionen dürfen Fakten nur ordnen und formatieren. Die
-Coverage-Prüfung schlägt fehl, wenn ein Subject, seine Position oder Aktion,
-ein Prop-State oder eine räumliche Relation aus dem resultierenden Prompt
-verschwindet.
+Backend projections may only order and format facts. The coverage check fails
+if a subject, its position or action, a prop state, or a spatial relation
+disappears from the resulting prompt.
 
-## Regression-Fälle
+## Regression cases
 
-Die Fixtures unter `tests/fixtures/subject_directives/regression_scenes.json`
-decken ab:
+The fixtures in `tests/fixtures/subject_directives/regression_scenes.json`
+cover:
 
-- Szene 47: Rollen- und Instrumentbindung
-- Szene 50: keine kollektive Formulierung wie „their instruments“
-- Szene 52: explizite Cardinality sowie `absent`-Prop- und Background-Zustände
+- Scene 47: role and instrument binding
+- Scene 50: no collective wording such as "their instruments"
+- Scene 52: explicit cardinality plus `absent` prop and background states
 
-Die Tests benötigen weder GPU noch ComfyUI oder externe Modellaufrufe.
+The tests require neither a GPU nor ComfyUI or external model calls.

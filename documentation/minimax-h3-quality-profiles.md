@@ -1,15 +1,15 @@
 # MiniMax H3 quality profiles
 
-Alle H3-Profile verwenden zwei Passes; ein dritter Pass ist nicht vorgesehen.
-`draft` bleibt der Default für neue Projekte.
+All H3 profiles use two passes; a third pass is not supported.
+`draft` remains the default for new projects.
 
-| Profil | Pass 1 Steps | Pass 2 Steps | Pass 2 Denoise | Zweck |
+| Profile | Pass 1 steps | Pass 2 steps | Pass 2 denoise | Purpose |
 |---|---:|---:|---:|---|
-| draft | 12 | 4 | 0.55 | schnelle Planung und Tests |
-| standard | 20 | 8 | 0.40 | ausgewogene Produktion |
-| final | 28 | 12 | 0.30 | maximale Detailverfeinerung |
+| draft | 12 | 4 | 0.55 | fast planning and tests |
+| standard | 20 | 8 | 0.40 | balanced production |
+| final | 28 | 12 | 0.30 | maximum detail refinement |
 
-Die Werte sind reproduzierbare Startkalibrierungen, keine hardwareunabhängigen
-Laufzeit- oder VRAM-Versprechen. Die genaue Auflösung wird separat über das
-jeweilige Auflösungsprofil bestimmt. Bei Audio-Profilen bleibt der Audio-Latent
-Zweig unverändert und darf keinen räumlichen Upscaler durchlaufen.
+These values are reproducible starting calibrations, not hardware-independent
+runtime or VRAM guarantees. The exact resolution is determined separately by
+the respective resolution profile. In audio profiles, the audio-latent branch
+remains unchanged and must not pass through a spatial upscaler.
