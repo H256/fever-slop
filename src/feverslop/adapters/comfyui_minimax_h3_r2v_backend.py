@@ -24,6 +24,7 @@ from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.errors import FeverSlopValidationError
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import VideoRenderRequest
+from feverslop.ports.reporting import Reporter
 
 
 class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
@@ -68,6 +69,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         audio_ref_stems: list[str] | None = None,
         input_audio: str | Path | None = None,
         latent_upscaler_device: str | None = None,
+        reporter: Reporter | None = None,
     ):
         super().__init__(
             client=client,
@@ -86,6 +88,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             video_settings=video_settings,
             project_dir=project_dir,
             workflow=workflow,
+            reporter=reporter,
         )
         self.seed_offset = int(seed_offset)
         self.randomize_seed = bool(randomize_seed)
@@ -210,11 +213,13 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             self._progress("h3_passes_ready")
 
         # -- latent upscaler device (two-pass templates only) ----------------
-        # The device allowlist is enforced at config load time; single-pass
-        # templates have no #LATENT_UPSCALE node, so the patch is a no-op there.
-        if self.latent_upscaler_device is not None:
+        # Single-pass templates have no #LATENT_UPSCALE node and stay
+        # untouched; "auto" resolves once per session against the running
+        # ComfyUI server and is gated against the node definition.
+        resolved_device = self._resolve_latent_upscaler_device(patcher)
+        if resolved_device is not None:
             patcher.try_set_existing_input_by_title(
-                "#LATENT_UPSCALE", "device", self.latent_upscaler_device,
+                "#LATENT_UPSCALE", "device", resolved_device,
             )
 
         # -- output filename --------------------------------------------------

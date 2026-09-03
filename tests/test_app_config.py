@@ -370,7 +370,7 @@ class AppConfigTests(unittest.TestCase):
     def test_loads_comfyui_latent_upscaler_device(self):
         from feverslop.config.app_config import AppConfig
 
-        for value in ("cuda", "rocm", "cpu"):
+        for value in ("cuda", "rocm", "cpu", "auto"):
             with self.subTest(device=value):
                 with tempfile.TemporaryDirectory() as temp_dir:
                     config_path = Path(temp_dir) / "app_config.json"
@@ -395,7 +395,7 @@ class AppConfigTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 ValueError,
-                "comfyui.latent_upscaler_device must be 'cuda', 'rocm', or 'cpu'",
+                "comfyui.latent_upscaler_device must be 'cuda', 'rocm', 'cpu', or 'auto'",
             ):
                 AppConfig.load(config_path)
 

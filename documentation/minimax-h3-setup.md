@@ -20,13 +20,16 @@
 - Set `prompt_timeout_seconds` to 1800+ for multi-minute renders.
 - Start ComfyUI with the appropriate `--listen` and `--port` arguments so it's reachable from FeverSlop.
 - On AMD/ROCm machines, the H3 two-pass workflows ship with `#LATENT_UPSCALE`
-  set to `device: "cuda"`. Set `comfyui.latent_upscaler_device` to `"rocm"` (or
-  `"cpu"`) in `app_config.json` so the latent upscaler runs on the right
-  device:
+  set to `device: "cuda"`. Set `comfyui.latent_upscaler_device` in
+  `app_config.json` so the latent upscaler runs on the right device. The
+  recommended value is `"auto"`: it asks the running ComfyUI server for its
+  GPU and switches the node to `"rocm"` on AMD/Radeon GPUs (leaving the
+  template value on any other GPU). You can also set an explicit `"rocm"` (or
+  `"cpu"`) if you prefer to pin the device by hand:
   ```json
   {
     "comfyui": {
-      "latent_upscaler_device": "rocm"
+      "latent_upscaler_device": "auto"
     }
   }
   ```
