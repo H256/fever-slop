@@ -254,9 +254,9 @@ class AppConfig:
             raise ValueError("comfyui.latent_upscaler_device must be a string")
         else:
             latent_upscaler_device = raw_latent_upscaler_device.strip()
-            if latent_upscaler_device not in ("cuda", "rocm", "cpu"):
+            if latent_upscaler_device not in ("cuda", "rocm", "cpu", "auto"):
                 raise ValueError(
-                    "comfyui.latent_upscaler_device must be 'cuda', 'rocm', or 'cpu'"
+                    "comfyui.latent_upscaler_device must be 'cuda', 'rocm', 'cpu', or 'auto'"
                 )
 
         video_workflow_limits = tuple(

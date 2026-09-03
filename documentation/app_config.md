@@ -102,7 +102,7 @@ contracts and do not enable or disable server-side Thinking.
 | `model_overrides` | array | `[]` | Optional strict model replacement rules; see the fields below. |
 | `default_max_render_duration_seconds` | number or `null` | `null` | Fallback maximum render duration when no workflow-specific limit applies. |
 | `video_workflow_limits` | array | `[]` | Per-workflow maximum render durations; see the fields below. |
-| `latent_upscaler_device` | string or `null` | `null` | ComfyUI device for the `#LATENT_UPSCALE` node in MiniMax H3 two-pass video workflows. One of `"cuda"`, `"rocm"`, or `"cpu"`. `null` keeps the template default (`"cuda"`), which is correct on NVIDIA machines. |
+| `latent_upscaler_device` | string or `null` | `null` | ComfyUI device for the `#LATENT_UPSCALE` node in MiniMax H3 two-pass video workflows. One of `"cuda"`, `"rocm"`, `"cpu"`, or `"auto"`. `null` keeps the template default (`"cuda"`), which is correct on NVIDIA machines. `"auto"` asks the running ComfyUI server for its GPU (via `/system_stats`) and patches the node to `"rocm"` when the GPU name matches AMD/Radeon; on any other GPU the template value is kept. |
 
 Each `model_overrides` item has all of these string fields:
 
@@ -143,6 +143,15 @@ machine:
 
 The value is applied to the `#LATENT_UPSCALE` node at queue time and has no
 effect on single-pass workflows, which do not contain that node.
+
+With `"auto"` (or any explicit value), the backend verifies the resolved
+device against the running server's `/object_info` payload before patching:
+if the `MinimaxH3LatentUpscaler3D` node class or its `device` input is
+missing, or the chosen value is not among the node's options, the patch is
+skipped with a warning and the template default is kept, so a stale or
+incompatible node version can never reject the queued workflow. `"auto"`
+reports the detected device name and total/free VRAM (when the server
+provides them) via the reporter at render start.
 
 ## `video_workflow_profiles`
 

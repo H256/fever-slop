@@ -109,6 +109,22 @@ class ComfyUIClient:
         self._raise_for_status(response, "health check")
         return True
 
+    def get_system_stats(self) -> dict:
+        """Fetch the /system_stats payload (device name, VRAM, etc.)."""
+        response = self._request(
+            "get",
+            f"{self.base_url}/system_stats",
+            "get_system_stats",
+            timeout=min(self.prompt_timeout_seconds, 10.0),
+        )
+        self._raise_for_status(response, "get system stats")
+        try:
+            return require_json_object(response.json(), context="get_system_stats")
+        except ValueError as exc:
+            raise ComfyUIHTTPError(
+                "ComfyUI get system stats returned a non-object JSON payload"
+            ) from exc
+
     def __enter__(self) -> ComfyUIClient:
         return self
 

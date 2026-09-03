@@ -329,6 +329,52 @@ class RenderVideoBackendDispatchTests(unittest.TestCase):
 
         self.assertTrue(hasattr(use_case, "backend"))
 
+    @patch(f"{RENDER_PATCH}.ComfyUIClient")
+    def test_dispatcher_wires_console_reporter_to_backend(self, mock_client):
+        from rich.console import Console
+
+        from feverslop.adapters.reporting import ConsoleReporter
+
+        mock_client.return_value = MagicMock()
+        options = RenderVideoCompositionOptions(
+            app_config_path="config.json",
+            workflow_path="workflow.json",
+            video_pipeline="minimax-h3-r2v",
+            output_dir="/tmp/output",
+        )
+        mock_pc = MockProjectConfig("x")
+        mock_ac = MockAppConfig("x")
+        mock_ac.comfyui.video_workflow_limits = []
+        mock_ac.comfyui.default_max_render_duration_seconds = 30.0
+
+        console = Console()
+        with patch(f"{RENDER_PATCH}.AppConfig.load", return_value=mock_ac):
+            with patch(f"{RENDER_PATCH}.ProjectConfig.load", return_value=mock_pc):
+                use_case = build_render_video_scenes_use_case(options, console=console)
+
+        self.assertIsInstance(use_case.backend.reporter, ConsoleReporter)
+        self.assertIs(use_case.backend.reporter.console, console)
+
+    @patch(f"{RENDER_PATCH}.ComfyUIClient")
+    def test_dispatcher_reporter_none_without_console(self, mock_client):
+        mock_client.return_value = MagicMock()
+        options = RenderVideoCompositionOptions(
+            app_config_path="config.json",
+            workflow_path="workflow.json",
+            video_pipeline="minimax-h3-r2v",
+            output_dir="/tmp/output",
+        )
+        mock_pc = MockProjectConfig("x")
+        mock_ac = MockAppConfig("x")
+        mock_ac.comfyui.video_workflow_limits = []
+        mock_ac.comfyui.default_max_render_duration_seconds = 30.0
+
+        with patch(f"{RENDER_PATCH}.AppConfig.load", return_value=mock_ac):
+            with patch(f"{RENDER_PATCH}.ProjectConfig.load", return_value=mock_pc):
+                use_case = build_render_video_scenes_use_case(options)
+
+        self.assertIsNone(use_case.backend.reporter)
+
 
 if __name__ == "__main__":
     unittest.main()

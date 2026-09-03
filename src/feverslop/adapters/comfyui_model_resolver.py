@@ -135,6 +135,10 @@ class ComfyUIModelResolver:
                 })
         return reports
 
+    def object_info(self) -> dict[str, Any]:
+        """Return the (cached) /object_info payload for this server."""
+        return self._object_info_payload()
+
     def _object_info_payload(self) -> dict[str, Any]:
         if self._object_info is None:
             self._object_info = self.client.get_object_info()

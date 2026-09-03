@@ -83,6 +83,84 @@ class FakeModelResolver:
         return workflow
 
 
+class UpscalerFakeClient(FakeClient):
+    """Client exposing the /system_stats and /object_info surfaces the
+    latent-upscaler device resolution and safety gate rely on."""
+
+    def __init__(self, gpu_name="NVIDIA GeForce RTX 4090", device_options=("cuda", "rocm", "cpu")):
+        super().__init__()
+        self._gpu_name = gpu_name
+        self._device_options = list(device_options)
+        self.system_stats_calls = 0
+        self.object_info_calls = 0
+
+    def get_system_stats(self):
+        self.system_stats_calls += 1
+        return {
+            "devices": [
+                {
+                    "name": self._gpu_name,
+                    "type": "cuda",
+                    "vram_total": 25769803776,
+                    "vram_free": 22886172672,
+                }
+            ]
+        }
+
+    def get_object_info(self):
+        self.object_info_calls += 1
+        return {
+            "MinimaxH3LatentUpscaler3D": {
+                "input": {
+                    "required": {
+                        "device": [self._device_options],
+                    }
+                }
+            }
+        }
+
+
+class FailingStatsClient(FakeClient):
+    def get_system_stats(self):
+        raise RuntimeError("system_stats unavailable")
+
+
+class CpuOnlyStatsClient(UpscalerFakeClient):
+    """Client whose /system_stats payload lists only CPU devices."""
+
+    def get_system_stats(self):
+        self.system_stats_calls += 1
+        return {
+            "devices": [
+                {"name": "AMD Ryzen 9 7950X", "type": "cpu"},
+            ]
+        }
+
+
+class MalformedStatsClient(UpscalerFakeClient):
+    """Client whose /system_stats payload is not a well-formed stats dict."""
+
+    def __init__(self, payload):
+        super().__init__()
+        self._payload = payload
+
+    def get_system_stats(self):
+        self.system_stats_calls += 1
+        return self._payload
+
+
+class RecordingReporter:
+    def __init__(self):
+        self.messages: list[str] = []
+        self.warnings: list[str] = []
+
+    def message(self, text):
+        self.messages.append(text)
+
+    def warning(self, text, *, title=None):
+        self.warnings.append(text)
+
+
 # ---------------------------------------------------------------------------
 # Minimal R2V workflow fixture
 # ---------------------------------------------------------------------------
@@ -845,14 +923,15 @@ class LatentUpscalerDeviceTests(unittest.TestCase):
         workflow_path = Path(__file__).parents[1] / "workflows" / "video" / "minimax_h3" / name
         return json.loads(workflow_path.read_text(encoding="utf-8"))
 
-    def _backend(self, workflow: dict, latent_upscaler_device: str | None = None):
+    def _backend(self, workflow: dict, latent_upscaler_device: str | None = None, client=None, reporter=None):
         return ComfyUIMiniMaxH3R2VBackend(
-            client=FakeClient(),
+            client=client if client is not None else FakeClient(),
             workflow_path=Path("/tmp/wf.json"),
             output_dir=Path("/tmp/out"),
             asset_uploader=FakeAssetUploader(),
             workflow=workflow,
             latent_upscaler_device=latent_upscaler_device,
+            reporter=reporter,
         )
 
     def _scene(self) -> dict:
@@ -868,7 +947,11 @@ class LatentUpscalerDeviceTests(unittest.TestCase):
     def test_rocm_override_patches_latent_upscale_device(self):
         for template_name in ("r2v_two_pass.json", "r2v_audio_two_pass.json"):
             with self.subTest(template=template_name):
-                backend = self._backend(self._template(template_name), latent_upscaler_device="rocm")
+                backend = self._backend(
+                    self._template(template_name),
+                    latent_upscaler_device="rocm",
+                    client=UpscalerFakeClient(),
+                )
                 result = backend.build_workflow(self._scene(), prompt="test")
                 node = self._latent_upscale_node(result)
                 self.assertEqual("rocm", node["inputs"]["device"])
@@ -890,7 +973,11 @@ class LatentUpscalerDeviceTests(unittest.TestCase):
         self.assertEqual(plain, overridden)
 
     def test_device_override_applies_with_two_pass_spec(self):
-        backend = self._backend(self._template("r2v_two_pass.json"), latent_upscaler_device="rocm")
+        backend = self._backend(
+            self._template("r2v_two_pass.json"),
+            latent_upscaler_device="rocm",
+            client=UpscalerFakeClient(),
+        )
         result = backend.build_workflow(
             self._scene(),
             prompt="test",
@@ -904,6 +991,203 @@ class LatentUpscalerDeviceTests(unittest.TestCase):
             if node.get("_meta", {}).get("title") == "#PASS1"
         )
         self.assertEqual("res_multistep", pass1["inputs"]["sampler"])
+
+    def test_auto_detects_rocm_for_amd_gpu(self):
+        client = UpscalerFakeClient(gpu_name="AMD Radeon RX 7900 XTX")
+        reporter = RecordingReporter()
+        backend = self._backend(
+            self._template("r2v_two_pass.json"),
+            latent_upscaler_device="auto",
+            client=client,
+            reporter=reporter,
+        )
+        result = backend.build_workflow(self._scene(), prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("rocm", node["inputs"]["device"])
+        self.assertTrue(
+            any(
+                "upscaler device auto: rocm - AMD Radeon RX 7900 XTX "
+                "(24.0 GiB total, 21.3 GiB free)" in msg
+                for msg in reporter.messages
+            ),
+            reporter.messages,
+        )
+        self.assertEqual(1, client.system_stats_calls)
+
+    def test_auto_keeps_template_cuda_for_nvidia_gpu(self):
+        client = UpscalerFakeClient(gpu_name="NVIDIA GeForce RTX 4090")
+        reporter = RecordingReporter()
+        backend = self._backend(
+            self._template("r2v_two_pass.json"),
+            latent_upscaler_device="auto",
+            client=client,
+            reporter=reporter,
+        )
+        result = backend.build_workflow(self._scene(), prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("cuda", node["inputs"]["device"])
+        self.assertTrue(
+            any(
+                "upscaler device auto: detected NVIDIA GeForce RTX 4090, "
+                "keeping template default (cuda)" in msg
+                for msg in reporter.messages
+            ),
+            reporter.messages,
+        )
+
+    def test_auto_system_stats_failure_keeps_template(self):
+        reporter = RecordingReporter()
+        backend = self._backend(
+            self._template("r2v_two_pass.json"),
+            latent_upscaler_device="auto",
+            client=FailingStatsClient(),
+            reporter=reporter,
+        )
+        result = backend.build_workflow(self._scene(), prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("cuda", node["inputs"]["device"])
+        self.assertTrue(any("system_stats" in w for w in reporter.warnings), reporter.warnings)
+
+    def test_auto_client_without_system_stats_keeps_template(self):
+        reporter = RecordingReporter()
+        backend = self._backend(
+            self._template("r2v_two_pass.json"),
+            latent_upscaler_device="auto",
+            client=FakeClient(),
+            reporter=reporter,
+        )
+        result = backend.build_workflow(self._scene(), prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("cuda", node["inputs"]["device"])
+        self.assertTrue(any("system_stats" in w for w in reporter.warnings), reporter.warnings)
+
+    def test_explicit_device_skipped_when_node_missing_from_object_info(self):
+        reporter = RecordingReporter()
+        client = UpscalerFakeClient()
+        client.get_object_info = lambda: {}
+        backend = self._backend(
+            self._template("r2v_two_pass.json"),
+            latent_upscaler_device="rocm",
+            client=client,
+            reporter=reporter,
+        )
+        result = backend.build_workflow(self._scene(), prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("cuda", node["inputs"]["device"])
+        self.assertTrue(any("not found in server /object_info" in w for w in reporter.warnings), reporter.warnings)
+
+    def test_explicit_device_skipped_when_value_not_accepted(self):
+        reporter = RecordingReporter()
+        client = UpscalerFakeClient(device_options=("cuda", "cpu"))
+        backend = self._backend(
+            self._template("r2v_two_pass.json"),
+            latent_upscaler_device="rocm",
+            client=client,
+            reporter=reporter,
+        )
+        result = backend.build_workflow(self._scene(), prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("cuda", node["inputs"]["device"])
+        self.assertTrue(any("is not accepted by this server" in w for w in reporter.warnings), reporter.warnings)
+
+    def test_auto_resolution_cached_per_backend(self):
+        client = UpscalerFakeClient(gpu_name="AMD Radeon RX 7900 XTX")
+        backend = self._backend(
+            self._template("r2v_two_pass.json"),
+            latent_upscaler_device="auto",
+            client=client,
+        )
+        first = backend.build_workflow(self._scene(), prompt="test")
+        second = backend.build_workflow(self._scene(), prompt="test")
+        self.assertEqual("rocm", self._latent_upscale_node(first)["inputs"]["device"])
+        self.assertEqual("rocm", self._latent_upscale_node(second)["inputs"]["device"])
+        self.assertEqual(1, client.system_stats_calls)
+
+    def test_null_mode_makes_no_network_calls(self):
+        client = UpscalerFakeClient()
+        backend = self._backend(self._template("r2v_two_pass.json"), client=client)
+        backend.build_workflow(self._scene(), prompt="test")
+        self.assertEqual(0, client.system_stats_calls)
+        self.assertEqual(0, client.object_info_calls)
+
+    def test_auto_cpu_only_stats_keeps_template(self):
+        client = CpuOnlyStatsClient()
+        reporter = RecordingReporter()
+        backend = self._backend(
+            self._template("r2v_two_pass.json"),
+            latent_upscaler_device="auto",
+            client=client,
+            reporter=reporter,
+        )
+        result = backend.build_workflow(self._scene(), prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("cuda", node["inputs"]["device"])
+        self.assertEqual(1, client.system_stats_calls)
+        self.assertTrue(
+            any("no GPU reported" in msg for msg in reporter.messages),
+            reporter.messages,
+        )
+        self.assertEqual([], reporter.warnings)
+
+    def test_auto_malformed_stats_payload_keeps_template(self):
+        for payload in ({"devices": "gpu0"}, [{"name": "NVIDIA GPU", "type": "cuda"}]):
+            with self.subTest(payload=payload):
+                client = MalformedStatsClient(payload)
+                reporter = RecordingReporter()
+                backend = self._backend(
+                    self._template("r2v_two_pass.json"),
+                    latent_upscaler_device="auto",
+                    client=client,
+                    reporter=reporter,
+                )
+                result = backend.build_workflow(self._scene(), prompt="test")
+                node = self._latent_upscale_node(result)
+                self.assertEqual("cuda", node["inputs"]["device"])
+                self.assertTrue(
+                    any(
+                        "unexpected /system_stats payload" in w
+                        for w in reporter.warnings
+                    ),
+                    reporter.warnings,
+                )
+
+    def test_auto_single_pass_template_makes_no_network_calls(self):
+        template = self._template("r2v_v1.json")
+        client = UpscalerFakeClient()
+        reporter = RecordingReporter()
+        backend = self._backend(
+            template,
+            latent_upscaler_device="auto",
+            client=client,
+            reporter=reporter,
+        )
+        result = backend.build_workflow(self._scene(), prompt="test")
+        plain = self._backend(template).build_workflow(self._scene(), prompt="test")
+        self.assertEqual(plain, result)
+        self.assertEqual(0, client.system_stats_calls)
+        self.assertEqual(0, client.object_info_calls)
+        self.assertEqual([], reporter.messages)
+        self.assertEqual([], reporter.warnings)
+
+    def test_auto_rejected_by_server_object_info(self):
+        client = UpscalerFakeClient(
+            gpu_name="AMD Radeon RX 7900 XTX",
+            device_options=("cuda", "cpu"),
+        )
+        reporter = RecordingReporter()
+        backend = self._backend(
+            self._template("r2v_two_pass.json"),
+            latent_upscaler_device="auto",
+            client=client,
+            reporter=reporter,
+        )
+        result = backend.build_workflow(self._scene(), prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("cuda", node["inputs"]["device"])
+        self.assertTrue(
+            any("is not accepted by this server" in w for w in reporter.warnings),
+            reporter.warnings,
+        )
 
 
 # ---------------------------------------------------------------------------

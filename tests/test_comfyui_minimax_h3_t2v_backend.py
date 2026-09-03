@@ -72,6 +72,79 @@ class FakeModelResolver:
         return workflow
 
 
+class UpscalerFakeClient(FakeClient):
+    """Client exposing the /system_stats and /object_info surfaces the
+    latent-upscaler device resolution and safety gate rely on."""
+
+    def __init__(self, gpu_name="NVIDIA GeForce RTX 4090", device_options=("cuda", "rocm", "cpu")):
+        super().__init__()
+        self._gpu_name = gpu_name
+        self._device_options = list(device_options)
+        self.system_stats_calls = 0
+        self.object_info_calls = 0
+
+    def get_system_stats(self):
+        self.system_stats_calls += 1
+        return {
+            "devices": [
+                {
+                    "name": self._gpu_name,
+                    "type": "cuda",
+                    "vram_total": 25769803776,
+                    "vram_free": 22886172672,
+                }
+            ]
+        }
+
+    def get_object_info(self):
+        self.object_info_calls += 1
+        return {
+            "MinimaxH3LatentUpscaler3D": {
+                "input": {
+                    "required": {
+                        "device": [self._device_options],
+                    }
+                }
+            }
+        }
+
+
+class CpuOnlyStatsClient(UpscalerFakeClient):
+    """Client whose /system_stats payload lists only CPU devices."""
+
+    def get_system_stats(self):
+        self.system_stats_calls += 1
+        return {
+            "devices": [
+                {"name": "AMD Ryzen 9 7950X", "type": "cpu"},
+            ]
+        }
+
+
+class MalformedStatsClient(UpscalerFakeClient):
+    """Client whose /system_stats payload is not a well-formed stats dict."""
+
+    def __init__(self, payload):
+        super().__init__()
+        self._payload = payload
+
+    def get_system_stats(self):
+        self.system_stats_calls += 1
+        return self._payload
+
+
+class RecordingReporter:
+    def __init__(self):
+        self.messages: list[str] = []
+        self.warnings: list[str] = []
+
+    def message(self, text):
+        self.messages.append(text)
+
+    def warning(self, text, *, title=None):
+        self.warnings.append(text)
+
+
 # ---------------------------------------------------------------------------
 # Minimal T2V workflow fixture
 # ---------------------------------------------------------------------------
@@ -467,7 +540,7 @@ class LatentUpscalerDeviceTests(unittest.TestCase):
 
     def test_rocm_override_patches_latent_upscale_device(self):
         backend = ComfyUIMiniMaxH3T2VBackend(
-            client=FakeClient(),
+            client=UpscalerFakeClient(),
             workflow_path=Path("/tmp/wf.json"),
             output_dir=Path("/tmp/out"),
             asset_uploader=FakeAssetUploader(),
@@ -481,7 +554,7 @@ class LatentUpscalerDeviceTests(unittest.TestCase):
 
     def test_i2v_backend_inherits_device_override(self):
         backend = ComfyUIMiniMaxH3I2VBackend(
-            client=FakeClient(),
+            client=UpscalerFakeClient(),
             workflow_path=Path("/tmp/wf.json"),
             output_dir=Path("/tmp/out"),
             asset_uploader=FakeAssetUploader(),
@@ -491,6 +564,175 @@ class LatentUpscalerDeviceTests(unittest.TestCase):
         result = backend.build_workflow({"scene": 1}, prompt="test")
         node = self._latent_upscale_node(result)
         self.assertEqual("rocm", node["inputs"]["device"])
+
+    def test_auto_detects_rocm_for_amd_gpu(self):
+        client = UpscalerFakeClient(gpu_name="AMD Radeon RX 7900 XTX")
+        reporter = RecordingReporter()
+        backend = ComfyUIMiniMaxH3T2VBackend(
+            client=client,
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=FakeAssetUploader(),
+            workflow=self._template("t2v_two_pass.json"),
+            latent_upscaler_device="auto",
+            reporter=reporter,
+        )
+        result = backend.build_workflow({"scene": 1}, prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("rocm", node["inputs"]["device"])
+        self.assertTrue(
+            any(
+                "upscaler device auto: rocm - AMD Radeon RX 7900 XTX "
+                "(24.0 GiB total, 21.3 GiB free)" in msg
+                for msg in reporter.messages
+            ),
+            reporter.messages,
+        )
+
+    def test_i2v_auto_detects_rocm_for_amd_gpu(self):
+        client = UpscalerFakeClient(gpu_name="AMD Radeon RX 7900 XTX")
+        backend = ComfyUIMiniMaxH3I2VBackend(
+            client=client,
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=FakeAssetUploader(),
+            workflow=self._template("t2v_two_pass.json"),
+            latent_upscaler_device="auto",
+        )
+        result = backend.build_workflow({"scene": 1}, prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("rocm", node["inputs"]["device"])
+        self.assertEqual(1, client.system_stats_calls)
+
+    def test_auto_keeps_template_cuda_for_nvidia_gpu(self):
+        reporter = RecordingReporter()
+        backend = ComfyUIMiniMaxH3T2VBackend(
+            client=UpscalerFakeClient(gpu_name="NVIDIA GeForce RTX 4090"),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=FakeAssetUploader(),
+            workflow=self._template("t2v_two_pass.json"),
+            latent_upscaler_device="auto",
+            reporter=reporter,
+        )
+        result = backend.build_workflow({"scene": 1}, prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("cuda", node["inputs"]["device"])
+        self.assertTrue(
+            any(
+                "upscaler device auto: detected NVIDIA GeForce RTX 4090, "
+                "keeping template default (cuda)" in msg
+                for msg in reporter.messages
+            ),
+            reporter.messages,
+        )
+
+    def test_explicit_device_skipped_when_node_missing_from_object_info(self):
+        reporter = RecordingReporter()
+        client = UpscalerFakeClient()
+        client.get_object_info = lambda: {}
+        backend = ComfyUIMiniMaxH3T2VBackend(
+            client=client,
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=FakeAssetUploader(),
+            workflow=self._template("t2v_two_pass.json"),
+            latent_upscaler_device="rocm",
+            reporter=reporter,
+        )
+        result = backend.build_workflow({"scene": 1}, prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("cuda", node["inputs"]["device"])
+        self.assertTrue(any("not found in server /object_info" in w for w in reporter.warnings), reporter.warnings)
+
+    def test_auto_resolution_cached_per_backend(self):
+        client = UpscalerFakeClient(gpu_name="AMD Radeon RX 7900 XTX")
+        backend = ComfyUIMiniMaxH3T2VBackend(
+            client=client,
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=FakeAssetUploader(),
+            workflow=self._template("t2v_two_pass.json"),
+            latent_upscaler_device="auto",
+        )
+        first = backend.build_workflow({"scene": 1}, prompt="test")
+        second = backend.build_workflow({"scene": 1}, prompt="test")
+        self.assertEqual("rocm", self._latent_upscale_node(first)["inputs"]["device"])
+        self.assertEqual("rocm", self._latent_upscale_node(second)["inputs"]["device"])
+        self.assertEqual(1, client.system_stats_calls)
+
+    def test_auto_cpu_only_stats_keeps_template(self):
+        client = CpuOnlyStatsClient()
+        reporter = RecordingReporter()
+        backend = ComfyUIMiniMaxH3T2VBackend(
+            client=client,
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=FakeAssetUploader(),
+            workflow=self._template("t2v_two_pass.json"),
+            latent_upscaler_device="auto",
+            reporter=reporter,
+        )
+        result = backend.build_workflow({"scene": 1}, prompt="test")
+        node = self._latent_upscale_node(result)
+        self.assertEqual("cuda", node["inputs"]["device"])
+        self.assertEqual(1, client.system_stats_calls)
+        self.assertTrue(
+            any("no GPU reported" in msg for msg in reporter.messages),
+            reporter.messages,
+        )
+        self.assertEqual([], reporter.warnings)
+
+    def test_auto_malformed_stats_payload_keeps_template(self):
+        for payload in ({"devices": "gpu0"}, [{"name": "NVIDIA GPU", "type": "cuda"}]):
+            with self.subTest(payload=payload):
+                client = MalformedStatsClient(payload)
+                reporter = RecordingReporter()
+                backend = ComfyUIMiniMaxH3T2VBackend(
+                    client=client,
+                    workflow_path=Path("/tmp/wf.json"),
+                    output_dir=Path("/tmp/out"),
+                    asset_uploader=FakeAssetUploader(),
+                    workflow=self._template("t2v_two_pass.json"),
+                    latent_upscaler_device="auto",
+                    reporter=reporter,
+                )
+                result = backend.build_workflow({"scene": 1}, prompt="test")
+                node = self._latent_upscale_node(result)
+                self.assertEqual("cuda", node["inputs"]["device"])
+                self.assertTrue(
+                    any(
+                        "unexpected /system_stats payload" in w
+                        for w in reporter.warnings
+                    ),
+                    reporter.warnings,
+                )
+
+    def test_auto_single_pass_template_makes_no_network_calls(self):
+        client = UpscalerFakeClient()
+        reporter = RecordingReporter()
+        backend = ComfyUIMiniMaxH3T2VBackend(
+            client=client,
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=FakeAssetUploader(),
+            workflow=self._template("t2v.json"),
+            latent_upscaler_device="auto",
+            reporter=reporter,
+        )
+        result = backend.build_workflow({"scene": 1}, prompt="test")
+        plain = ComfyUIMiniMaxH3T2VBackend(
+            client=FakeClient(),
+            workflow_path=Path("/tmp/wf.json"),
+            output_dir=Path("/tmp/out"),
+            asset_uploader=FakeAssetUploader(),
+            workflow=self._template("t2v.json"),
+        ).build_workflow({"scene": 1}, prompt="test")
+        self.assertEqual(plain, result)
+        self.assertEqual(0, client.system_stats_calls)
+        self.assertEqual(0, client.object_info_calls)
+        self.assertEqual([], reporter.messages)
+        self.assertEqual([], reporter.warnings)
 
 
 # ---------------------------------------------------------------------------

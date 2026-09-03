@@ -157,6 +157,74 @@ class ComfyUIClientTests(unittest.TestCase):
 
         self.assertIn("ComfyUI cache/VRAM release failed: offline", logs.output[0])
 
+    def test_get_system_stats_returns_parsed_body(self):
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+
+        payload = {
+            "devices": [
+                {
+                    "name": "AMD Radeon RX 7900 XTX",
+                    "type": "cuda",
+                    "vram_total": 25769803776,
+                    "vram_free": 22886172672,
+                }
+            ]
+        }
+        with patch("requests.Session") as session_class:
+            session = MagicMock()
+            session.get.return_value.json.return_value = payload
+            session_class.return_value = session
+
+            client = ComfyUIClient(base_url="http://comfy.example", prompt_timeout_seconds=900)
+            stats = client.get_system_stats()
+
+        self.assertEqual(payload, stats)
+        session.get.assert_called_once_with(
+            "http://comfy.example/system_stats",
+            timeout=10,
+            allow_redirects=False,
+        )
+
+    def test_get_system_stats_forwarding_auth_header(self):
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+
+        with patch("requests.Session") as session_class:
+            session = MagicMock()
+            session.get.return_value.json.return_value = {"devices": []}
+            session_class.return_value = session
+
+            ComfyUIClient(base_url="http://comfy.example", api_key="secret").get_system_stats()
+
+        self.assertEqual(
+            "Bearer secret",
+            session.get.call_args.kwargs["headers"]["Authorization"],
+        )
+
+    def test_get_system_stats_non_object_json_raises_http_error(self):
+        from feverslop.adapters.comfyui_client import ComfyUIClient, ComfyUIHTTPError
+
+        with patch("requests.Session") as session_class:
+            session = MagicMock()
+            session.get.return_value.json.return_value = ["not", "an", "object"]
+            session_class.return_value = session
+
+            with self.assertRaises(ComfyUIHTTPError):
+                ComfyUIClient(base_url="http://comfy.example").get_system_stats()
+
+    def test_health_check_gets_system_stats_once_and_returns_true(self):
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+
+        with patch("requests.Session") as session_class:
+            session = MagicMock()
+            session.get.return_value.json.return_value = {"devices": []}
+            session_class.return_value = session
+
+            healthy = ComfyUIClient(base_url="http://comfy.example").health_check()
+
+        self.assertTrue(healthy)
+        self.assertEqual(1, session.get.call_count)
+        self.assertIn("system_stats", session.get.call_args.args[0])
+
 
 if __name__ == "__main__":
     unittest.main()

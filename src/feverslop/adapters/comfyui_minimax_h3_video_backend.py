@@ -9,6 +9,13 @@ from collections.abc import Callable
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
+from feverslop.adapters.comfyui_upscaler_device import (
+    LATENT_UPSCALER_NODE_CLASS,
+    detect_upscaler_device,
+    device_input_candidates,
+    format_vram_gib,
+    primary_gpu_device,
+)
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
@@ -20,6 +27,7 @@ from feverslop.domain.postprocessing import TrimSpec
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest, StoredArtifact
 from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
+from feverslop.ports.reporting import Reporter
 
 
 class ComfyUIMiniMaxH3VideoRenderBackend:
@@ -48,6 +56,7 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         project_dir: str | Path | None = None,
         workflow: dict | None = None,
         progress_callback: Callable[[str], None] | None = None,
+        reporter: Reporter | None = None,
     ):
         self.client = client
         self.workflow_path = Path(workflow_path)
@@ -69,6 +78,9 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         self.model_resolver = model_resolver
         self.video_settings = video_settings
         self.progress_callback = progress_callback
+        self.reporter = reporter
+        self._upscaler_device_resolved = False
+        self._upscaler_device_cache: str | None = None
 
     def _progress(self, stage: str) -> None:
         callback = self.progress_callback
@@ -184,6 +196,161 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
             raise KeyError("Workflow is missing VAEDecode node")
         if not has_audio:
             raise KeyError("Workflow is missing VAEDecodeAudio node")
+
+    # -----------------------------------------------------------------------
+    # Latent upscaler device (two-pass templates)
+    # -----------------------------------------------------------------------
+
+    def _report_message(self, text: str) -> None:
+        if self.reporter is not None:
+            self.reporter.message(text)
+
+    def _report_warning(self, text: str) -> None:
+        if self.reporter is not None:
+            self.reporter.warning(text)
+
+    @staticmethod
+    def _has_latent_upscale_node(patcher: WorkflowPatcher) -> bool:
+        return bool(patcher.find_nodes_by_meta_title("#LATENT_UPSCALE"))
+
+    @staticmethod
+    def _latent_upscale_template_device(patcher: WorkflowPatcher) -> str | None:
+        """Return the template's current 'device' input value on the node."""
+        for _, node in patcher.find_nodes_by_meta_title("#LATENT_UPSCALE"):
+            inputs = node.get("inputs")
+            if isinstance(inputs, dict):
+                value = inputs.get("device")
+                if isinstance(value, str) and value:
+                    return value
+        return None
+
+    def _template_default_label(self, patcher: WorkflowPatcher) -> str:
+        return self._latent_upscale_template_device(patcher) or "unknown"
+
+    def _resolve_latent_upscaler_device(self, patcher: WorkflowPatcher) -> str | None:
+        """Resolve the device to apply to #LATENT_UPSCALE, or None.
+
+        None means "keep the template value". The decision (patch value or
+        skip) is computed once per backend instance and cached; null mode and
+        single-pass templates short-circuit before any network call.
+        """
+        if self.latent_upscaler_device is None:
+            return None
+        if not self._has_latent_upscale_node(patcher):
+            return None
+        if not self._upscaler_device_resolved:
+            self._upscaler_device_cache = self._compute_upscaler_device(patcher)
+            self._upscaler_device_resolved = True
+        return self._upscaler_device_cache
+
+    def _compute_upscaler_device(self, patcher: WorkflowPatcher) -> str | None:
+        device = self.latent_upscaler_device
+        if device == "auto":
+            device = self._detect_auto_upscaler_device(patcher)
+            if device is None:
+                return None
+        if not self._device_allowed_by_server(device, patcher):
+            return None
+        return device
+
+    def _detect_auto_upscaler_device(self, patcher: WorkflowPatcher) -> str | None:
+        """Resolve "auto" against the running server; None keeps the template."""
+        fallback = self._template_default_label(patcher)
+        getter = getattr(self.client, "get_system_stats", None)
+        if not callable(getter):
+            self._report_warning(
+                "upscaler device auto: ComfyUI client cannot provide "
+                f"/system_stats, keeping template default ({fallback})"
+            )
+            return None
+        try:
+            stats = getter()
+        except Exception as exc:
+            self._report_warning(
+                f"upscaler device auto: /system_stats query failed: {exc}; "
+                f"keeping template default ({fallback})"
+            )
+            return None
+        if not isinstance(stats, dict) or not isinstance(stats.get("devices"), list):
+            self._report_warning(
+                "upscaler device auto: unexpected /system_stats payload, "
+                f"keeping template default ({fallback})"
+            )
+            return None
+        gpu = primary_gpu_device(stats)
+        if gpu is None:
+            self._report_message(
+                "upscaler device auto: no GPU reported by ComfyUI, "
+                f"keeping template default ({fallback})"
+            )
+            return None
+        name = gpu.get("name")
+        name_label = name if isinstance(name, str) and name else "GPU"
+        detected = detect_upscaler_device(stats)
+        if detected is None:
+            self._report_message(
+                f"upscaler device auto: detected {name_label}, "
+                f"keeping template default ({fallback})"
+            )
+            return None
+        self._report_message(
+            f"upscaler device auto: {detected} - {name_label}"
+            + self._vram_suffix(gpu)
+        )
+        return detected
+
+    @staticmethod
+    def _vram_suffix(gpu: dict) -> str:
+        parts = []
+        for field, suffix in (("vram_total", "total"), ("vram_free", "free")):
+            formatted = format_vram_gib(gpu.get(field))
+            if formatted is not None:
+                parts.append(f"{formatted} {suffix}")
+        return f" ({', '.join(parts)})" if parts else ""
+
+    def _device_allowed_by_server(self, device: str, patcher: WorkflowPatcher) -> bool:
+        """Safety gate: skip the patch when the server definition cannot be
+        verified or does not accept the chosen device value."""
+        fallback = self._template_default_label(patcher)
+        payload = self._object_info_payload()
+        if payload is None:
+            self._report_warning(
+                f"upscaler device {device} could not be verified against "
+                f"server /object_info, keeping template default ({fallback})"
+            )
+            return False
+        candidates = device_input_candidates(payload)
+        if candidates is None:
+            self._report_warning(
+                f"upscaler device {device} skipped: {LATENT_UPSCALER_NODE_CLASS} "
+                f"not found in server /object_info, keeping template default "
+                f"({fallback})"
+            )
+            return False
+        if device not in candidates:
+            self._report_warning(
+                f"upscaler device {device} is not accepted by this server's "
+                f"{LATENT_UPSCALER_NODE_CLASS} device input, keeping template "
+                f"default ({fallback})"
+            )
+            return False
+        return True
+
+    def _object_info_payload(self) -> dict | None:
+        """Best-effort /object_info lookup; None when unavailable or failing."""
+        resolver_getter = getattr(self.model_resolver, "object_info", None)
+        if callable(resolver_getter):
+            try:
+                return resolver_getter()
+            except Exception:
+                return None
+        client_getter = getattr(self.client, "get_object_info", None)
+        if callable(client_getter):
+            try:
+                return client_getter()
+            except Exception:
+                return None
+        return None
 
     def _postprocess_with_audio(self, raw_output: Path, spec: TrimSpec) -> Path:
         """Trim raw output using ffmpeg via the postprocessor.

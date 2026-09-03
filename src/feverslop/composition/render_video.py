@@ -16,6 +16,7 @@ from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
 from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
 from feverslop.adapters.local_artifacts import JsonArtifactStore
+from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.application.render_video import RenderVideoScenesUseCase
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
@@ -177,6 +178,7 @@ def build_render_video_scenes_use_case(
             audio_ref_stems=stem_list,
             input_audio=project_config.input_audio if project_config is not None else None,
             latent_upscaler_device=app_config.comfyui.latent_upscaler_device,
+            reporter=ConsoleReporter(console) if console is not None else None,
         )
     elif options.video_pipeline in {"minimax-h3-t2v", "minimax-h3-i2v"}:
         project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")
@@ -203,6 +205,7 @@ def build_render_video_scenes_use_case(
             model_resolver=model_resolver,
             video_settings=video_settings,
             latent_upscaler_device=app_config.comfyui.latent_upscaler_device,
+            reporter=ConsoleReporter(console) if console is not None else None,
         )
     else:
         backend = ComfyUIVideoRenderBackend(
