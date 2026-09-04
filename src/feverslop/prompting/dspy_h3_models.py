@@ -177,6 +177,10 @@ class PlannedShot(BaseModel):
     start_seconds: float | None = Field(default=None, ge=0)
     end_seconds: float | None = Field(default=None, ge=0)
     description: str
+    # Stored H3 sections created before prose ownership existed contain no marker.
+    # Preserve their established component rendering until a fresh DSPy plan
+    # explicitly opts into description ownership.
+    prose_owner: Literal["description", "components"] = "components"
     visible_action: str | None = None
     performance: str | None = None
     camera_behavior: str | None = None
@@ -193,6 +197,7 @@ class H3CreativeShot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     description: str = Field(min_length=1)
+    prose_owner: Literal["description"] = "description"
     visible_action: str | None = None
     performance: str | None = None
     camera_behavior: str | None = None

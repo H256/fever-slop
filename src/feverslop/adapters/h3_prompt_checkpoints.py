@@ -54,7 +54,7 @@ class H3PromptCheckpointStore:
         checkpoint = self.load_for_resume(request)
         if (
             checkpoint is None
-            or checkpoint.status not in {"good", "bad_exhausted"}
+            or checkpoint.status not in {"good", "advisory_bad"}
             or checkpoint.input_fingerprint != self._fingerprint(request)
         ):
             return None
@@ -147,14 +147,14 @@ class H3PromptCheckpointStore:
             return
         verdict = {
             "good": "GOOD",
-            "bad_exhausted": "BAD",
+            "advisory_bad": "BAD",
             "unjudged": "UNJUDGED",
         }[checkpoint.status]
         message = (
             f"H3 prompt checkpoint {action}: scene {checkpoint.scene_number}, "
             f"judge {verdict}, status {checkpoint.status}, path {checkpoint.path}"
         )
-        if checkpoint.status == "bad_exhausted":
+        if checkpoint.status == "advisory_bad":
             judge = checkpoint.generated.get("prompt_judge")
             issues = judge.get("issues") if isinstance(judge, dict) else None
             if issues:
@@ -316,7 +316,9 @@ class H3PromptCheckpointStore:
         if not isinstance(generated, dict) or not str(generated.get("prompt") or "").strip():
             raise FeverSlopDataError(f"Invalid H3 prompt checkpoint generated payload: {path}")
         status = value.get("status")
-        if status not in {"good", "bad_exhausted", "unjudged"}:
+        if status == "bad_exhausted":
+            status = "advisory_bad"
+        if status not in {"good", "advisory_bad", "unjudged"}:
             raise FeverSlopDataError(f"Invalid H3 prompt checkpoint status: {path}")
         try:
             return H3PromptCheckpoint(

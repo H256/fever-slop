@@ -125,12 +125,12 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
             ),
         )
 
-    def test_exhausted_bad_and_unjudged_results_have_distinct_statuses(self):
+    def test_advisory_bad_and_unjudged_results_have_distinct_statuses(self):
         bad = self.store.save(
             self.request(),
             {"prompt": "rejected prompt", "prompt_judge": {"verdict": "bad"}},
         )
-        self.assertEqual("bad_exhausted", bad.status)
+        self.assertEqual("advisory_bad", bad.status)
 
         unjudged = self.store.save(
             self.request(scene_number=2, segment_id="segment-b", segment={"scene": 2, "segment_id": "segment-b"}),
@@ -185,7 +185,7 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         loaded = self.store.load_advisory(request)
 
         self.assertEqual(saved.path, loaded.path)
-        self.assertEqual("bad_exhausted", loaded.status)
+        self.assertEqual("advisory_bad", loaded.status)
 
         request = self.request(scene_number=2, segment_id="segment-b", segment={"scene": 2, "segment_id": "segment-b"})
         self.store.save(request, {"prompt": "unjudged"})

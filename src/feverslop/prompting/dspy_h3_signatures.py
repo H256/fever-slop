@@ -39,11 +39,13 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         shot numbers, timestamps, durations, or hard-cut flags; the application derives them
         from the authoritative scene and relay timeline.
 
-        Return complementary description, action, performance, camera, environment, and
-        transition prose without repeating the same sentence. Every populated prose field
-        must be a complete grammatical sentence, not a heading, note, or noun phrase. For
-        R2V, include a concrete style_opening and normally target 350-500 English words
-        across the combined shot fields, scaled to the scene's actual information load.
+        `description` is the sole renderable creative prose for each shot. It must be one
+        complete, grammatical description containing the intended action, performance,
+        camera, environment, and transition details. Do not distribute the same scene
+        information across auxiliary fields: the deterministic compiler renders only
+        `description` for newly generated shots. For R2V, include a concrete style_opening
+        and normally target 350-500 English words across the combined shot descriptions,
+        scaled to the scene's actual information load.
         This is a writing target; the downstream validator judges structure and the final
         judge evaluates whether the description is sufficiently detailed.
 

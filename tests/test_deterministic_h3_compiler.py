@@ -96,6 +96,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             reference_usage=[],
             shots=[PlannedShot(
                 shot_number=1,
+                prose_owner="components",
                 description=" ".join([
                     "The camera-facing composition remains visually explicit.",
                 ] * 72),
@@ -126,6 +127,64 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("pushes forward slowly at eye level", prompt)
         self.assertIn("Loose paper circles through the cold backlight", prompt)
         self.assertIn("settles into a held final pose", prompt)
+
+    def test_r2v_compiler_renders_a_description_owned_shot_once(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A reference-guided performance.",
+            subjects=[],
+            reference_usage=[],
+            shots=[PlannedShot(
+                shot_number=1,
+                prose_owner="description",
+                description=(
+                    "The musicians sway rhythmically as the camera slowly orbits them "
+                    "through swirling red petals."
+                ),
+                performance="The musicians sway with rhythmic precision.",
+                camera_behavior="The camera maintains a slow orbit around the musicians.",
+                environmental_motion="Red petals swirl around the musicians.",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            overall_soundscape="A quiet wind moves through the scene.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v",
+            plan=plan,
+            facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 2.0)},
+        )
+
+        self.assertIn("The musicians sway rhythmically as the camera slowly orbits them", prompt)
+        self.assertNotIn("The musicians sway with rhythmic precision.", prompt)
+        self.assertNotIn("The camera maintains a slow orbit around the musicians.", prompt)
+        self.assertNotIn("Red petals swirl around the musicians.", prompt)
+
+    def test_legacy_shot_without_prose_owner_keeps_component_rendering(self):
+        plan = ResolvedPromptPlan.model_validate({
+            "creative_intent": "A legacy performance.",
+            "shots": [{
+                "shot_number": 1,
+                "description": "The performer faces the camera.",
+                "camera_behavior": "The camera slowly pushes forward.",
+            }],
+            "overall_soundscape": "Quiet ambience.",
+            "music_intent": "none",
+        })
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v",
+            plan=plan,
+            facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 2.0)},
+        )
+
+        self.assertIn("The performer faces the camera.", prompt)
+        self.assertIn("The camera slowly pushes forward.", prompt)
 
     def test_r2v_compiler_replaces_subject_names_in_style_opening(self):
         plan = ResolvedPromptPlan(
@@ -162,6 +221,37 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("<Subject 1> is framed in severe blue light.", detailed)
         self.assertNotIn("Dark Entity 1", detailed)
 
+    def test_r2v_compiler_removes_reference_description_placeholders(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A reference-guided performance.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>",
+                name="Singer",
+                description="not_specified A musician with stark corpse paint.",
+                source_references=["<Picture 1>"],
+            )],
+            reference_usage=[],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="<Subject 1> faces the camera.",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            overall_soundscape="A low electrical hum continues.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v",
+            plan=plan,
+            facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 2.0)},
+        )
+
+        self.assertIn("<Subject 1> is a musician with stark corpse paint in <Picture 1>.", prompt)
+        self.assertNotIn("not_specified", prompt)
+
     def test_r2v_compiler_turns_possessive_action_phrase_into_natural_prose(self):
         plan = ResolvedPromptPlan(
             creative_intent="A tired performer studies the skyline.",
@@ -172,6 +262,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             reference_usage=[],
             shots=[PlannedShot(
                 shot_number=1,
+                prose_owner="components",
                 description="A wide shot frames Jack beneath the skyline.",
                 visible_action="Jack's slow head tilt and slight shoulder slump.",
                 performance="Jack remains visibly exhausted.",
@@ -265,6 +356,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             ],
             shots=[PlannedShot(
                 shot_number=1,
+                prose_owner="components",
                 description="A wide shot shows the city.",
                 camera_behavior="slow panoramic sweep with small amplitude",
                 start_seconds=0,
@@ -336,6 +428,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             creative_intent="A camera study.",
             shots=[PlannedShot(
                 shot_number=1,
+                prose_owner="components",
                 description="A technician pauses.",
                 camera_behavior="The low-angle arc continues slowly.",
             )],
@@ -356,6 +449,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             creative_intent="A camera study.",
             shots=[PlannedShot(
                 shot_number=1,
+                prose_owner="components",
                 description="A technician pauses.",
                 camera_behavior="The camera the low-angle perspective.",
             )],

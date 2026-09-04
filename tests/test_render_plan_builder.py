@@ -44,6 +44,13 @@ class DetailListPickerTests(unittest.TestCase):
 
 
 class OriginalStylePromptTests(unittest.TestCase):
+    def test_relay_binding_preserves_generated_vocal_subject(self):
+        binding = rpb_module._vocal_relay_binding({
+            "vocal_performers": [{"subject_id": "mordren_vale", "speaker_id": "S1"}],
+        })
+
+        self.assertEqual({"subject_id": "mordren_vale", "speaker_id": "S1"}, binding)
+
     def test_vocal_prompt_contains_singing_but_no_silent_motion(self):
         prompt = build_original_style_i2v_prompt(
             scene={

@@ -13,6 +13,40 @@ from tests.prompt_fakes import GeneralModulesFake
 
 
 class ScenePromptBuilderTests(unittest.TestCase):
+    def test_scene_prompt_persists_structured_llm_vocal_performer(self):
+        modules = GeneralModulesFake(i2v={
+            "prompt": "The vocalist performs with precise lip sync.",
+            "vocal_performers": [{"subject_id": "mordren_vale", "speaker_id": "S1"}],
+        })
+        builder = ScenePromptBuilder(object(), modules=modules)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "scene_prompts.json"
+            builder.build_scene_prompts(
+                stage1_segments=[{"segment_id": "segment_001", "scene": 1, "type": "vocals"}],
+                concept_prompts={"segment_001": {
+                    "concept": "A live performance.",
+                    "references": {"actor_ids": ["mordren_vale"]},
+                }},
+                scene_details={},
+                global_context={
+                    "subject": "a vocalist",
+                    "story_idea": "A performance.",
+                    "style": "cinematic",
+                    "locations": ["stage"],
+                    "prompt_guidance": {},
+                    "actors": [{"id": "mordren_vale", "name": "Mordren Vale"}],
+                },
+                output_json_path=output_path,
+                artifact_store=JsonArtifactStore(),
+            )
+            data = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(
+            [{"subject_id": "mordren_vale", "speaker_id": "S1"}],
+            data[0]["vocal_performers"],
+        )
+
     def test_scene_prompt_overflow_is_trimmed_with_scene_aware_diagnostic(self):
         modules = GeneralModulesFake(i2v="word " * 60)
         messages = []

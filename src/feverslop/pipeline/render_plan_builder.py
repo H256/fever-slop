@@ -2,7 +2,7 @@
 
 import random
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from feverslop.config.video_settings import VideoSettings
@@ -23,6 +23,19 @@ from feverslop.domain.subject_directives import (
 from feverslop.errors import FeverSlopDataError
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.artifacts import ArtifactStore
+
+
+def _vocal_relay_binding(scene: Mapping[str, object]) -> dict[str, str]:
+    """Return the planner-selected single vocal source for relay metadata."""
+    performers = scene.get("vocal_performers") or []
+    if not isinstance(performers, list) or len(performers) != 1:
+        return {}
+    performer = performers[0]
+    if not isinstance(performer, Mapping):
+        return {}
+    subject_id = str(performer.get("subject_id") or "").strip()
+    speaker_id = str(performer.get("speaker_id") or "").strip()
+    return {"subject_id": subject_id, "speaker_id": speaker_id} if subject_id and speaker_id else {}
 
 CAMERA_MOTION_DETAILS = [
     "slow forward dolly",
@@ -508,12 +521,15 @@ def build_render_plan(
                     "No vocal performance, mouth closed, no lip movement. Preserve the same shot, lighting, character identity, wardrobe, and environment."
                 )
 
-            prompt_relay.append({
+            relay_entry = {
                 "frame_start": frame_start,
                 "frame_end": frame_end,
                 "state": state,
                 "prompt": f"{ltx_base_prompt} {state_prompt}",
-            })
+            }
+            if state == "singing":
+                relay_entry.update(_vocal_relay_binding(scene))
+            prompt_relay.append(relay_entry)
 
         if not prompt_relay:
             state = "singing" if scene.get("type") == "vocals" and not _scene_silent_mode(scene) else "instrumental"
@@ -528,12 +544,15 @@ def build_render_plan(
                     "No vocal performance, mouth closed, no lip movement. Preserve the same shot, lighting, character identity, wardrobe, and environment."
                 )
 
-            prompt_relay.append({
+            relay_entry = {
                 "frame_start": 0,
                 "frame_end": frame_count,
                 "state": state,
                 "prompt": f"{ltx_base_prompt} {state_prompt}",
-            })
+            }
+            if state == "singing":
+                relay_entry.update(_vocal_relay_binding(scene))
+            prompt_relay.append(relay_entry)
 
         render_scene = {
             "scene": scene_number,

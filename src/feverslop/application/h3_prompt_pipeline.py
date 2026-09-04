@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.domain.vocal_assignments import infer_vocal_performers
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
 from feverslop.prompting.dspy_h3_models import PromptMode
 from feverslop.prompting.model_types import resolve_model_type
@@ -69,7 +70,12 @@ def _attach_beat_events(stage1_segments: list[dict], beat_data: dict[str, Any]) 
     return enriched
 
 
-def _attach_subject_directives(stage1_segments: list[dict], scene_prompts: list[dict]) -> list[dict]:
+def _attach_subject_directives(
+    stage1_segments: list[dict],
+    scene_prompts: list[dict],
+    *,
+    global_context: dict[str, Any] | None = None,
+) -> list[dict]:
     prompts_by_segment = {
         str(scene.get("segment_id")): scene
         for scene in scene_prompts
@@ -81,6 +87,36 @@ def _attach_subject_directives(stage1_segments: list[dict], scene_prompts: list[
         directives = scene_prompt.get("subject_directives")
         if directives is not None:
             result["subject_directives"] = directives
+        performers = scene_prompt.get("vocal_performers") or []
+        if not performers and str(result.get("type") or "").strip().casefold() in {"vocals", "mixed"}:
+            performers = infer_vocal_performers(
+                prompt=next((
+                    str(scene_prompt.get(key) or "").strip()
+                    for key in ("i2v_prompt_from_t2i", "original_style_i2v_prompt", "ltx_base_prompt")
+                    if str(scene_prompt.get(key) or "").strip()
+                ), ""),
+                actors=(global_context or {}).get("actors") or [],
+            )
+        relay = (result.get("ltx") or {}).get("prompt_relay") or []
+        actor_ids = list((result.get("references") or {}).get("actor_ids") or [])
+        labels = {actor_id: f"<Subject {index}>" for index, actor_id in enumerate(actor_ids, start=1)}
+        if isinstance(performers, list) and relay:
+            stamped_relay = []
+            for item in relay:
+                stamped = dict(item)
+                if str(stamped.get("state") or "").strip().casefold() in {"singing", "vocals", "vocal"}:
+                    for performer in performers:
+                        if not isinstance(performer, dict):
+                            continue
+                        subject_id = str(performer.get("subject_id") or "").strip()
+                        speaker_id = str(performer.get("speaker_id") or "").strip()
+                        if subject_id in labels and speaker_id:
+                            stamped.setdefault("subject_id", subject_id)
+                            stamped.setdefault("subject_label", labels[subject_id])
+                            stamped.setdefault("speaker_id", speaker_id)
+                            break
+                stamped_relay.append(stamped)
+            result["ltx"] = {**dict(result.get("ltx") or {}), "prompt_relay": stamped_relay}
         creative_prompt = next((
             str(scene_prompt.get(key) or "").strip()
             for key in (
@@ -244,6 +280,7 @@ class H3PromptPipeline:
                 stage1_segments = _attach_subject_directives(
                     stage1_segments,
                     artifact_store.read_json(scene_prompts_path),
+                    global_context=global_context,
                 )
             except (FileNotFoundError, KeyError):
                 pass

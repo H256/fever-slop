@@ -237,7 +237,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
-        self.assertEqual(31, revision["compiler_version"])
+        self.assertEqual(37, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
@@ -1243,7 +1243,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         instructions = build_h3_signature_bundle().build_prompt_plan.__doc__ or ""
 
         self.assertIn("creative MiniMax H3 shot prose only", instructions)
-        self.assertIn("complete grammatical sentence", instructions)
+        self.assertIn("sole renderable creative prose", instructions)
         self.assertIn("350-500", instructions)
         self.assertNotIn("Map each subject", instructions)
 

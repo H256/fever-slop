@@ -12,7 +12,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 31
+H3_COMPILER_VERSION = 37
 
 
 def plan_with_authoritative_relay(
@@ -494,9 +494,11 @@ def _render_subject_definition(subject: Any) -> str:
 
 def _clean_subject_description(subject: Any) -> str:
     description = str(subject.description).strip().rstrip(".")
-    return re.sub(
+    description = re.sub(
         rf"^{re.escape(subject.label)}\s+is\s+", "", description, flags=re.IGNORECASE,
     )
+    description = re.sub(r"\bnot[_\s-]*specified\b\s*", "", description, flags=re.IGNORECASE)
+    return re.sub(r"\s{2,}", " ", description).strip() or "a visible referenced subject"
 
 
 def _render_shot_with_references(
@@ -739,6 +741,8 @@ def _lower_initial(value: str) -> str:
 def _render_authored_shot_fields(shot: Any, plan: ResolvedPromptPlan) -> str:
     """Compose typed creative fields as complete sentences, never fragments."""
     primary = _replace_subject_names(str(shot.description or "").strip(), plan)
+    if str(getattr(shot, "prose_owner", "description")) == "description" and primary:
+        return _with_terminal_punctuation(primary)
     values = (
         ("description", primary),
         ("visible_action", shot.visible_action),

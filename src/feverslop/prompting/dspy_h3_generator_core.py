@@ -465,6 +465,7 @@ class VideoPromptGenerator:
                 "start_seconds": start,
                 "end_seconds": end,
                 "description": authored.description,
+                "prose_owner": authored.prose_owner,
                 "visible_action": authored.visible_action,
                 "performance": authored.performance,
                 "camera_behavior": authored.camera_behavior,

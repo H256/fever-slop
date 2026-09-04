@@ -41,6 +41,8 @@ class GeneralModulesFake:
 
     def i2v_prompt(self, payload: dict[str, Any], *, guide: str) -> PromptResult:
         self.calls.append(PromptCall(guide=guide, payload=payload))
+        if isinstance(self.i2v_result, dict):
+            return PromptResult.model_validate(self.i2v_result)
         return PromptResult(prompt=self.i2v_result)
 
     def storyboard_transform(self, payload: dict[str, Any]) -> PromptResult:

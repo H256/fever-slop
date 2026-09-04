@@ -67,6 +67,54 @@ class ConfiguredAudioPathTests(unittest.TestCase):
             result[0]["h3_creative_prompt"],
         )
 
+    def test_attaches_generated_vocalist_to_each_singing_relay_window(self):
+        result = _attach_subject_directives(
+            [{
+                "segment_id": "segment_001",
+                "fps": 24,
+                "references": {"actor_ids": ["mordren_vale", "aurelius_vane"]},
+                "ltx": {"prompt_relay": [
+                    {"frame_start": 0, "frame_end": 24, "state": "instrumental"},
+                    {"frame_start": 24, "frame_end": 72, "state": "singing"},
+                ]},
+            }],
+            [{
+                "segment_id": "segment_001",
+                "vocal_performers": [{"subject_id": "mordren_vale", "speaker_id": "S1"}],
+            }],
+        )
+
+        relay = result[0]["ltx"]["prompt_relay"]
+        self.assertNotIn("subject_label", relay[0])
+        self.assertEqual("mordren_vale", relay[1]["subject_id"])
+        self.assertEqual("<Subject 1>", relay[1]["subject_label"])
+        self.assertEqual("S1", relay[1]["speaker_id"])
+
+    def test_recovers_vocalist_from_existing_llm_motion_prompt(self):
+        result = _attach_subject_directives(
+            [{
+                "segment_id": "segment_001",
+                "fps": 24,
+                "type": "mixed",
+                "references": {"actor_ids": ["mordren_vale", "aurelius_vane"]},
+                "ltx": {"prompt_relay": [
+                    {"frame_start": 0, "frame_end": 72, "state": "singing"},
+                ]},
+            }],
+            [{
+                "segment_id": "segment_001",
+                "i2v_prompt_from_t2i": "Mordren Vale sings with expressive lip sync.",
+            }],
+            global_context={"actors": [
+                {"id": "mordren_vale", "name": "Mordren Vale"},
+                {"id": "aurelius_vane", "name": "Aurelius Vane"},
+            ]},
+        )
+
+        relay = result[0]["ltx"]["prompt_relay"]
+        self.assertEqual("<Subject 1>", relay[0]["subject_label"])
+        self.assertEqual("S1", relay[0]["speaker_id"])
+
     def test_attaches_scene_local_beat_and_downbeat_events(self):
         result = _attach_beat_events(
             [{"segment_id": "s2", "start": 8.0, "end": 10.0}],

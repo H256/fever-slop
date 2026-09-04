@@ -52,7 +52,7 @@ class ExecutionPlanTests(unittest.TestCase):
             checkpoint = layout.scene_h3_prompt(1)
             checkpoint.parent.mkdir(parents=True)
             checkpoint.write_text(
-                json.dumps({"status": "bad_exhausted", "input_fingerprint": "fp"}),
+                json.dumps({"status": "advisory_bad", "input_fingerprint": "fp"}),
                 encoding="utf-8",
             )
             scene = {
