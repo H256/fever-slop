@@ -4,8 +4,6 @@ from collections.abc import Callable
 from typing import Any
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
-from feverslop.domain.h3_prompt_checkpoint import valid_h3_prompt_contract
-from feverslop.errors import FeverSlopDataError
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
 from feverslop.prompting.dspy_h3_models import PromptMode
 from feverslop.prompting.model_types import resolve_model_type
@@ -116,6 +114,35 @@ def _normalize_h3_scene_references(
     ]
 
 
+def _attach_h3_overrides(stage1_segments: list[dict], render_plan: list[dict]) -> list[dict]:
+    """Expose canonical H3 overrides to the builder before any generated work starts."""
+    by_segment = {
+        str((scene.get("canonical") or {}).get("segment_id") or scene.get("segment_id")): scene
+        for scene in render_plan
+        if isinstance(scene, dict) and isinstance(scene.get("canonical") or {}, dict)
+    }
+    by_scene = {
+        int(scene["scene"]): scene
+        for scene in render_plan
+        if isinstance(scene, dict) and scene.get("scene") is not None
+    }
+    enriched: list[dict] = []
+    for index, segment in enumerate(stage1_segments, start=1):
+        scene = by_segment.get(str(segment.get("segment_id")))
+        if scene is None:
+            scene = by_scene.get(int(segment.get("scene") or segment.get("scene_number") or index))
+        canonical = scene.get("canonical") if isinstance(scene, dict) else None
+        roles = canonical.get("roles") if isinstance(canonical, dict) else None
+        role = roles.get("h3.video") if isinstance(roles, dict) else None
+        override = role.get("override") if isinstance(role, dict) else None
+        value = override.get("value") if isinstance(override, dict) else None
+        enriched.append({
+            **segment,
+            **({"h3_prompt_override": value} if isinstance(value, str) and value.strip() else {}),
+        })
+    return enriched
+
+
 def _configured_audio_paths(
     config: Any,
     stem_files: dict[str, Any] | None,
@@ -195,6 +222,15 @@ class H3PromptPipeline:
         artifact_store = context["artifact_store"]
         log_step = context["log_step"]
         log_file = context["log_file"]
+
+        render_plan_json = context["render_plan_json"] if "render_plan_json" in context.keys() else None
+        if render_plan_json is not None:
+            try:
+                render_plan = artifact_store.read_json(render_plan_json)
+            except FileNotFoundError:
+                render_plan = None
+            if isinstance(render_plan, list):
+                stage1_segments = _attach_h3_overrides(stage1_segments, render_plan)
 
         relay_path = context.setdefault("ltx_prompt_relay_json", None)
         if relay_path is not None:
@@ -277,13 +313,7 @@ class H3PromptPipeline:
                 f"[cyan]H3 judge output budget: {judge_output_budget} tokens per verdict.[/cyan]",
             )
             reporter.message(
-                "[cyan]H3 judge mode: "
-                + (
-                    "blocking; BAD verdicts stop render preparation."
-                    if bool(getattr(llm, "prompt_judge_blocking", True))
-                    else "advisory; BAD verdicts are saved but do not stop the pipeline."
-                )
-                + "[/cyan]",
+                "[cyan]H3 judge mode: advisory; BAD verdicts are saved but never stop render preparation.[/cyan]",
             )
         selected_scene_numbers = (
             context["selected_scene_numbers"]
@@ -354,28 +384,10 @@ class H3PromptPipeline:
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
-        if model_spec and model_spec.is_minimax_h3:
-            app_config = context["app_config"]
-            llm_config = getattr(app_config, "llm", None)
-            judge_blocking = bool(
-                getattr(llm_config, "prompt_judge_blocking", True)
-            )
-            not_approved = [
-                str(item.get("segment_id"))
-                for item in context["h3_prompts"]
-                if (
-                    not valid_h3_prompt_contract(item)
-                    or (
-                        judge_blocking
-                        and (item.get("prompt_judge") or {}).get("verdict") != "good"
-                    )
-                )
-            ]
-            if not_approved:
-                raise FeverSlopDataError(
-                    "MiniMax H3 prompt validation blocked render preparation for scenes: "
-                    + ", ".join(not_approved),
-                )
+        # H3 quality diagnostics are advisory. A valid scene must keep moving
+        # to rendering even when the creative planner, compiler diagnostics, or
+        # judge report an imperfect prompt. The builder records whether it used
+        # a deterministic fallback so callers can surface that state.
         if reporter is not None:
             bad_judgements = [
                 item for item in context["h3_prompts"]
@@ -438,6 +450,8 @@ def _h3_prompt_status_message(
     elif status == "recompiled":
         version_suffix = f"; using v{compiler_version}" if compiler_version is not None else ""
         label = f"recompiled (compiler checkpoint invalidated{version_suffix})"
+    elif status == "override":
+        label = "user override (compiler, DSPy, and judge skipped)"
     elif status == "regenerating":
         label = "regenerating (saved structured plan fails current guide contract)"
     elif status == "completed":

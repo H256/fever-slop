@@ -21,6 +21,7 @@ class PromptJudgeResult(BaseModel):
     verdict: Literal["good", "bad"]
     issues: list[str] = Field(default_factory=list)
     repair_instruction: str = ""
+    suggested_prompt: str = ""
     field_issues: list["CreativeFieldIssue"] = Field(default_factory=list)
 
 

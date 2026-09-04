@@ -175,6 +175,24 @@ class ConfiguredAudioPathTests(unittest.TestCase):
 
 
 class DspyPromptPipelineSelectionTests(unittest.TestCase):
+    def test_attaches_canonical_h3_override_to_matching_segment(self):
+        from feverslop.application.h3_prompt_pipeline import _attach_h3_overrides
+
+        segments = _attach_h3_overrides(
+            [{"scene": 1, "segment_id": "segment_001"}],
+            [{
+                "scene": 1,
+                "canonical": {
+                    "segment_id": "segment_001",
+                    "roles": {
+                        "h3.video": {"override": {"value": "opaque custom prompt"}},
+                    },
+                },
+            }],
+        )
+
+        self.assertEqual("opaque custom prompt", segments[0]["h3_prompt_override"])
+
     def test_minimax_pipeline_injects_checkpoint_store_revision_and_partial_aggregate_mode(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 
@@ -499,9 +517,8 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         self.assertEqual("dspy", calls[0][0])
         self.assertFalse(any("fallback" in message.lower() for message in messages))
 
-    def test_minimax_pipeline_blocks_prompt_without_good_judge(self):
+    def test_minimax_pipeline_keeps_bad_judge_prompt_renderable(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
-        from feverslop.errors import FeverSlopDataError
 
         class Builder:
             def build_all_h3_prompts(self, **kwargs):
@@ -530,12 +547,13 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
             h3_prompts_json=Path("h3.json"), artifact_store=ArtifactStore(),
             log_step=lambda _: None, log_file=lambda *_: None,
         )
-        with self.assertRaises(FeverSlopDataError):
-            H3PromptPipeline(
-                llm_factory=lambda _: None,
-                h3_prompt_builder_factory=lambda _: Builder(),
-                dspy_prompt_builder_factory=lambda _: Builder(),
-            ).run(context)
+        H3PromptPipeline(
+            llm_factory=lambda _: None,
+            h3_prompt_builder_factory=lambda _: Builder(),
+            dspy_prompt_builder_factory=lambda _: Builder(),
+        ).run(context)
+
+        self.assertEqual("bad", context["h3_prompts"][0]["prompt_judge"]["verdict"])
 
     def test_minimax_pipeline_allows_bad_advisory_judge_with_valid_contract(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
@@ -587,9 +605,8 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
 
         self.assertEqual([item], context["h3_prompts"])
 
-    def test_minimax_pipeline_blocks_good_judge_without_compiler_contract(self):
+    def test_minimax_pipeline_keeps_unverified_judge_prompt_advisory(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
-        from feverslop.errors import FeverSlopDataError
 
         class Builder:
             def build_all_h3_prompts(self, **kwargs):
@@ -623,11 +640,11 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
             log_step=lambda _: None, log_file=lambda *_: None,
         )
 
-        with self.assertRaises(FeverSlopDataError):
-            H3PromptPipeline(
-                llm_factory=lambda _: None,
-                h3_prompt_builder_factory=lambda _: Builder(),
-                dspy_prompt_builder_factory=lambda _: Builder(),
-            ).run(context)
+        H3PromptPipeline(
+            llm_factory=lambda _: None,
+            h3_prompt_builder_factory=lambda _: Builder(),
+            dspy_prompt_builder_factory=lambda _: Builder(),
+        ).run(context)
+        self.assertEqual("unverified", context["h3_prompts"][0]["prompt"])
 if __name__ == "__main__":
     unittest.main()

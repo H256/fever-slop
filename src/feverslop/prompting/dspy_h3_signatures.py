@@ -273,9 +273,11 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
 
         Use only the supplied inputs. Do not reject unfamiliar identifiers or
         invent a semantic whitelist. Return observational feedback; do not
-        rewrite the prompt. Return a JSON object with `verdict` exactly equal to
+        rewrite the effective prompt. Return a JSON object with `verdict` exactly equal to
         `good` or `bad`; `pass` and `fail` are accepted and normalized by the
-        application. Include an `issues` list (empty when there are none).
+        application. Include an `issues` list (empty when there are none). When
+        the verdict is bad, `suggested_prompt` may contain one complete optional
+        replacement for user review; it is never applied automatically.
         """
 
         guide: str = dspy_module.InputField()

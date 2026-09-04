@@ -12,7 +12,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 30
+H3_COMPILER_VERSION = 31
 
 
 def plan_with_authoritative_relay(
@@ -509,13 +509,6 @@ def _render_shot_with_references(
 ) -> str:
     labels = _shot_reference_labels(shot, plan)
     description = _render_authored_shot_fields(shot, plan)
-    missing = [label for label in labels if label not in description]
-    if missing:
-        visible = " and ".join(missing)
-        verb = "is" if len(missing) == 1 else "are"
-        description = (
-            f"{description.rstrip('.')}. {visible} {verb} also present in the shot."
-        )
     subject_sources = {
         label for subject in plan.subjects for label in subject.source_references
     }
@@ -535,6 +528,9 @@ def _render_shot_with_references(
             description = (
                 f"{description.rstrip('.')} while {label} guides the applicable visual relationship."
             )
+    missing = [label for label in labels if label not in description]
+    if missing:
+        description = f"{_with_terminal_punctuation(description)} The frame includes {' and '.join(missing)}."
     cut = "" if index == 1 else f" At {_time(float(shot.start_seconds or 0.0))},"
     return f"[Shot {index}]{cut} {description}"
 
@@ -741,9 +737,10 @@ def _lower_initial(value: str) -> str:
 
 
 def _render_authored_shot_fields(shot: Any, plan: ResolvedPromptPlan) -> str:
-    """Join every LLM-authored creative field without inventing scene content."""
+    """Compose typed creative fields as complete sentences, never fragments."""
+    primary = _replace_subject_names(str(shot.description or "").strip(), plan)
     values = (
-        ("description", shot.description),
+        ("description", primary),
         ("visible_action", shot.visible_action),
         ("performance", shot.performance),
         ("camera_behavior", _render_camera_behavior(shot.camera_behavior) if shot.camera_behavior else ""),
@@ -761,7 +758,7 @@ def _render_authored_shot_fields(shot: Any, plan: ResolvedPromptPlan) -> str:
             continue
         seen.add(key)
         parts.append(_with_terminal_punctuation(text))
-    return " ".join(parts)
+    return " ".join(parts) or "The shot holds a clear cinematic composition."
 
 
 def _with_terminal_punctuation(value: str) -> str:

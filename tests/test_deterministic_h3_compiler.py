@@ -88,7 +88,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("CREATIVE SHOT DESCRIPTION", prompt)
         self.assertIn("overall_soundscape: CREATIVE SOUNDSCAPE", prompt)
 
-    def test_r2v_compiler_preserves_every_llm_authored_shot_field(self):
+    def test_r2v_compiler_composes_complete_typed_creative_sentences(self):
         plan = ResolvedPromptPlan(
             creative_intent="A complete reference-guided performance.",
             style_opening="Live-action imagery uses cool practical lighting and crisp contrast.",
@@ -120,6 +120,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             duration_seconds=5,
         )
 
+        self.assertIn("The camera-facing composition remains visually explicit.", prompt)
         self.assertIn("raises both hands in a controlled arc", prompt)
         self.assertIn("expression shifts from restraint to open defiance", prompt)
         self.assertIn("pushes forward slowly at eye level", prompt)
@@ -296,7 +297,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertNotIn("deliberate visual continuity", detailed)
         self.assertIn("<Subject 1>", detailed)
         self.assertIn("slow panoramic sweep with small amplitude", detailed)
-        self.assertIn("<Subject 1> is also present in the shot.", detailed)
+        self.assertNotIn("is also present in the shot.", detailed)
         self.assertNotIn("<Audio 1> is fully copied as the complete soundtrack", detailed)
         self.assertNotIn("<Audio 1> is visible in the shot", detailed)
         self.assertIn("fully copied as the target video's audio signal", prompt)
@@ -328,7 +329,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
 
         self.assertNotIn("<Subject 2> is visible in the shot. He", prompt)
         self.assertIn("He struggles to maintain focus while <Subject 1> walks forward.", prompt)
-        self.assertIn("<Subject 2> is also present in the shot.", prompt)
+        self.assertNotIn("is also present in the shot.", prompt)
 
     def test_camera_behavior_is_rendered_without_meta_wrapper(self):
         plan = ResolvedPromptPlan(

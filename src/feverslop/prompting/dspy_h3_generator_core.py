@@ -248,8 +248,9 @@ class VideoPromptGenerator:
             if getattr(signatures, "judge_final_prompt", None) is not None
             else None
         )
-        self.judge_attempts = max(1, int(getattr(llm, "prompt_judge_attempts", 3)))
-        self.prompt_judge_blocking = bool(getattr(llm, "prompt_judge_blocking", True))
+        # A judge is an advisory review, never a generation control loop.
+        self.judge_attempts = 1
+        self.prompt_judge_blocking = False
         self.warning_callback = warning_callback
         self.lm = self.dspy_runtime.make_lm(llm)
         self.judge_lm = self.dspy_runtime.make_lm(
@@ -494,11 +495,11 @@ class VideoPromptGenerator:
         plan: ResolvedPromptPlan,
         refs: list[ResolvedReference],
     ) -> Any:
-        """Render within the resolved slot contract, retrying structural drift."""
+        """Render once within the resolved slot contract; compiler owns recovery."""
         allowed_subjects = {subject.label for subject in plan.subjects}
         allowed_references = {reference.label for reference in refs}
         notes = request.notes or ""
-        for attempt in range(1, 4):
+        for attempt in range(1, 2):
             output = self.reference_renderer(
                 guide=self._read(self.reference_guide_path),
                 user_prompt=request.user_prompt,
@@ -555,22 +556,12 @@ class VideoPromptGenerator:
                 f"missing_subject_retention={sorted(missing_subject_retention)!r}",
                 f"active_vocal_language={active_vocal_language!r}",
             ))
-            if attempt == 3:
+            if attempt == 1:
                 self._warning(
-                    "H3 renderer contract warning after final attempt; continuing with result: "
+                    "H3 renderer contract warning; continuing with deterministic recovery: "
                     f"{error}",
                 )
                 return output
-            self._warning(f"H3 renderer retry {attempt + 1}/3: {error}", title="H3 renderer retry")
-            subject_map = ", ".join(
-                f"{subject.label}={subject.name} from {subject.source_references}"
-                for subject in plan.subjects
-            )
-            notes = (
-                f"{request.notes or ''}\n\nThe previous rendered prompt was invalid ({error}). "
-                f"Use only these exact subject mappings: {subject_map}. Use only reference "
-                f"labels {sorted(allowed_references)!r}. Emit exactly one retention entry per subject."
-            ).strip()
         raise AssertionError("unreachable")
 
     def _repair_creative_plan(
@@ -669,7 +660,7 @@ class VideoPromptGenerator:
             prompt = None
             judge = None
             judge_attempts = []
-            for attempt in range(1, self.judge_attempts + 1):
+            for _attempt in range(1, self.judge_attempts + 1):
                 if request.mode == PromptMode.R2V:
                     output = self._render_reference(effective_request, plan, refs)
                     prompt = ReferenceVideoPrompt(
@@ -697,29 +688,9 @@ class VideoPromptGenerator:
                 judge = self._judge_final_prompt(effective_request, plan, refs, prompt)
                 if judge is not None:
                     judge_attempts.append(judge)
-                if judge is None or judge.verdict == "good" or attempt == self.judge_attempts:
-                    break
-                if judge.field_issues:
-                    plan = self._repair_creative_plan(
-                        effective_request,
-                        plan,
-                        refs,
-                        judge.field_issues,
-                    )
-                feedback = "; ".join(judge.issues) or "the prompt did not satisfy the supplied guide and plan"
-                if judge.repair_instruction:
-                    feedback += f" Repair instruction: {judge.repair_instruction}"
-                self._warning(
-                    f"H3 final prompt judge retry {attempt + 1}/{self.judge_attempts}: {feedback}",
-                    title="H3 final prompt judge retry",
-                )
-                effective_request = effective_request.model_copy(update={
-                    "notes": (
-                        f"{effective_request.notes or ''}\n\n"
-                        "Try again. Here are the judge errors you must fix: "
-                        f"{feedback}"
-                    ).strip(),
-                })
+                # The judgement is returned with the prompt as a user-facing
+                # suggestion.  It must not cause retries or rewrite creative work.
+                break
         if judge is not None and judge.verdict == "bad":
             self._warning(
                 "H3 final prompt judge rejected prompt: " + "; ".join(judge.issues),

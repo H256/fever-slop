@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -11,7 +11,13 @@ from typing import TYPE_CHECKING, Any
 from feverslop.domain.performance_sync import select_performance_audio_paths
 from feverslop.domain.h3_prompt_checkpoint import H3PromptCheckpointInput
 from feverslop.domain.locked_scene_facts import LockedSceneFacts, locked_scene_facts_from_scene
-from feverslop.prompting.dspy_h3_models import AudioSubjectBinding, H3PromptSections, MusicIntent
+from feverslop.prompting.dspy_h3_models import (
+    AudioSubjectBinding,
+    H3PromptSections,
+    MusicIntent,
+    PlannedShot,
+    ResolvedPromptPlan,
+)
 from feverslop.prompting.deterministic_h3_compiler import (
     H3_COMPILER_NAME,
     H3_COMPILER_VERSION,
@@ -705,7 +711,10 @@ class DspyH3PromptBuilder:
         try:
             generated = self.generator(request)
             if hasattr(generated, "plan"):
-                max_attempts = max(1, int(getattr(self.generator, "judge_attempts", 1)))
+                # Generation is intentionally single-pass. A scene must fall
+                # back or retain an advisory BAD verdict rather than entering a
+                # retry loop that can stall a long render batch.
+                max_attempts = 1
                 judge_attempts = []
                 current_plan = generated.plan
                 speaker_bindings = _speaker_bindings_for_compile(
@@ -770,26 +779,7 @@ class DspyH3PromptBuilder:
                         bound_vocal_subject=bound_vocal_subject,
                     )
                     if shape_issues:
-                        if attempt == max_attempts - 1:
-                            raise PromptContractError(shape_issues)
-                        feedback = "; ".join(
-                            f"{issue.code}: {issue.message}"
-                            for issue in shape_issues
-                        )
-                        self._report_contract_retry(attempt + 2, max_attempts, feedback)
-                        request = {
-                            **request,
-                            "notes": (
-                                f"{request.get('notes', '')}\n\n"
-                                "Regenerate the structured creative fields because the "
-                                "deterministic final-prompt validator rejected the compiled "
-                                f"result: {feedback}. Do not add compiler-owned section headers, "
-                                "reference definitions, shot labels, or timestamps."
-                            ).strip(),
-                        }
-                        generated = self.generator(request)
-                        current_plan = generated.plan
-                        continue
+                        raise PromptContractError(shape_issues)
                     result = {
                         "prompt": prompt,
                         "references": references,
@@ -817,48 +807,10 @@ class DspyH3PromptBuilder:
                         judge_attempts.append(judged.model_dump())
                         result["prompt_judge"] = judged.model_dump()
                         result["prompt_judge_attempts"] = list(judge_attempts)
-                    if (
-                        judged is None
-                        or judged.verdict == "good"
-                        or not bool(getattr(self.generator, "prompt_judge_blocking", True))
-                        or attempt == max_attempts - 1
-                        or any(issue.startswith("judge unavailable:") for issue in judged.issues)
-                    ):
-                        break
-                    feedback = _sanitize_judge_feedback(_judge_feedback(judged))
-                    self._report_judge_retry(attempt + 2, max_attempts, feedback)
-                    repair_compiled_plan = getattr(
-                        self.generator, "repair_compiled_plan", None,
-                    )
-                    if judged.field_issues and callable(repair_compiled_plan):
-                        current_plan = repair_compiled_plan(
-                            request=request,
-                            plan=plan,
-                            references=references,
-                            field_issues=judged.field_issues,
-                        )
-                        continue
-                    request = {
-                        **request,
-                        "notes": (
-                            f"{request.get('notes', '')}\n\n"
-                            "Regenerate the structured fields and fix these judge findings: "
-                            f"{feedback}\n"
-                            "Do not add reference labels or timestamps to structured fields; "
-                            "the deterministic compiler adds those guide tokens. Keep dialogue or lyric "
-                            "content inside the guide-required <d>[Language] ...</d> form."
-                        ).strip(),
-                    }
-                    try:
-                        generated = self.generator(request)
-                        current_plan = generated.plan
-                    except Exception as repair_exc:
-                        self._report_warning(
-                            "H3 judge repair was rejected; preserving the valid compiled "
-                            f"prompt and BAD verdict: {_safe_error_message(repair_exc)}",
-                            title="H3 judge repair",
-                        )
-                        break
+                    # The judge is deliberately advisory.  Its full verdict and optional
+                    # suggested prompt are persisted above, but never trigger another LLM
+                    # call or replace the compiled prompt.
+                    break
                 return result
             prompt = getattr(generated, "rendered_prompt", None)
             if not prompt and isinstance(generated, dict):
@@ -869,10 +821,15 @@ class DspyH3PromptBuilder:
             safe_error = _safe_error_message(exc)
             if not self.allow_fallback:
                 raise RuntimeError(f"DSPy H3 generation failed: {safe_error}") from exc
-            # Keep the legacy fallback for projects that cannot use DSPy, but
-            # expose the reason to callers instead of silently claiming that a
-            # structured DSPy prompt was generated.
-            prompt = concept
+            prompt = self._deterministic_fallback(
+                mode=mode,
+                segment=segment,
+                concept=concept,
+                facts=facts,
+                references=references,
+                relay_segments=relay_segments,
+                language=str(request.get("source_language") or "English"),
+            )
             if isinstance(generated, dict):
                 generated.setdefault("dspy_error", safe_error)
             else:
@@ -893,6 +850,11 @@ class DspyH3PromptBuilder:
             result["performance_timing"] = segment["performance_timing"]
         if isinstance(generated, dict) and generated.get("dspy_error"):
             result["dspy_error"] = generated["dspy_error"]
+            result["prompt_provenance"] = {
+                "compiler": H3_COMPILER_NAME,
+                "compiler_version": H3_COMPILER_VERSION,
+                "source": "deterministic_fallback",
+            }
         judge = getattr(generated, "judge", None)
         if judge is not None:
             result["prompt_judge"] = judge.model_dump()
@@ -901,22 +863,71 @@ class DspyH3PromptBuilder:
             result["prompt_judge_attempts"] = [item.model_dump() for item in judge_attempts]
         return result
 
+    @staticmethod
+    def _deterministic_fallback(
+        *,
+        mode: str,
+        segment: dict[str, Any],
+        concept: str,
+        facts: LockedSceneFacts,
+        references: list[dict[str, Any]],
+        relay_segments: list[dict[str, Any]],
+        language: str,
+    ) -> str:
+        """Produce a guide-shaped prompt from planned facts when DSPy is unavailable."""
+        duration = float(segment.get("duration") or segment.get("duration_seconds") or 1.0)
+        description = str(
+            concept or segment.get("h3_creative_prompt") or "The planned scene continues."
+        ).strip()
+        count = max(1, len(relay_segments))
+        shots = [
+            PlannedShot(
+                shot_number=index,
+                start_seconds=duration * (index - 1) / count,
+                end_seconds=duration * index / count,
+                description=description,
+            )
+            for index in range(1, count + 1)
+        ]
+        plan = ResolvedPromptPlan(
+            creative_intent=description,
+            style_opening="Live-action cinematic imagery preserves the planned composition and scene facts.",
+            subjects=[],
+            reference_usage=[],
+            shots=shots,
+            overall_soundscape="The planned ambient and physical sounds continue through the scene.",
+            music_intent=MusicIntent.NONE,
+        )
+        plan = plan_with_authoritative_relay(
+            plan,
+            relay_segments,
+            language=language,
+        )
+        creative_shots = creative_shots_from_plan(plan)
+        windows = {
+            creative.shot_id: (
+                float(shot.start_seconds or 0.0),
+                float(shot.end_seconds or duration),
+            )
+            for shot, creative in zip(plan.shots, creative_shots, strict=True)
+        }
+        return DeterministicH3Compiler().compile(
+            mode=mode,
+            plan=plan,
+            facts=facts,
+            shots=creative_shots,
+            shot_windows=windows,
+            reference_metadata=references,
+            prepared_reference_labels=[str(reference["label"]) for reference in references],
+            duration_seconds=duration,
+            dialogue_language=language,
+            relay_segments=relay_segments,
+        )
+
     def _report_warning(self, message: str, *, title: str) -> None:
         warning = getattr(self.generator, "_warning", None)
         if callable(warning):
             warning(message, title=title)
-
-    def _report_judge_retry(self, attempt: int, total: int, feedback: str) -> None:
-        self._report_warning(
-            f"H3 compiled prompt judge retry {attempt}/{total}: {feedback}",
-            title="H3 compiled prompt judge retry",
-        )
-
-    def _report_contract_retry(self, attempt: int, total: int, feedback: str) -> None:
-        self._report_warning(
-            f"H3 deterministic contract retry {attempt}/{total}: {feedback}",
-            title="H3 deterministic contract retry",
-        )
 
     def _build_structured_prompt(
         self,
@@ -1122,6 +1133,19 @@ class DspyH3PromptBuilder:
         total = len(stage1_segments)
         for current, segment in enumerate(stage1_segments, start=1):
             segment_id = segment["segment_id"]
+            override = _h3_prompt_override(segment)
+            if override:
+                result = {
+                    "prompt": override,
+                    "segment_id": segment_id,
+                    "prompt_provenance": {"source": "user_override"},
+                }
+                results.append({"segment_id": segment_id, **result})
+                if progress_callback is not None:
+                    progress_callback(current, total)
+                if status_callback is not None:
+                    status_callback(current, total, "override")
+                continue
             concept = concept_prompts.get(segment_id, "")
             if isinstance(concept, dict):
                 concept = concept.get("concept", "")
@@ -1143,10 +1167,7 @@ class DspyH3PromptBuilder:
                 )
                 if reuse_checkpoints:
                     advisory_loader = getattr(checkpoint_store, "load_advisory", None)
-                    if (
-                        not bool(getattr(self.generator, "prompt_judge_blocking", True))
-                        and callable(advisory_loader)
-                    ):
+                    if callable(advisory_loader):
                         checkpoint = advisory_loader(checkpoint_input)
                     else:
                         checkpoint = checkpoint_store.load(checkpoint_input)
@@ -1194,33 +1215,16 @@ class DspyH3PromptBuilder:
                         if status_callback is not None:
                             status_callback(current, total, "regenerating")
                     else:
-                        judge = result.get("prompt_judge") or {}
-                        if (
-                            judge.get("verdict") != "good"
-                            and bool(getattr(self.generator, "prompt_judge_blocking", True))
-                        ):
-                            feedback = "; ".join(
-                                str(issue) for issue in judge.get("issues") or []
-                            ) or "compiled prompt was not approved"
-                            if warning_callback is not None:
-                                warning_callback(
-                                    "Recompiled H3 prompt was not approved by the judge "
-                                    f"({feedback}); regenerating creative fields.",
-                                    title="H3 resume regeneration",
-                                )
-                            if status_callback is not None:
-                                status_callback(current, total, "regenerating")
-                        else:
-                            if checkpoint_store is not None and checkpoint_input is not None:
-                                checkpoint_store.save(checkpoint_input, result)
-                            if status_callback is not None:
-                                status_callback(current, total, "recompiled")
-                            results.append({"segment_id": segment_id, **result})
-                            if progress_callback is not None:
-                                progress_callback(current, total)
-                            if status_callback is not None:
-                                status_callback(current, total, "completed")
-                            continue
+                        if checkpoint_store is not None and checkpoint_input is not None:
+                            checkpoint_store.save(checkpoint_input, result)
+                        if status_callback is not None:
+                            status_callback(current, total, "recompiled")
+                        results.append({"segment_id": segment_id, **result})
+                        if progress_callback is not None:
+                            progress_callback(current, total)
+                        if status_callback is not None:
+                            status_callback(current, total, "completed")
+                        continue
                 if status_callback is not None:
                     status_callback(current, total, "started")
                 result = self.build_h3_prompt(
@@ -1291,6 +1295,19 @@ def _judge_feedback(judged: Any) -> str:
         for issue in judged.field_issues
     )
     return "; ".join(dict.fromkeys(parts)) or "the prompt did not satisfy the guide"
+
+
+def _h3_prompt_override(segment: Mapping[str, Any]) -> str:
+    """Return an opaque user prompt override without interpreting its format."""
+    direct = segment.get("h3_prompt_override")
+    if isinstance(direct, str) and direct.strip():
+        return direct
+    canonical = segment.get("canonical")
+    roles = canonical.get("roles") if isinstance(canonical, Mapping) else None
+    role = roles.get("h3.video") if isinstance(roles, Mapping) else None
+    override = role.get("override") if isinstance(role, Mapping) else None
+    value = override.get("value") if isinstance(override, Mapping) else None
+    return value if isinstance(value, str) and value.strip() else ""
 
 
 def _sanitize_judge_feedback(value: str) -> str:
