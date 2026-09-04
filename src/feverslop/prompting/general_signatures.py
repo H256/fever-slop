@@ -22,6 +22,14 @@ class LyricCorrections(BaseModel):
 
 class PromptResult(BaseModel):
     prompt: str
+    vocal_performers: list["VocalPerformer"] = Field(default_factory=list)
+
+
+class VocalPerformer(BaseModel):
+    """A visible vocal source chosen by the creative prompt model."""
+
+    subject_id: str = Field(min_length=1)
+    speaker_id: str = Field(pattern=r"^S[1-9][0-9]*$")
 
 
 class StoryboardPromptResult(PromptResult):
@@ -54,7 +62,7 @@ def build_general_signature_bundle(dspy_module: Any | None = None):
         result: PromptResult = dspy_module.OutputField()
 
     class I2VPrompt(dspy_module.Signature):
-        """Write one image-to-video prompt from the supplied scene payload."""
+        """Write one image-to-video prompt and identify any visible vocal performers by subject ID."""
 
         guide: str = dspy_module.InputField()
         payload: dict[str, Any] = dspy_module.InputField()

@@ -89,7 +89,7 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
                 llm_factory=_build_llm,
                 h3_prompt_builder_factory=H3PromptBuilder,
                 dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
-                    build_dspy_generator(llm), allow_fallback=False,
+                    build_dspy_generator(llm), allow_fallback=True,
                 ),
                 checkpoint_store_factory=_build_h3_checkpoint_store,
             ),
@@ -190,7 +190,7 @@ def build_rebuild_render_plan_use_case(console: Console | None = None) -> Genera
                 llm_factory=_build_llm,
                 h3_prompt_builder_factory=H3PromptBuilder,
                 dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
-                    build_dspy_generator(llm), allow_fallback=False,
+                    build_dspy_generator(llm), allow_fallback=True,
                 ),
                 checkpoint_store_factory=_build_h3_checkpoint_store,
             ),

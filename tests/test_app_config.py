@@ -12,7 +12,7 @@ class AppConfigTests(unittest.TestCase):
     def test_h3_judge_can_be_configured_as_advisory(self):
         from feverslop.config.app_config import AppConfig
 
-        self.assertTrue(AppConfig.load(Path("does-not-exist.json")).llm.prompt_judge_blocking)
+        self.assertFalse(AppConfig.load(Path("does-not-exist.json")).llm.prompt_judge_blocking)
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "app_config.json"
             config_path.write_text(

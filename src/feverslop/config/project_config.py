@@ -336,7 +336,8 @@ def _optional_upscale_string(raw: dict, key: str, default: str) -> str | None:
 class ProjectConfig:
     project_dir: Path
     project_name: str
-    input_audio: Path
+    input_audio: Path | None
+    content_mode: str = "music_video"
     silent_mode: bool = False
     lyrics: str = ""
 
@@ -402,12 +403,19 @@ class ProjectConfig:
                 f"valid keys are: {valid_global_keys}"
             )
 
-        input_audio_raw = raw.get("input_audio")
+        content_mode = str(raw.get("content_mode", "music_video")).strip().lower()
+        if content_mode not in {"music_video", "narrative_film"}:
+            raise ValueError("content_mode must be music_video or narrative_film")
+        input_audio_raw = raw.get("input_audio", "")
         if not isinstance(input_audio_raw, str):
-            raise ValueError("Project config requires an 'input_audio' string field")
-        # Blank is the established "no audio" sentinel for movie projects
-        # (studio/project_validation.py exempts it; movie_pipeline.py treats it as absent).
-        input_audio = coerce_local_path(input_audio_raw, base_dir=project_dir)
+            raise ValueError("input_audio must be a string when provided")
+        if content_mode == "music_video" and not input_audio_raw.strip():
+            raise ValueError("input_audio is required when content_mode is music_video")
+        input_audio = (
+            coerce_local_path(input_audio_raw, base_dir=project_dir)
+            if input_audio_raw.strip()
+            else None
+        )
         _validate_numeric_fields(video_raw, ("fps", "width", "height", "megapixels"))
         valid_upscale_keys = {
             "enabled",
@@ -501,8 +509,9 @@ class ProjectConfig:
 
         return cls(
             project_dir=project_dir,
-            project_name=raw.get("project_name") or input_audio.stem,
+            project_name=raw.get("project_name") or (input_audio.stem if input_audio else project_dir.name),
             input_audio=input_audio,
+            content_mode=content_mode,
             silent_mode=silent_mode,
             lyrics=_load_multiline_text(raw.get("lyrics", "")),
 
@@ -699,7 +708,7 @@ class ProjectConfig:
 
     @property
     def song_id(self) -> str:
-        return self.input_audio.stem
+        return self.input_audio.stem if self.input_audio is not None else self.project_name
 
     @property
     def output_dir(self) -> Path:

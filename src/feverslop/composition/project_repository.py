@@ -240,6 +240,7 @@ def movie_default_config_from_metadata(metadata: dict[str, Any]) -> dict[str, An
 def _movie_default_config(*, name: str, story_text: str, silent_mode: bool, width: int, height: int, fps: int, dialogue_language: str, render_profile: dict[str, str] | None = None) -> dict[str, Any]:
     return {
         "project_name": name,
+        "content_mode": "narrative_film",
         "input_audio": "",
         "silent_mode": silent_mode,
         "lyrics": "",

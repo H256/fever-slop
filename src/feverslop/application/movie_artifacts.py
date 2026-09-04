@@ -192,7 +192,12 @@ def ensure_movie_narrative_plan(project_dir: Path) -> Path:
     if path.exists():
         return path
     bible = movie_bible_from_dict(_read_json(ensure_movie_bible(project_dir)))
-    screenplay = movie_screenplay_from_dict(_read_json(ensure_movie_screenplay(project_dir)), fallback_title=project_dir.name, source_type="short_story", bible=bible)
+    screenplay = movie_screenplay_from_dict(
+        _read_json(ensure_movie_screenplay(project_dir)),
+        fallback_title=project_dir.name,
+        source_type=_movie_source_metadata(project_dir, {})[0],
+        bible=bible,
+    )
     narrative = build_movie_narrative_plan_fallback(screenplay=screenplay)
     path.write_text(json.dumps(movie_narrative_plan_to_dict(narrative), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return path
@@ -204,7 +209,12 @@ def ensure_movie_scene_cards(project_dir: Path) -> Path:
     if path.exists():
         return path
     bible = movie_bible_from_dict(_read_json(ensure_movie_bible(project_dir)))
-    screenplay = movie_screenplay_from_dict(_read_json(ensure_movie_screenplay(project_dir)), fallback_title=project_dir.name, source_type="short_story", bible=bible)
+    screenplay = movie_screenplay_from_dict(
+        _read_json(ensure_movie_screenplay(project_dir)),
+        fallback_title=project_dir.name,
+        source_type=_movie_source_metadata(project_dir, {})[0],
+        bible=bible,
+    )
     shots = _shots_from_project_render_plan(project_dir)
     cards = build_movie_scene_cards(screenplay=screenplay, shots=shots)
     path.write_text(json.dumps(movie_scene_cards_to_dict(cards), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

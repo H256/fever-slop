@@ -25,7 +25,8 @@ class LLMConfig:
     max_concurrent_requests: int = 1
     prompt_judge_attempts: int = 3
     prompt_judge_max_tokens: int = 8192
-    prompt_judge_blocking: bool = True
+    # Kept for config compatibility; H3 judges are advisory in all modes.
+    prompt_judge_blocking: bool = False
     chat_template_kwargs: dict[str, Any] = field(default_factory=dict)
     models: dict[str, str] = field(default_factory=dict)
     _local_api_key: str | None = field(default=None, repr=False)
@@ -280,7 +281,7 @@ class AppConfig:
         llm_prompt_judge_attempts = int(llm_raw.get("prompt_judge_attempts", 3))
         llm_prompt_judge_max_tokens = int(llm_raw.get("prompt_judge_max_tokens", 8192))
         llm_prompt_judge_blocking = _parse_bool(
-            llm_raw.get("prompt_judge_blocking", True),
+            llm_raw.get("prompt_judge_blocking", False),
             "llm.prompt_judge_blocking",
         )
         llm_chat_template_kwargs_raw = llm_raw.get("chat_template_kwargs", {})

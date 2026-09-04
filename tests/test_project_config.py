@@ -7,6 +7,34 @@ from feverslop.config.project_config import ProjectConfig
 
 
 class ProjectConfigTests(unittest.TestCase):
+    def test_content_mode_defaults_to_music_video(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(json.dumps({"input_audio": "song.mp3"}), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual("music_video", config.content_mode)
+
+    def test_narrative_film_allows_no_input_audio(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(json.dumps({"content_mode": "narrative_film"}), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual("narrative_film", config.content_mode)
+
+    def test_rejects_unknown_content_mode(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(json.dumps({"content_mode": "auto"}), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "content_mode"):
+                ProjectConfig.load(config_path)
+
     def test_workflow_config_defaults_to_unselected(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -973,7 +1001,7 @@ class ProjectConfigValidationTests(unittest.TestCase):
             config_path.write_text(json.dumps({}), encoding="utf-8")
             with self.assertRaisesRegex(
                 ValueError,
-                "Project config requires an 'input_audio' string field",
+                "input_audio is required when content_mode is music_video",
             ):
                 ProjectConfig.load(config_path)
 
@@ -987,7 +1015,7 @@ class ProjectConfigValidationTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(
                 ValueError,
-                "Project config requires an 'input_audio' string field",
+                "input_audio must be a string when provided",
             ):
                 ProjectConfig.load(config_path)
 
@@ -1001,11 +1029,11 @@ class ProjectConfigValidationTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(
                 ValueError,
-                "Project config requires an 'input_audio' string field",
+                "input_audio must be a string when provided",
             ):
                 ProjectConfig.load(config_path)
 
-    def test_blank_input_audio_keeps_no_audio_sentinel(self):
+    def test_blank_input_audio_is_rejected_for_music_video(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             audio = temp / "song.mp3"
@@ -1015,8 +1043,8 @@ class ProjectConfigValidationTests(unittest.TestCase):
                 json.dumps({"input_audio": ""}),
                 encoding="utf-8",
             )
-            config = ProjectConfig.load(config_path)
-            self.assertEqual(temp, config.input_audio)
+            with self.assertRaisesRegex(ValueError, "input_audio is required"):
+                ProjectConfig.load(config_path)
 
 
 class SlugifyProjectNameTests(unittest.TestCase):

@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
 from feverslop.application.generate_render_plan import (
@@ -72,6 +73,19 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(h3_service.checkpoint_store_factory)
+
+    def test_production_h3_service_enables_deterministic_fallback(self):
+        from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case
+
+        use_case = build_generate_render_plan_use_case()
+        h3_service = next(
+            service for service in use_case.pipeline_services
+            if isinstance(service, H3PromptPipeline)
+        )
+        with patch("feverslop.composition.generate_render_plan.build_dspy_generator", return_value=object()):
+            builder = h3_service.dspy_prompt_builder_factory(object())
+
+        self.assertTrue(builder.allow_fallback)
 
     def test_deferred_reference_services_are_skipped_when_requested(self):
         immediate = RecordingService("audio", {})
