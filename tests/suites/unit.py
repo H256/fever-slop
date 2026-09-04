@@ -70,7 +70,6 @@ UNIT_MODULES = (
     "global_library_domain",
     "h3_prompt_builder",
     "h3_prompt_pipeline",
-    "health_checks",
     "import_boundaries",
     "ingredients_render_plan_projection",
     "ingredients_vision_prompt",
