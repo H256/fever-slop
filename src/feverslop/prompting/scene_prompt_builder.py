@@ -6,9 +6,11 @@ from pathlib import Path
 
 from feverslop.config.project_config import SCENE_PROMPT_WORD_COUNT_MAX
 from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
+from feverslop.domain.vocal_assignments import infer_vocal_performers
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
 from feverslop.prompting.general_modules import GeneralPromptModules
+from feverslop.prompting.general_signatures import PromptResult
 from feverslop.prompting.music_video_prompt_style import (
     build_i2v_system_prompt,
     build_video_payload,
@@ -228,6 +230,27 @@ class ScenePromptBuilder:
         t2i_prompt: str = "",
         custom_instructions: str = "",
     ) -> str:
+        return self._build_i2v_prompt_result(
+            segment=segment,
+            concept=concept,
+            scene_details=scene_details,
+            global_context=global_context,
+            scene_cast=scene_cast,
+            t2i_prompt=t2i_prompt,
+            custom_instructions=custom_instructions,
+        ).prompt
+
+    def _build_i2v_prompt_result(
+        self,
+        *,
+        segment: dict,
+        concept: str,
+        scene_details: dict,
+        global_context: dict,
+        scene_cast: dict | None = None,
+        t2i_prompt: str = "",
+        custom_instructions: str = "",
+    ) -> PromptResult:
         payload = build_video_payload(
             segment=segment,
             concept=concept,
@@ -243,7 +266,11 @@ class ScenePromptBuilder:
             silent_mode=bool(global_context.get("silent_mode", False)),
         )
         result = self._modules.i2v_prompt(payload, guide=guide)
-        return clean_llm_text(result.prompt if hasattr(result, "prompt") else result)
+        if isinstance(result, PromptResult):
+            return result
+        if isinstance(result, dict):
+            return PromptResult.model_validate(result)
+        return PromptResult(prompt=str(result))
 
     def build_scene_prompts(
         self,
@@ -302,7 +329,7 @@ class ScenePromptBuilder:
                 status_callback=status_callback,
             )
 
-            i2v_prompt_from_t2i = self.build_i2v_prompt_from_t2i(
+            i2v_result = self._build_i2v_prompt_result(
                 segment=segment,
                 concept=concept,
                 scene_details=details,
@@ -311,6 +338,7 @@ class ScenePromptBuilder:
                 t2i_prompt=t2i_prompt,
                 custom_instructions=ltx_instructions,
             )
+            i2v_prompt_from_t2i = clean_llm_text(i2v_result.prompt)
             i2v_prompt_from_t2i = limit_scene_prompt_words(
                 i2v_prompt_from_t2i,
                 scene_number=scene_number,
@@ -332,6 +360,24 @@ class ScenePromptBuilder:
                 "i2v_prompt_from_t2i": i2v_prompt_from_t2i,
                 "original_style_i2v_prompt": i2v_prompt_from_t2i,
             }
+            if str(segment.get("type") or "").strip().casefold() in {"vocals", "mixed"}:
+                allowed_actor_ids = set(references.get("actor_ids") or [])
+                vocal_performers = [
+                    {"subject_id": performer.subject_id, "speaker_id": performer.speaker_id}
+                    for performer in i2v_result.vocal_performers
+                    if performer.subject_id in allowed_actor_ids
+                ]
+                if not vocal_performers:
+                    vocal_performers = infer_vocal_performers(
+                        prompt=i2v_prompt_from_t2i,
+                        actors=global_context.get("actors") or [],
+                    )
+                    vocal_performers = [
+                        performer for performer in vocal_performers
+                        if performer["subject_id"] in allowed_actor_ids
+                    ]
+                if vocal_performers:
+                    scene_output["vocal_performers"] = vocal_performers
             if references:
                 scene_output["references"] = references
             output.append(scene_output)

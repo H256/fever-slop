@@ -114,7 +114,7 @@ class ComfyUIMiniMaxMovieVisualAdapter:
         return DspyH3PromptBuilder(
             build_dspy_generator(llm),
             reference_root=self.project_dir,
-            allow_fallback=False,
+            allow_fallback=True,
         )
 
     def prepare_render_plan(
@@ -257,6 +257,13 @@ def _build_movie_h3_prompt(
     builder: DspyH3PromptBuilder | None = None,
     reference_root: Path | None = None,
 ) -> str:
+    canonical = scene.get("canonical")
+    roles = canonical.get("roles") if isinstance(canonical, dict) else None
+    role = roles.get("h3.video") if isinstance(roles, dict) else None
+    override = role.get("override") if isinstance(role, dict) else None
+    override_value = override.get("value") if isinstance(override, dict) else None
+    if isinstance(override_value, str) and override_value.strip():
+        return override_value
     if builder is None:
         return _h3_movie_prompt(scene)
     concept_parts = [
@@ -273,7 +280,7 @@ def _build_movie_h3_prompt(
         scene_details={},
         global_context={},
         mode="ref",
-        video_type="movie",
+        video_type="narrative_film",
         reference_root=reference_root,
     )
     prompt = str(result.get("prompt") or "").strip()

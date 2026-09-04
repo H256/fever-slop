@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal, Mapping
 
 H3_CHECKPOINT_SCHEMA = "feverslop.h3-prompt-checkpoint.v1"
-H3CheckpointStatus = Literal["good", "bad_exhausted", "unjudged"]
+H3CheckpointStatus = Literal["good", "advisory_bad", "unjudged"]
 
 
 @dataclass(frozen=True)
@@ -47,20 +47,20 @@ def checkpoint_status(generated: Mapping[str, Any]) -> H3CheckpointStatus:
         if not isinstance(contract, Mapping):
             return "unjudged"
         if contract.get("valid") is not True:
-            return "bad_exhausted"
+            return "unjudged"
         if int(contract.get("compiler_version") or 0) != compiler_version:
-            return "bad_exhausted"
+            return "unjudged"
         expected_hash = "sha256:" + hashlib.sha256(
             str(generated.get("prompt") or "").encode("utf-8"),
         ).hexdigest()
         if contract.get("prompt_sha256") != expected_hash:
-            return "bad_exhausted"
+            return "unjudged"
     judge = generated.get("prompt_judge")
     verdict = str(judge.get("verdict") or "").strip().lower() if isinstance(judge, Mapping) else ""
     if verdict == "good":
         return "good"
     if verdict == "bad":
-        return "bad_exhausted"
+        return "advisory_bad"
     return "unjudged"
 
 

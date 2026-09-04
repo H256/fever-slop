@@ -783,6 +783,54 @@ class RenderSceneH3PriorityTests(unittest.TestCase):
 # ─── Render plan builder with H3 ─────────────────────────────────────────────
 
 class BuildRenderPlanH3Tests(unittest.TestCase):
+    def test_render_plan_relay_preserves_generated_vocal_binding(self):
+        from feverslop.pipeline.render_plan_builder import build_render_plan
+
+        store = FakeArtifactStore()
+        store.reads["scene_prompts.json"] = [
+            {
+                "scene": 1,
+                "segment_id": "seg1",
+                "type": "vocals",
+                "start": 0,
+                "end": 5,
+                "duration": 5,
+                "zimage_prompt": "zimg",
+                "i2v_prompt_from_t2i": "Mordren sings.",
+                "vocal_performers": [
+                    {"subject_id": "mordren_vale", "speaker_id": "S1"},
+                ],
+            },
+        ]
+        store.reads["relay.json"] = [
+            {
+                "scene": 1,
+                "prompt_relay": [
+                    {"frame_start": 0, "frame_end": 120, "state": "singing"},
+                ],
+            },
+        ]
+
+        class FakeVideoSettings:
+            fps = 24
+            width = 1280
+            height = 720
+
+            def scene_frame_count_between(self, start, end):
+                return int(self.fps * (end - start))
+
+        build_render_plan(
+            scene_prompts_json="scene_prompts.json",
+            ltx_prompt_relay_json="relay.json",
+            output_json_file="output.json",
+            video_settings=FakeVideoSettings(),
+            artifact_store=store,
+        )
+
+        relay = store.writes["output.json"][0]["ltx"]["prompt_relay"]
+        self.assertEqual("mordren_vale", relay[0]["subject_id"])
+        self.assertEqual("S1", relay[0]["speaker_id"])
+
     def test_render_plan_excludes_h3_when_not_provided(self):
         from feverslop.pipeline.render_plan_builder import build_render_plan
         store = FakeArtifactStore()

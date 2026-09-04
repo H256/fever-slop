@@ -96,7 +96,7 @@ class StructuredH3BuilderTests(unittest.TestCase):
         self.assertIn("FULL REFERENCE PROMPT", result["prompt"])
         self.assertIn("The singer raises the lantern.", result["prompt"])
         self.assertEqual("deterministic_h3_compiler", result["prompt_provenance"]["compiler"])
-        self.assertEqual(30, result["prompt_provenance"]["compiler_version"])
+        self.assertEqual(31, result["prompt_provenance"]["compiler_version"])
 
     def test_checkpoint_revision_tracks_the_deterministic_compiler(self):
         builder = DspyH3PromptBuilder(lambda _request: None)
@@ -104,7 +104,7 @@ class StructuredH3BuilderTests(unittest.TestCase):
         revision = builder.checkpoint_revision()
 
         self.assertEqual("deterministic_h3_compiler", revision["compiler"])
-        self.assertEqual(30, revision["compiler_version"])
+        self.assertEqual(31, revision["compiler_version"])
 
     def test_resume_recompiles_saved_plan_with_guide_compiler_and_rejudges(self):
         class JudgeOnlyGenerator:
@@ -268,7 +268,7 @@ class StructuredH3BuilderTests(unittest.TestCase):
         self.assertIn("regenerating", statuses)
         self.assertEqual("dspy_section_plan", store.saved[-1]["prompt_provenance"]["source"])
 
-    def test_resume_regenerates_when_recompiled_plan_is_rejected_by_judge(self):
+    def test_resume_keeps_bad_recompiled_plan_advisory(self):
         from pathlib import Path
         from tempfile import TemporaryDirectory
         from types import SimpleNamespace
@@ -344,10 +344,10 @@ class StructuredH3BuilderTests(unittest.TestCase):
                 status_callback=lambda current, total, status: statuses.append(status),
             )
 
-        self.assertEqual(1, generator.calls)
-        self.assertEqual(2, generator.judges)
-        self.assertIn("regenerating", statuses)
-        self.assertEqual("good", store.saved[-1]["prompt_judge"]["verdict"])
+        self.assertEqual(0, generator.calls)
+        self.assertEqual(1, generator.judges)
+        self.assertIn("recompiled", statuses)
+        self.assertEqual("bad", store.saved[-1]["prompt_judge"]["verdict"])
 
 
 if __name__ == "__main__":

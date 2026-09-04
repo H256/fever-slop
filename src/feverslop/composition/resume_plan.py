@@ -460,7 +460,7 @@ def _h3_state(
     if expected and expected != payload.get("input_fingerprint"):
         return PlanAction.RUN, "H3 input fingerprint changed"
     status = str(payload.get("status") or "").lower()
-    if status == "bad_exhausted" and not judge_blocking:
+    if status in {"advisory_bad", "bad_exhausted"} and not judge_blocking:
         return PlanAction.REUSE, "advisory BAD H3 checkpoint is renderable"
     if status != "good":
         return PlanAction.RUN, "H3 checkpoint is not renderable"

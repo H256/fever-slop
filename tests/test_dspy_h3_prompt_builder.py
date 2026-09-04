@@ -237,7 +237,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
-        self.assertEqual(30, revision["compiler_version"])
+        self.assertEqual(37, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
@@ -404,7 +404,29 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertIsNotNone(generator.warning_callback)
 
-    def test_preserves_valid_prompt_when_judge_repair_generation_fails(self):
+    def test_user_override_skips_checkpoint_generator_and_judge(self):
+        class FailingGenerator:
+            def __call__(self, _request):
+                raise AssertionError("override must bypass DSPy")
+
+        class Store:
+            def write_json(self, _path, payload):
+                return payload
+
+        result = DspyH3PromptBuilder(FailingGenerator(), allow_fallback=False).build_all_h3_prompts(
+            stage1_segments=[{
+                "segment_id": "seg-1",
+                "h3_prompt_override": "free-form MiniMax debugging prompt",
+            }],
+            concept_prompts={}, scene_details={}, global_context={},
+            output_json_path="prompts.json", artifact_store=Store(),
+        )
+
+        self.assertEqual("free-form MiniMax debugging prompt", result[0]["prompt"])
+        self.assertEqual("user_override", result[0]["prompt_provenance"]["source"])
+        self.assertNotIn("prompt_judge", result[0])
+
+    def test_preserves_valid_prompt_when_judge_marks_it_bad(self):
         from types import SimpleNamespace
 
         plan = ResolvedPromptPlan(
@@ -430,8 +452,6 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
             def __call__(self, request):
                 self.calls += 1
-                if self.calls > 1:
-                    raise RuntimeError("planner unavailable")
                 return SimpleNamespace(plan=plan)
 
             def set_warning_callback(self, callback):
@@ -445,6 +465,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 return PromptJudgeResult(
                     verdict="bad",
                     issues=["shot 1 lacks camera motion"],
+                    suggested_prompt="subject_definitions: repaired prompt for review",
                 )
 
         generator = RepairFailingGenerator()
@@ -464,19 +485,17 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             warning_callback=lambda text, title=None: warnings.append((title, text)),
         )
 
-        self.assertEqual(2, generator.calls)
-        self.assertEqual([
-            ("H3 compiled prompt judge retry",
-             "H3 compiled prompt judge retry 2/2: shot 1 lacks camera motion"),
-            ("H3 judge repair",
-             "H3 judge repair was rejected; preserving the valid compiled prompt "
-             "and BAD verdict: planner unavailable"),
-        ], warnings)
+        self.assertEqual(1, generator.calls)
+        self.assertEqual([], warnings)
         self.assertEqual(1, len(result))
         entry = result[0]
         self.assertEqual("seg-1", entry["segment_id"])
         self.assertNotEqual("", entry["prompt"])
         self.assertEqual("bad", entry["prompt_judge"]["verdict"])
+        self.assertEqual(
+            "subject_definitions: repaired prompt for review",
+            entry["prompt_judge"]["suggested_prompt"],
+        )
 
     def test_reference_signature_requires_explicit_spatial_subject_placement(self):
         signature = build_dspy_signatures()[3]
@@ -522,8 +541,28 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertIn("subject_definitions:", prompt)
         self.assertEqual("ref", builder.request["mode"])
-        self.assertEqual("movie", builder.request["video_type"])
+        self.assertEqual("narrative_film", builder.request["video_type"])
         self.assertIn("Leo runs through the forest", builder.request["concept"])
+
+    def test_movie_h3_override_bypasses_prompt_builder(self):
+        from feverslop.adapters.movie_minimax_visual import _build_movie_h3_prompt
+
+        class FailingBuilder:
+            def build_h3_prompt(self, **_kwargs):
+                raise AssertionError("override must bypass prompt builder")
+
+        prompt = _build_movie_h3_prompt(
+            {
+                "canonical": {
+                    "roles": {
+                        "h3.video": {"override": {"value": "manual movie prompt"}},
+                    },
+                },
+            },
+            builder=FailingBuilder(),
+        )
+
+        self.assertEqual("manual movie prompt", prompt)
 
     def test_scene_references_pass_existing_visual_descriptions_to_dspy(self):
         references, _images = _scene_references(
@@ -1204,7 +1243,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         instructions = build_h3_signature_bundle().build_prompt_plan.__doc__ or ""
 
         self.assertIn("creative MiniMax H3 shot prose only", instructions)
-        self.assertIn("complete grammatical sentence", instructions)
+        self.assertIn("sole renderable creative prose", instructions)
         self.assertIn("350-500", instructions)
         self.assertNotIn("Map each subject", instructions)
 
@@ -1444,7 +1483,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         )
         self.assertEqual(["Lead Singer", "The Azure Reef"], [subject.name for subject in result.subjects])
 
-    def test_reference_renderer_retries_unknown_subject_with_mismatch_details(self):
+    def test_reference_renderer_keeps_single_unknown_subject_attempt_advisory(self):
         generator = object.__new__(CoreVideoPromptGenerator)
         calls = []
 
@@ -1480,11 +1519,10 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         output = generator._render_reference(request, plan, refs)
 
-        self.assertEqual(2, len(calls))
-        self.assertIn("undefined_subjects=['<Subject 3>']", calls[1]["notes"])
-        self.assertEqual("<Subject 1> performs.", output.summary)
+        self.assertEqual(1, len(calls))
+        self.assertEqual("<Subject 3> performs.", output.summary)
 
-    def test_reference_renderer_retries_active_singing_in_instrumental_relay(self):
+    def test_reference_renderer_keeps_single_instrumental_contract_attempt_advisory(self):
         generator = object.__new__(CoreVideoPromptGenerator)
         calls = []
 
@@ -1534,9 +1572,8 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         output = generator._render_reference(request, plan, refs)
 
-        self.assertEqual(2, len(calls))
-        self.assertIn("active_vocal_language=True", calls[1]["notes"])
-        self.assertIn("no singing or lip sync", output.detailed_description)
+        self.assertEqual(1, len(calls))
+        self.assertIn("sings with perfect lip sync", output.detailed_description)
 
     def test_field_judge_repair_changes_only_addressed_creative_field(self):
         generator = object.__new__(CoreVideoPromptGenerator)
@@ -1978,7 +2015,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual(generator.requests[-1]["references"][0]["source"], str(picture))
         self.assertEqual(result["references"][0]["source"], "output/actor.png")
 
-    def test_falls_back_to_existing_prompt_when_generator_fails(self):
+    def test_falls_back_to_guide_shaped_prompt_when_generator_fails(self):
         class BrokenGenerator:
             def __call__(self, request):
                 raise RuntimeError("DSPy unavailable")
@@ -1992,7 +2029,10 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             mode="ref",
         )
 
-        self.assertEqual(result["prompt"], "fallback scene")
+        self.assertIn("subject_definitions:", result["prompt"])
+        self.assertIn("detailed_description:", result["prompt"])
+        self.assertIn("fallback scene", result["prompt"])
+        self.assertEqual("deterministic_fallback", result["prompt_provenance"]["source"])
         self.assertEqual(result["dspy_error"], "DSPy unavailable")
 
     def test_sanitizes_embedded_image_data_in_fallback_error(self):
