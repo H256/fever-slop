@@ -56,10 +56,6 @@ def build_movie_continuity_fallback(*, bible: MovieBible, shots: tuple[Cinematic
     return MovieContinuityPlan.fallback(bible=bible, shots=shots)
 
 
-def normalize_movie_continuity_plan(plan: MovieContinuityPlan, *, bible: MovieBible, shots: tuple[CinematicShot, ...]) -> MovieContinuityPlan:
-    return plan.normalize(bible=bible, shots=shots)
-
-
 def movie_continuity_plan_to_dict(plan: MovieContinuityPlan) -> dict:
     return {
         "continuity_ledger": _ledger_to_dict(plan.continuity_ledger),

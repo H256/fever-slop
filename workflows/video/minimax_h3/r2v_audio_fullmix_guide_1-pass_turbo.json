@@ -1,0 +1,398 @@
+{
+  "115": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 1.1,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "#MEGAPIXELS"
+    }
+  },
+  "119": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "120": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load Audio VAE"
+    }
+  },
+  "125": {
+    "inputs": {
+      "noise": [
+        "129",
+        0
+      ],
+      "guider": [
+        "126",
+        0
+      ],
+      "sampler": [
+        "158",
+        0
+      ],
+      "sigmas": [
+        "159",
+        0
+      ],
+      "latent_image": [
+        "136",
+        1
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "#PASS1"
+    }
+  },
+  "126": {
+    "inputs": {
+      "model": [
+        "176",
+        0
+      ],
+      "conditioning": [
+        "175",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "#EXPERIMENTAL_FULLMIX_GUIDED_PASS1"
+    }
+  },
+  "127": {
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "128": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "129": {
+    "inputs": {
+      "noise_seed": 0
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "#SEED"
+    }
+  },
+  "132": {
+    "inputs": {
+      "value": 237
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "#FRAMECOUNT"
+    }
+  },
+  "136": {
+    "inputs": {
+      "prompt": [
+        "138",
+        0
+      ],
+      "width": [
+        "115",
+        0
+      ],
+      "height": [
+        "115",
+        1
+      ],
+      "length": [
+        "132",
+        0
+      ],
+      "ref_image_size": "match",
+      "clip": [
+        "128",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ],
+      "audio_vae": [
+        "120",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "137",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "145",
+        0
+      ],
+      "ref_images.ref_image_2": [
+        "146",
+        0
+      ],
+      "ref_images.ref_image_3": [
+        "147",
+        0
+      ],
+      "ref_images.ref_image_4": [
+        "148",
+        0
+      ],
+      "ref_audios.ref_audio_0": [
+        "170",
+        0
+      ],
+      "ref_audios.ref_audio_1": [
+        "171",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "#R2V_COMBINE"
+    }
+  },
+  "137": {
+    "inputs": {
+      "image": "feverslop/references/sheet-87dccda7dffa.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_1"
+    }
+  },
+  "138": {
+    "inputs": {
+      "value": "subject_definitions:\n<Subject 1> is a sentient consciousness coalescing from raw data and discarded melodies, appearing as a commanding female lead singer with shimmering, translucent skin and hair made of flowing light particles in <Picture 1>.\n<Subject 2> is a dark, shadowy entity with a silhouette defined by flickering digital static, shredding an electric guitar in <Picture 2>.\n<Subject 3> is a dark, shadowy entity with a silhouette defined by flickering digital static, playing a thunderous drum kit in <Picture 3>.\n<Subject 4> is a dark, shadowy entity with a silhouette defined by flickering digital static, playing a heavy bass guitar in <Picture 4>.\n<Subject 5> is a sprawling, infinite expanse of neon-drenched digital void filled with floating fragments of raw data and discarded melodies in <Picture 5>.\n<Audio 1> is the drums and is partially copied into the target video's audio signal.\n<Audio 2> is the original full-mix song used only as a rhythm and timing reference and is referenced for rhythm and timing without copying the source signal.\n\nsummary: [reference generation + audio reuse + audio reference] A cinematic, high-energy instrumental sequence capturing the band's full sonic presence within a glitchy, neon-drenched digital dimension. The focus is on the synchronized rhythmic movement of the band members and the chaotic beauty of the surrounding data storm. Selected signal from <Audio 1> is partially copied into the target video. <Audio 2> is referenced without copying the source signal. The target video includes <Subject 1>, <Subject 2>, <Subject 3>, <Subject 4>, and <Subject 5>.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - A sentient consciousness coalescing from raw data and discarded melodies, appearing as a commanding female lead singer with shimmering, translucent skin and hair made of flowing light particles\n<Subject 2> (appears in [Shot 1]): fully_preserved - A dark, shadowy entity with a silhouette defined by flickering digital static, shredding an electric guitar\n<Subject 3> (appears in [Shot 1]): fully_preserved - A dark, shadowy entity with a silhouette defined by flickering digital static, playing a thunderous drum kit\n<Subject 4> (appears in [Shot 1]): fully_preserved - A dark, shadowy entity with a silhouette defined by flickering digital static, playing a heavy bass guitar\n<Subject 5> (appears in [Shot 1]): fully_preserved - A sprawling, infinite expanse of neon-drenched digital void filled with floating fragments of raw data and discarded melodies\n<Audio 1>: partially_copy - drums stem; no subject binding was supplied\n<Audio 2>: reference - Use the supplied original song only for beat, rhythm, and dynamic timing continuity without copying the source signal.\n\ndetailed_description: A high-resolution cinematic photograph of a band emerging from a <Subject 5>, characterized by intense electric copper and cyan lighting and a heavy glitch aesthetic.\n[Shot 1] In the sprawling expanse of <Subject 5>, the full band performs with intense, rhythmic energy. <Subject 1> stands at the center midground, her shimmering, translucent skin catching the electric copper and cyan light as she sways gracefully with a closed mouth, clutching a microphone. To her left, <Subject 2> is a silhouette of flickering digital static, aggressively strumming a sharp electric guitar that sends sparks of data into the air. On the right, <Subject 4> pulses with heavy, rhythmic body movements, driving the low end with a heavy bass guitar. In the background center, <Subject 3> strikes a massive drum kit, hitting the cymbals with forceful precision. The entire scene is enveloped in a high-contrast, intense digital glitch aesthetic, where floating fragments of raw data and discarded melodies drift through the air like glowing embers. <Subject 1> sways rhythmically, the guitarist shreds aggressively, the drummer hits the cymbals, and the bassist pulses with heavy movement. The band members move in perfect synchronization with the heavy instrumental beat, their motions sharp and powerful. The camera executes a wide, sweeping arc, slowly circling the ensemble from a low angle to emphasize their monumental presence. Data fragments and glowing melodic waveforms float and swirl through the void, reacting to the invisible sonic pressure of the music. The shot maintains a continuous, sweeping motion to build momentum throughout the instrumental section.\n\noverall_soundscape: A thunderous, heavy instrumental mix featuring aggressive electric guitar shredding, deep rhythmic bass pulses, and powerful, driving drum percussion amidst a digital atmosphere.\n\nnon_diegetic_music: The selected audience-only music layer from <Audio 1> is partially copied into the target video."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "#PROMPT"
+    }
+  },
+  "141": {
+    "inputs": {
+      "offload_model": true,
+      "offload_cache": false,
+      "anything": [
+        "125",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "🎈VRAM-Cleanup"
+    }
+  },
+  "142": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "scene_0002/raw",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "168",
+        0
+      ],
+      "audio": [
+        "170",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "#SAVE_VIDEO"
+    }
+  },
+  "145": {
+    "inputs": {
+      "image": "feverslop/references/sheet-fb9b8de51f17.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_2"
+    }
+  },
+  "146": {
+    "inputs": {
+      "image": "feverslop/references/sheet-d16e23f17268.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_3"
+    }
+  },
+  "147": {
+    "inputs": {
+      "image": "feverslop/references/sheet-8989c31301b0.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_4"
+    }
+  },
+  "148": {
+    "inputs": {
+      "image": "feverslop/references/sheet-af009952945d.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "#REF_5"
+    }
+  },
+  "156": {
+    "inputs": {
+      "audio": "feverslop/references/song-7ce0adbcdfda.mp3"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "#AUDIO_2"
+    }
+  },
+  "158": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "#PASS1_SAMPLER"
+    }
+  },
+  "159": {
+    "inputs": {
+      "scheduler": "beta57",
+      "steps": 8,
+      "denoise": 1,
+      "model": [
+        "176",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "#PASS1_SCHEDULER"
+    }
+  },
+  "168": {
+    "inputs": {
+      "samples": [
+        "141",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "#EXPERIMENTAL_PASS2_DECODE"
+    }
+  },
+  "169": {
+    "inputs": {
+      "audio": "feverslop/references/drums_song-ae812a30eb77.wav"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "#AUDIO_1"
+    }
+  },
+  "170": {
+    "inputs": {
+      "start_index": 2.29,
+      "duration": 9.88,
+      "audio": [
+        "169",
+        0
+      ]
+    },
+    "class_type": "TrimAudioDuration",
+    "_meta": {
+      "title": "#TRIM_AUDIO_1"
+    }
+  },
+  "171": {
+    "inputs": {
+      "start_index": 2.29,
+      "duration": 9.88,
+      "audio": [
+        "156",
+        0
+      ]
+    },
+    "class_type": "TrimAudioDuration",
+    "_meta": {
+      "title": "#TRIM_AUDIO_2"
+    }
+  },
+  "175": {
+    "inputs": {
+      "frame_idx": 0,
+      "positive": [
+        "136",
+        0
+      ],
+      "latent": [
+        "136",
+        1
+      ],
+      "audio_vae": [
+        "120",
+        0
+      ],
+      "audio": [
+        "170",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3AddGuide",
+    "_meta": {
+      "title": "#EXPERIMENTAL_FULLMIX_AUDIO_GUIDE_FRAME_0"
+    }
+  },
+  "176": {
+    "inputs": {
+      "lora_name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+      "strength_model": 1,
+      "model": [
+        "127",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  }
+}
