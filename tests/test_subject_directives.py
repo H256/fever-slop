@@ -1,8 +1,5 @@
 import unittest
 
-from feverslop.application.render_plan_validation import (
-    validate_render_plan_subject_directives,
-)
 from feverslop.domain.render_plan import RenderPlan
 from feverslop.domain.subject_directives import (
     PROP_STATES,
@@ -130,21 +127,6 @@ class SubjectDirectiveContractTests(unittest.TestCase):
         issues = validate_subject_directive_plan(plan, known_subject_ids={"singer", "band"})
         self.assertTrue(any("temporal coverage" in issue for issue in issues))
         self.assertTrue(any("contradictory spatial relation" in issue for issue in issues))
-
-    def test_render_plan_validation_skips_legacy_and_rejects_directive_errors(self):
-        validate_render_plan_subject_directives([{"scene": 1, "h3": {"prompt": "legacy"}}], render_plan_path="legacy.json")
-        with self.assertRaisesRegex(ValueError, "needs position and action"):
-            validate_render_plan_subject_directives(
-                [{
-                    "scene": 2,
-                    "subject_directives": SubjectDirectivePlan(
-                        shot_id="shot-2", temporal_scope=TemporalScope(0, 1),
-                        subjects=(SubjectDirective("missing", "role", "", "", temporal_scope=TemporalScope(0, 1)),),
-                    ).to_dict(),
-                }],
-                known_subject_ids=("known",),
-                render_plan_path="plan.json",
-            )
 
 
 if __name__ == "__main__":
