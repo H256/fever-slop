@@ -8,7 +8,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
-from feverslop.adapters.pipeline_runner_options import RUNNER_ARGUMENTS
+from feverslop.adapters.pipeline_runner_options import RUNNER_ARGUMENTS, default_single_prompt_workflow
 from feverslop.composition.resume_plan import build_compatibility_plan, build_resume_plan
 from feverslop.composition.arg_parser import PUBLIC_PIPELINE_STAGES
 from feverslop.composition.config_loader import resolve_runner_path
@@ -211,13 +211,8 @@ def _apply_runner_defaults(args: argparse.Namespace) -> None:
     if getattr(args, "timeline_format", None) is None:
         args.timeline_format = "both"
     if getattr(args, "single_prompt_workflow", None) is None:
-        defaults = {
-            "minimax-h3-r2v": "workflows/video/minimax_h3/r2v_audio_two_pass.json",
-            "minimax-h3-t2v": "workflows/video/minimax_h3/t2v_two_pass.json",
-        }
-        args.single_prompt_workflow = defaults.get(
+        args.single_prompt_workflow = default_single_prompt_workflow(
             getattr(args, "video_pipeline", None),
-            str(Path("workflows") / "video" / "ltx_25" / "i2v" / "i2v_draft.json"),
         )
 
 

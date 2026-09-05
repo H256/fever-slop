@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from feverslop.config.video_settings import VideoSettings
@@ -146,20 +146,7 @@ class PromptGuidanceConfig:
     word_count_max: int = SCENE_PROMPT_WORD_COUNT_MAX
 
     def as_prompt_context(self) -> dict:
-        return {
-            "character_visibility": self.character_visibility,
-            "shot_types": self.shot_types,
-            "environments": self.environments,
-            "lighting": self.lighting,
-            "camera_motion": self.camera_motion,
-            "physical_interaction": self.physical_interaction,
-            "facial_expression": self.facial_expression,
-            "outfit_rules": self.outfit_rules,
-            "prompt_structure": self.prompt_structure,
-            "list_handling": self.list_handling,
-            "word_count_min": self.word_count_min,
-            "word_count_max": self.word_count_max,
-        }
+        return asdict(self)
 
 
 @dataclass(frozen=True)

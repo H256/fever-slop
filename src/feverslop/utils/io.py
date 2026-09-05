@@ -65,20 +65,8 @@ def read_json_object(path: str | Path) -> dict[str, Any]:
 
 def atomic_write_json(path: Path, data: Any, **json_kwargs) -> Path:
     """Write JSON atomically: temp file in same dir, sync, then os.replace()."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
-    tmp = Path(tmp_name)
     content = json.dumps(data, ensure_ascii=False, indent=2, **json_kwargs) + "\n"
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
-        _replace_atomically(tmp, path)
-    finally:
-        tmp.unlink(missing_ok=True)
-    return path
+    return _write_atomic(path, content)
 
 
 def write_json_document(path: str | Path, data: Any, **json_kwargs) -> Path:
@@ -88,30 +76,24 @@ def write_json_document(path: str | Path, data: Any, **json_kwargs) -> Path:
 
 def atomic_write_text(path: Path, text: str) -> Path:
     """Write text atomically: temp file in same dir, sync, then os.replace()."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
-    tmp = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        _replace_atomically(tmp, path)
-    finally:
-        tmp.unlink(missing_ok=True)
-    return path
+    return _write_atomic(path, text)
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> Path:
     """Write binary data atomically: temp file in same dir, sync, then os.replace()."""
+    return _write_atomic(path, data, binary=True)
+
+
+def _write_atomic(path: Path, payload: str | bytes, *, binary: bool = False) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     tmp = Path(tmp_name)
     try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(data)
+        mode = "wb" if binary else "w"
+        open_kwargs = {} if binary else {"encoding": "utf-8"}
+        with os.fdopen(fd, mode, **open_kwargs) as f:
+            f.write(payload)
             f.flush()
             os.fsync(f.fileno())
         _replace_atomically(tmp, path)

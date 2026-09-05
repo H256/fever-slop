@@ -1,4 +1,5 @@
 ﻿import json
+from dataclasses import asdict
 import tempfile
 import unittest
 from pathlib import Path
@@ -1102,7 +1103,6 @@ class VideoPipelineFieldTests(unittest.TestCase):
         self.assertEqual(config.video_pipeline, "ltx_i2v")
 
     def _mk_config(self):
-        import json
         import tempfile
         from pathlib import Path
         tmp = tempfile.mktemp(suffix=".json")
@@ -1114,8 +1114,6 @@ class AudioRefsStemValidationTests(unittest.TestCase):
     """Test ProjectConfig stem validation for minimax_h3_audio_refs."""
 
     def _mk_config(self, config_dict):
-        import json
-        import tempfile
         from pathlib import Path
         tmp = tempfile.mktemp(suffix=".json")
         Path(tmp).write_text(json.dumps(config_dict))
@@ -1173,6 +1171,17 @@ class AudioRefsStemValidationTests(unittest.TestCase):
 
 
 class ScenePromptWordCountDefaultsTests(unittest.TestCase):
+    def test_prompt_context_matches_dataclass_projection(self):
+        from feverslop.config.project_config import PromptGuidanceConfig
+
+        config = PromptGuidanceConfig(
+            character_visibility="visible",
+            word_count_min=12,
+            word_count_max=34,
+        )
+
+        self.assertEqual(asdict(config), config.as_prompt_context())
+
     def test_word_count_defaults_are_shared_across_builder_loader_and_scaffolds(self):
         from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold
         from feverslop.config.project_config import (
@@ -1254,8 +1263,6 @@ class ScenePromptWordCountValidationTests(unittest.TestCase):
     """Test ProjectConfig prompt_guidance word count bounds validation."""
 
     def _mk_config(self, config_dict):
-        import json
-        import tempfile
         from pathlib import Path
         tmp = tempfile.mktemp(suffix=".json")
         Path(tmp).write_text(json.dumps(config_dict))

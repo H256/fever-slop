@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from pathlib import PurePosixPath
 import re
 from typing import Any
 
@@ -12,7 +13,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 39
+H3_COMPILER_VERSION = 40
 
 
 def plan_with_authoritative_relay(
@@ -310,7 +311,9 @@ class DeterministicH3Compiler:
                 retention_lines.append(f"{label}: {marker} - reference is applied in the target video.")
             retention_lines.extend(usage_retention_lines)
             detailed_parts = [_replace_subject_names(
-                _remove_authored_dialogue_blocks(plan.style_opening or ""), plan,
+                _remove_authored_dialogue_blocks(plan.style_opening or ""),
+                plan,
+                reference_metadata=metadata_by_label,
             )]
             rendered_shots = [
                 _render_shot_with_references(
@@ -392,11 +395,12 @@ class DeterministicH3Compiler:
                         label, copy_mode, "vocal layer",
                     )
             soundscape = _replace_subject_names(
-                _remove_authored_dialogue_blocks(plan.overall_soundscape), plan,
+                _remove_authored_dialogue_blocks(plan.overall_soundscape),
+                plan,
+                reference_metadata=metadata_by_label,
             )
             for lyric in _dialogue_contents(detailed):
                 soundscape = _remove_sentence_containing(soundscape, lyric)
-            soundscape = _remove_authored_vocal_claims(soundscape, {})
             soundscape = _remove_music_sentences(soundscape)
             for label, metadata in sorted(metadata_by_label.items()):
                 copy_mode = _effective_audio_copy_mode(metadata)
@@ -510,7 +514,11 @@ def _render_shot_with_references(
     final_shot: bool = False,
 ) -> str:
     labels = _shot_reference_labels(shot, plan)
-    description = _render_authored_shot_fields(shot, plan)
+    description = _render_authored_shot_fields(
+        shot,
+        plan,
+        reference_metadata=reference_metadata,
+    )
     subject_sources = {
         label for subject in plan.subjects for label in subject.source_references
     }
@@ -541,18 +549,24 @@ def _replace_subject_names(
     text: str,
     plan: ResolvedPromptPlan,
     labels: Sequence[str] | None = None,
+    reference_metadata: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> str:
     allowed = set(labels or (subject.label for subject in plan.subjects))
-    replacements = sorted(
-        (
-            phrase,
-            subject.label,
-        )
-        for subject in plan.subjects
-        if subject.label in allowed
-        for phrase in (subject.name,)
-        if phrase.strip()
-    )
+    replacements: list[tuple[str, str]] = []
+    for subject in plan.subjects:
+        if subject.label not in allowed:
+            continue
+        replacements.append((subject.name, subject.label))
+        for reference_label in subject.source_references:
+            metadata = (reference_metadata or {}).get(reference_label, {})
+            reference_id = str(metadata.get("id") or "").strip()
+            if reference_id:
+                replacements.append((reference_id, subject.label))
+            source = str(metadata.get("source") or "").replace("\\", "/")
+            if source:
+                parent = PurePosixPath(source).parent.name.strip()
+                if parent and parent not in {"actors", "locations", "references"}:
+                    replacements.append((parent, subject.label))
     for phrase, label in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
         normalized_phrase = re.sub(r"^(?:the\s+)", "", phrase.strip(), flags=re.IGNORECASE)
         text = re.sub(
@@ -740,10 +754,26 @@ def _lower_initial(value: str) -> str:
     return value[:1].lower() + value[1:] if value else value
 
 
-def _render_authored_shot_fields(shot: Any, plan: ResolvedPromptPlan) -> str:
+def _render_authored_shot_fields(
+    shot: Any,
+    plan: ResolvedPromptPlan,
+    *,
+    reference_metadata: Mapping[str, Mapping[str, Any]] | None = None,
+) -> str:
     """Compose typed creative fields as complete sentences, never fragments."""
-    primary = _replace_subject_names(str(shot.description or "").strip(), plan)
+    primary = _replace_subject_names(
+        str(shot.description or "").strip(),
+        plan,
+        reference_metadata=reference_metadata,
+    )
     if str(getattr(shot, "prose_owner", "description")) == "description" and primary:
+        camera = _replace_subject_names(
+            _render_camera_behavior(shot.camera_behavior) if shot.camera_behavior else "",
+            plan,
+            reference_metadata=reference_metadata,
+        )
+        if camera and not _camera_behavior_is_represented(primary, camera):
+            primary = f"{_with_terminal_punctuation(primary)} {camera}"
         return _with_terminal_punctuation(primary)
     values = (
         ("description", primary),
@@ -756,7 +786,11 @@ def _render_authored_shot_fields(shot: Any, plan: ResolvedPromptPlan) -> str:
     parts: list[str] = []
     seen: set[str] = set()
     for field, value in values:
-        text = _replace_subject_names(str(value or "").strip(), plan)
+        text = _replace_subject_names(
+            str(value or "").strip(),
+            plan,
+            reference_metadata=reference_metadata,
+        )
         if field == "visible_action" and re.match(r"^[^.!?]{1,80}['’]s\s", text):
             text = f"The shot shows {text}"
         key = re.sub(r"\W+", " ", text, flags=re.UNICODE).strip().casefold()
@@ -765,6 +799,24 @@ def _render_authored_shot_fields(shot: Any, plan: ResolvedPromptPlan) -> str:
         seen.add(key)
         parts.append(_with_terminal_punctuation(text))
     return " ".join(parts) or "The shot holds a clear cinematic composition."
+
+
+def _camera_behavior_is_represented(description: str, camera_behavior: str) -> bool:
+    """Avoid duplicating a camera instruction already expressed in shot prose."""
+    ignored = frozenset({
+        "the", "camera", "with", "from", "toward", "around", "slow", "slowly",
+        "quick", "quickly", "gently", "steadily", "into", "through", "that",
+    })
+
+    def words(value: str) -> set[str]:
+        normalized: set[str] = set()
+        for word in re.findall(r"[A-Za-z]{4,}", value.casefold()):
+            stem = re.sub(r"(?:ing|ed|es|s)$", "", word)
+            if stem and stem not in ignored:
+                normalized.add(stem)
+        return normalized
+
+    return len(words(description).intersection(words(camera_behavior))) >= 2
 
 
 def _with_terminal_punctuation(value: str) -> str:
@@ -1078,35 +1130,31 @@ def _dialogue_contents(text: str) -> tuple[str, ...]:
 
 
 def _remove_sentence_containing(text: str, phrase: str) -> str:
-    if not phrase:
+    normalized_phrase = phrase.strip().rstrip(".?!")
+    if not normalized_phrase:
         return text
     parts = re.split(r"(?<=[.!?])\s+", text.strip())
-    kept = [part for part in parts if phrase.casefold() not in part.casefold()]
+    kept = [
+        part for part in parts
+        if normalized_phrase.casefold() not in part.casefold()
+    ]
     return " ".join(kept).strip()
 
 
 def _remove_music_sentences(text: str) -> str:
-    text = re.sub(
-        r"(?:,\s*)?\b(?:featuring|with)\b[^.;]*?\bvocals?\b[^,.;]*(?:,\s*)?",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    ).strip()
-    text = re.sub(
-        r"(?:,\s*)?while\s+[^,.;]*\bvocals?\b[^,.;]*[.;]?",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    ).strip()
-    text = re.sub(
-        r"(?:^|(?<=[.;]))\s*[^,.;]*\bvocals?\b[^,.;]*[.;]?",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    ).strip()
-    parts = re.split(r"(?<=[.!?;])\s+", text.strip())
-    music = re.compile(r"\b(?:musical track|full mix|song|background music)\b", re.IGNORECASE)
-    retained = " ".join(part for part in parts if not music.search(part)).strip(" ;")
+    """Remove only explicit source-track claims, never diegetic vocal prose."""
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    track = re.compile(r"\b(?:musical track|full[ _-]?mix(?:\s+song)?|background music)\b", re.IGNORECASE)
+    retained: list[str] = []
+    for part in parts:
+        if not track.search(part):
+            retained.append(part)
+            continue
+        if ";" in part:
+            ambience = part.split(";", 1)[1].strip()
+            if ambience:
+                retained.append(ambience)
+    retained = " ".join(retained).strip(" ;")
     return retained[:1].upper() + retained[1:] if retained else ""
 
 

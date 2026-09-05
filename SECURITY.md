@@ -3,8 +3,8 @@
 ## Reporting a vulnerability
 
 Do not disclose credentials, private URLs, exploit details, or personal data in
-a public issue. Report security problems privately through GitHub's private
-security reporting channel or the contact channel listed in the repository.
+a public issue. Report security problems privately through the repository's
+private reporting channel or the contact channel listed in the repository.
 
 FeverSlop does not operate a bug bounty program and does not offer monetary
 rewards, gifts, or guaranteed public credit for security reports. There is no
