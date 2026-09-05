@@ -237,7 +237,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
-        self.assertEqual(37, revision["compiler_version"])
+        self.assertEqual(38, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
@@ -2034,6 +2034,40 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertIn("fallback scene", result["prompt"])
         self.assertEqual("deterministic_fallback", result["prompt_provenance"]["source"])
         self.assertEqual(result["dspy_error"], "DSPy unavailable")
+
+    def test_fallback_binds_every_picture_to_a_subject_definition(self):
+        class BrokenGenerator:
+            def __call__(self, _request):
+                raise RuntimeError("DSPy unavailable")
+
+        result = DspyH3PromptBuilder(BrokenGenerator()).build_h3_prompt(
+            segment={
+                "segment_id": "seg-23",
+                "duration": 2.88,
+                "references": {
+                    "actor_ids": ["actor_vocalist"],
+                    "actor_msr_paths": ["references/vocalist.png"],
+                    "actor_reference_descriptions": [{
+                        "id": "actor_vocalist",
+                        "name": "Male Vocalist",
+                        "visual_description": "a weathered, intense expression",
+                    }],
+                    "location_msr_path": "references/battlefield.png",
+                    "location_id": "battlefield",
+                },
+            },
+            concept="A vocalist stands on the battlefield.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        self.assertIn(
+            "<Subject 1> is a weathered, intense expression in <Picture 1>.",
+            result["prompt"],
+        )
+        self.assertIn("<Subject 2>", result["prompt"])
+        self.assertNotIn("<Picture 1> is the subject reference", result["prompt"])
 
     def test_sanitizes_embedded_image_data_in_fallback_error(self):
         payload = "data:image/png;base64," + ("A" * 400)

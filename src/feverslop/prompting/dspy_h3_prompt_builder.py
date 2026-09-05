@@ -16,7 +16,9 @@ from feverslop.prompting.dspy_h3_models import (
     H3PromptSections,
     MusicIntent,
     PlannedShot,
+    ReferenceUsage,
     ResolvedPromptPlan,
+    SubjectDefinition,
 )
 from feverslop.prompting.deterministic_h3_compiler import (
     H3_COMPILER_NAME,
@@ -879,6 +881,23 @@ class DspyH3PromptBuilder:
         description = str(
             concept or segment.get("h3_creative_prompt") or "The planned scene continues."
         ).strip()
+        picture_references = [
+            reference
+            for reference in references
+            if str(reference.get("kind") or "").casefold() == "picture"
+        ]
+        subjects = [
+            SubjectDefinition(
+                label=f"<Subject {index}>",
+                name=str(reference.get("name") or f"referenced subject {index}").strip(),
+                description=str(
+                    reference.get("description") or "the referenced appearance"
+                ).strip(),
+                source_references=[str(reference["label"])],
+            )
+            for index, reference in enumerate(picture_references, start=1)
+        ]
+        reference_labels = [str(reference["label"]) for reference in references]
         count = max(1, len(relay_segments))
         shots = [
             PlannedShot(
@@ -886,14 +905,27 @@ class DspyH3PromptBuilder:
                 start_seconds=duration * (index - 1) / count,
                 end_seconds=duration * index / count,
                 description=description,
+                involved_subjects=[subject.name for subject in subjects],
+                reference_labels=reference_labels,
             )
             for index in range(1, count + 1)
         ]
         plan = ResolvedPromptPlan(
             creative_intent=description,
             style_opening="Live-action cinematic imagery preserves the planned composition and scene facts.",
-            subjects=[],
-            reference_usage=[],
+            subjects=subjects,
+            reference_usage=[
+                ReferenceUsage(
+                    reference_label=str(reference["label"]),
+                    purpose=str(reference.get("role") or "reference"),
+                    details=str(
+                        reference.get("description")
+                        or reference.get("name")
+                        or "reference"
+                    ),
+                )
+                for reference in references
+            ],
             shots=shots,
             overall_soundscape="The planned ambient and physical sounds continue through the scene.",
             music_intent=MusicIntent.NONE,
