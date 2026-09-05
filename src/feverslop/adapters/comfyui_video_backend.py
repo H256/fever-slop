@@ -2,7 +2,7 @@
 
 import json
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
@@ -167,45 +167,55 @@ class ComfyUIVideoRenderBackend:
         max_render_duration_seconds: float | None = None,
         render_budget_workflow_path: str | Path | None = None,
     ):
-        if config is not None:
-            ltx_workflow_path = config.ltx_workflow_path
-            output_dir = config.output_dir
-            single_prompt_workflow_path = config.single_prompt_workflow_path
-            render_mode = config.render_mode
-            width_node_title = config.width_node_title
-            height_node_title = config.height_node_title
-            load_audio_node_title = config.load_audio_node_title
-            trim_audio_node_title = config.trim_audio_node_title
-            startframe_node_title = config.startframe_node_title
-            frames_node_title = config.frames_node_title
-            framerate_node_title = config.framerate_node_title
-            seed_node_title = config.seed_node_title
-            prompt_relay_node_title = config.prompt_relay_node_title
-            single_prompt_node_title = config.single_prompt_node_title
-            single_prompt_input_name = config.single_prompt_input_name
-            save_video_node_title = config.save_video_node_title
-            character_lora_node_title = config.character_lora_node_title
-            character_lora_strength = config.character_lora_strength
-            lora_1_enabled = config.lora_1_enabled
-            lora_1_name = config.lora_1_name
-            lora_1_strength_model = config.lora_1_strength_model
-            lora_1_strength_clip = config.lora_1_strength_clip
-            lora_1_strengths_explicit = config.lora_1_strengths_explicit
-            lora_1_node_title = config.lora_1_node_title
-            loras = config.loras
-            lora_split_enabled = config.lora_split_enabled
-            randomize_seed = config.randomize_seed
-            seed_offset = config.seed_offset
-            segment_length_mode = config.segment_length_mode
-            min_duration = config.min_duration
-            max_duration = config.max_duration
-            allow_out_of_range_clips = config.allow_out_of_range_clips
-            debug_workflows_dir = config.debug_workflows_dir
-            preroll_frames = config.preroll_frames
-            tail_loss_frames = config.tail_loss_frames
-            round_render_frames_to_8n1 = config.round_render_frames_to_8n1
-        if ltx_workflow_path is None or output_dir is None:
-            raise FeverSlopValidationError("ltx_workflow_path and output_dir are required unless config is provided")
+        if config is None:
+            if ltx_workflow_path is None or output_dir is None:
+                raise FeverSlopValidationError(
+                    "ltx_workflow_path and output_dir are required unless config is provided"
+                )
+            config = ComfyUIVideoBackendConfig(
+                ltx_workflow_path=Path(ltx_workflow_path),
+                output_dir=Path(output_dir),
+                single_prompt_workflow_path=single_prompt_workflow_path,
+                render_mode=render_mode,
+                width_node_title=width_node_title,
+                height_node_title=height_node_title,
+                load_audio_node_title=load_audio_node_title,
+                trim_audio_node_title=trim_audio_node_title,
+                startframe_node_title=startframe_node_title,
+                frames_node_title=frames_node_title,
+                framerate_node_title=framerate_node_title,
+                seed_node_title=seed_node_title,
+                prompt_relay_node_title=prompt_relay_node_title,
+                single_prompt_node_title=single_prompt_node_title,
+                single_prompt_input_name=single_prompt_input_name,
+                save_video_node_title=save_video_node_title,
+                character_lora_node_title=character_lora_node_title,
+                character_lora_strength=character_lora_strength,
+                lora_1_enabled=lora_1_enabled,
+                lora_1_name=lora_1_name,
+                lora_1_strength_model=lora_1_strength_model,
+                lora_1_strength_clip=lora_1_strength_clip,
+                lora_1_strengths_explicit=lora_1_strengths_explicit,
+                lora_1_node_title=lora_1_node_title,
+                loras=loras,
+                lora_split_enabled=lora_split_enabled,
+                randomize_seed=randomize_seed,
+                seed_offset=seed_offset,
+                segment_length_mode=segment_length_mode,
+                min_duration=min_duration,
+                max_duration=max_duration,
+                allow_out_of_range_clips=allow_out_of_range_clips,
+                debug_workflows_dir=debug_workflows_dir,
+                preroll_frames=preroll_frames,
+                tail_loss_frames=tail_loss_frames,
+                round_render_frames_to_8n1=round_render_frames_to_8n1,
+            )
+        self.config = config
+        for config_field in fields(config):
+            setattr(self, config_field.name, getattr(config, config_field.name))
+        ltx_workflow_path = self.config.ltx_workflow_path
+        output_dir = self.config.output_dir
+        single_prompt_workflow_path = self.config.single_prompt_workflow_path
 
         self.client = client
         self.asset_uploader = asset_uploader or ComfyUIVideoAssetUploader(client)
@@ -216,47 +226,47 @@ class ComfyUIVideoRenderBackend:
         self.raw_output_dir = self.output_dir / "raw"
         self.final_output_dir = self.output_dir / "final"
 
-        self.width_node_title = width_node_title
-        self.height_node_title = height_node_title
-        self.load_audio_node_title = load_audio_node_title
-        self.trim_audio_node_title = trim_audio_node_title
-        self.startframe_node_title = startframe_node_title
-        self.frames_node_title = frames_node_title
-        self.framerate_node_title = framerate_node_title
-        self.seed_node_title = seed_node_title
-        self.prompt_relay_node_title = prompt_relay_node_title
-        self.single_prompt_node_title = single_prompt_node_title
-        self.single_prompt_input_name = single_prompt_input_name
-        self.save_video_node_title = save_video_node_title
-        self.character_lora_node_title = character_lora_node_title
+        self.width_node_title = self.config.width_node_title
+        self.height_node_title = self.config.height_node_title
+        self.load_audio_node_title = self.config.load_audio_node_title
+        self.trim_audio_node_title = self.config.trim_audio_node_title
+        self.startframe_node_title = self.config.startframe_node_title
+        self.frames_node_title = self.config.frames_node_title
+        self.framerate_node_title = self.config.framerate_node_title
+        self.seed_node_title = self.config.seed_node_title
+        self.prompt_relay_node_title = self.config.prompt_relay_node_title
+        self.single_prompt_node_title = self.config.single_prompt_node_title
+        self.single_prompt_input_name = self.config.single_prompt_input_name
+        self.save_video_node_title = self.config.save_video_node_title
+        self.character_lora_node_title = self.config.character_lora_node_title
 
-        self.character_lora_strength = character_lora_strength
-        self.lora_1_enabled = bool(lora_1_enabled)
-        self.lora_1_name = lora_1_name
-        self.lora_1_strength_model = float(lora_1_strength_model)
-        self.lora_1_strength_clip = float(lora_1_strength_clip)
-        self.lora_1_strengths_explicit = bool(lora_1_strengths_explicit)
-        self.lora_1_node_title = lora_1_node_title
-        self.loras = tuple(loras)
-        self.lora_split_enabled = bool(lora_split_enabled)
-        self.randomize_seed = randomize_seed
-        self.seed_offset = seed_offset
+        self.character_lora_strength = self.config.character_lora_strength
+        self.lora_1_enabled = bool(self.config.lora_1_enabled)
+        self.lora_1_name = self.config.lora_1_name
+        self.lora_1_strength_model = float(self.config.lora_1_strength_model)
+        self.lora_1_strength_clip = float(self.config.lora_1_strength_clip)
+        self.lora_1_strengths_explicit = bool(self.config.lora_1_strengths_explicit)
+        self.lora_1_node_title = self.config.lora_1_node_title
+        self.loras = tuple(self.config.loras)
+        self.lora_split_enabled = bool(self.config.lora_split_enabled)
+        self.randomize_seed = self.config.randomize_seed
+        self.seed_offset = self.config.seed_offset
 
-        if segment_length_mode not in {"frames_minus_one", "frames"}:
+        if self.config.segment_length_mode not in {"frames_minus_one", "frames"}:
             raise FeverSlopValidationError("segment_length_mode must be 'frames_minus_one' or 'frames'")
-        self.segment_length_mode = segment_length_mode
-        if render_mode not in {"relay", "single_prompt", "auto"}:
+        self.segment_length_mode = self.config.segment_length_mode
+        if self.config.render_mode not in {"relay", "single_prompt", "auto"}:
             raise FeverSlopValidationError("render_mode must be 'relay', 'single_prompt', or 'auto'")
-        self.render_mode = render_mode
+        self.render_mode = self.config.render_mode
 
-        self.min_duration = min_duration
-        self.max_duration = max_duration
-        self.allow_out_of_range_clips = allow_out_of_range_clips
-        self.debug_workflows_dir = Path(debug_workflows_dir) if debug_workflows_dir else None
+        self.min_duration = self.config.min_duration
+        self.max_duration = self.config.max_duration
+        self.allow_out_of_range_clips = self.config.allow_out_of_range_clips
+        self.debug_workflows_dir = Path(self.config.debug_workflows_dir) if self.config.debug_workflows_dir else None
 
-        self.preroll_frames = max(0, int(preroll_frames))
-        self.tail_loss_frames = max(0, int(tail_loss_frames))
-        self.round_render_frames_to_8n1 = bool(round_render_frames_to_8n1)
+        self.preroll_frames = max(0, int(self.config.preroll_frames))
+        self.tail_loss_frames = max(0, int(self.config.tail_loss_frames))
+        self.round_render_frames_to_8n1 = bool(self.config.round_render_frames_to_8n1)
         self.max_render_frames = max_render_frames
         self.max_render_duration_seconds = max_render_duration_seconds
         self.render_budget_workflow_path = render_budget_workflow_path
