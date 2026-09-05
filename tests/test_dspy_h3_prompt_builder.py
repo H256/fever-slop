@@ -9,6 +9,7 @@ from unittest.mock import patch
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.h3_prompt_checkpoints import H3PromptCheckpointStore
 from feverslop.adapters.movie_minimax_visual import _h3_movie_prompt
+from feverslop.domain.h3_audio_delivery import H3AudioDelivery
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
 from feverslop.prompting.dspy_h3_generator_core import (
@@ -38,6 +39,7 @@ from feverslop.prompting.dspy_h3_models import (
 from feverslop.prompting.dspy_h3_prompt_builder import (
     DspyH3PromptBuilder,
     _format_relay_shots,
+    _normalize_resolved_scene_references,
     _normalize_relay_segments,
     _scene_references,
     _speaker_bindings_for_compile,
@@ -84,6 +86,35 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_audio_latent_delivery_marks_full_mix_as_copied_not_score_reference(self):
+        references, _ = _scene_references(
+            {"segment_id": "seg-1", "references": {}},
+            {"full_mix": Path("song.wav")},
+            reference_root=None,
+            audio_delivery=H3AudioDelivery(
+                audio_policy="preserve_original_av_audio_latent",
+                conditions_generation=True,
+                copies_to_output=True,
+            ),
+        )
+
+        full_mix = next(reference for reference in references if reference["name"] == "full_mix")
+        self.assertEqual("fully_copy", full_mix["copy_mode"])
+
+    def test_audio_latent_delivery_repairs_stale_full_mix_reference_metadata(self):
+        references = _normalize_resolved_scene_references(
+            [{
+                "label": "<Audio 1>", "kind": "audio", "name": "full_mix",
+                "description": "original full_mix song", "copy_mode": "reference",
+            }],
+            audio_delivery=H3AudioDelivery(
+                conditions_generation=True,
+                copies_to_output=True,
+            ),
+        )
+
+        self.assertEqual("fully_copy", references[0]["copy_mode"])
+
     def test_reconstructs_generic_speaker_bindings_for_stale_checkpoints(self):
         bindings = _speaker_bindings_for_compile(
             segment={"references": {
@@ -237,7 +268,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
-        self.assertEqual(38, revision["compiler_version"])
+        self.assertEqual(39, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
