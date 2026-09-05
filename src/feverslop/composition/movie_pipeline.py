@@ -15,6 +15,7 @@ from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
 from feverslop.application.openshot_exporter import export_render_plan_to_openshot
 from feverslop.cli.movie_cli import build_movie_arg_parser, config_from_args
 from feverslop.composition.movie_pipeline_jobs import (
+    MINIMAX_H3_MOVIE_WORKFLOWS,
     build_movie_reference_generator,
     build_movie_visual_adapter,
     mark_movie_reference_backend,
@@ -79,7 +80,7 @@ def _movie_uses_msr_reference_enrichment(movie_video_workflow: str) -> bool:
 
 
 def _is_minimax_movie_workflow(movie_video_workflow: str) -> bool:
-    return movie_video_workflow in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}
+    return movie_video_workflow in MINIMAX_H3_MOVIE_WORKFLOWS
 
 
 class MovieStageProgressReporter:
