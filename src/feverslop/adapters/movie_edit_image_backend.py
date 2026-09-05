@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
+from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.errors import FeverSlopRenderError
 
@@ -62,14 +63,4 @@ class MovieTwoRefEditImageBackend:
             file_type="input",
             overwrite=True,
         )
-        if hasattr(self.client, "comfy_path_from_upload"):
-            return self.client.comfy_path_from_upload(upload)
-        return _comfy_path_from_upload(upload)
-
-
-def _comfy_path_from_upload(upload: dict) -> str:
-    name = upload.get("name")
-    subfolder = upload.get("subfolder", "")
-    if not name:
-        raise ValueError(f"Unexpected ComfyUI upload response: {upload}")
-    return f"{subfolder}/{name}" if subfolder else name
+        return ComfyUIVideoAssetUploader.comfy_path_from_upload(upload)
