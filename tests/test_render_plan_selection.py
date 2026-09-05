@@ -27,6 +27,15 @@ class RenderPlanSelectionTests(unittest.TestCase):
 
         self.assertEqual([{"scene": 2}], result)
 
+    def test_load_render_plan_subset_accepts_utf8_bom(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_path = Path(temp_dir) / "render_plan.json"
+            plan_path.write_bytes(b"\xef\xbb\xbf" + json.dumps([{"scene": 1}]).encode())
+
+            result = load_render_plan_subset(plan_path, None, limit=None)
+
+        self.assertEqual([{"scene": 1}], result)
+
 
 if __name__ == "__main__":
     unittest.main()

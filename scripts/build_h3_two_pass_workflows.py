@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
+
+from feverslop.utils.io import read_json, write_json_document
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +26,7 @@ def _first(workflow: dict, class_type: str) -> tuple[str, dict]:
 
 
 def build(template: Path, output: Path, *, audio: bool = False) -> None:
-    workflow = json.loads(template.read_text(encoding="utf-8-sig"))
+    workflow = read_json(template)
     sampler_id, sampler = _first(workflow, "SamplerCustomAdvanced")
     sampler.setdefault("_meta", {})["title"] = "#PASS1"
     model_id, _ = _first(workflow, "UNETLoader")
@@ -88,10 +89,8 @@ def build(template: Path, output: Path, *, audio: bool = False) -> None:
         "preserve_audio_latent": audio,
     }
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(workflow, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    output.with_suffix(".profile.json").write_text(
-        json.dumps(profile, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
-    )
+    write_json_document(output, workflow, ensure_ascii=False)
+    write_json_document(output.with_suffix(".profile.json"), profile, ensure_ascii=False)
 
 
 def main() -> None:
