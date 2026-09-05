@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch, sentinel
 
 from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
 from feverslop.application.generate_render_plan import (
@@ -63,6 +63,26 @@ class RecordingReporter:
 
 
 class GenerateRenderPlanServiceTests(unittest.TestCase):
+    def test_render_plan_builders_share_common_services_without_reordering(self):
+        from feverslop.composition.generate_render_plan import (
+            build_generate_render_plan_use_case,
+            build_rebuild_render_plan_use_case,
+        )
+
+        common_services = [sentinel.scene, sentinel.prompt, sentinel.h3, sentinel.render]
+        with patch(
+            "feverslop.composition.generate_render_plan._common_pipeline_services",
+            create=True,
+            return_value=common_services,
+        ) as common_pipeline_services:
+            full_use_case = build_generate_render_plan_use_case()
+            rebuild_use_case = build_rebuild_render_plan_use_case()
+
+        self.assertEqual(2, common_pipeline_services.call_count)
+        self.assertIsInstance(full_use_case.pipeline_services[0], AudioTimelinePipeline)
+        self.assertEqual(common_services, full_use_case.pipeline_services[1:])
+        self.assertEqual(common_services, rebuild_use_case.pipeline_services)
+
     def test_production_h3_service_has_project_checkpoint_store_factory(self):
         from feverslop.composition.generate_render_plan import build_generate_render_plan_use_case
 

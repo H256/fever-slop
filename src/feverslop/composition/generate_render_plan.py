@@ -59,6 +59,37 @@ from feverslop.prompting.prompt_pipeline import MusicVideoPromptPipeline
 from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
 
 
+def _common_pipeline_services():
+    return [
+        SceneTimelinePipeline(
+            scene_generator_factory=_build_scene_generator,
+            enforce_scene_srt_file=enforce_scene_srt_file,
+            parse_scene_srt=parse_srt_scenes,
+            validate_scene_durations=validate_scene_durations,
+            build_stage1_segment_json=build_stage1_segment_json,
+            build_scene_prompt_relay=build_scene_prompt_relay,
+        ),
+        PromptGenerationPipeline(
+            llm_factory=_build_llm,
+            prompt_pipeline_factory=MusicVideoPromptPipeline,
+            concept_batcher_factory=ConceptPromptBatcher,
+            scene_prompt_builder_factory=ScenePromptBuilder,
+        ),
+        H3PromptPipeline(
+            llm_factory=_build_llm,
+            h3_prompt_builder_factory=H3PromptBuilder,
+            dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
+                build_dspy_generator(llm), allow_fallback=True,
+            ),
+            checkpoint_store_factory=_build_h3_checkpoint_store,
+        ),
+        RenderPlanPipeline(
+            build_render_plan=build_render_plan,
+            regenerator_factory=_build_canonical_regenerator,
+        ),
+    ]
+
+
 def build_generate_render_plan_use_case(console: Console | None = None) -> GenerateRenderPlanUseCase:
     return GenerateRenderPlanUseCase(
         console=console,
@@ -73,32 +104,7 @@ def build_generate_render_plan_use_case(console: Console | None = None) -> Gener
                 merge_same_kind_segments=merge_same_kind_segments,
                 save_timeline_json=save_timeline_json,
             ),
-            SceneTimelinePipeline(
-                scene_generator_factory=_build_scene_generator,
-                enforce_scene_srt_file=enforce_scene_srt_file,
-                parse_scene_srt=parse_srt_scenes,
-                validate_scene_durations=validate_scene_durations,
-                build_stage1_segment_json=build_stage1_segment_json,
-                build_scene_prompt_relay=build_scene_prompt_relay,
-            ),
-            PromptGenerationPipeline(
-                llm_factory=_build_llm,
-                prompt_pipeline_factory=MusicVideoPromptPipeline,
-                concept_batcher_factory=ConceptPromptBatcher,
-                scene_prompt_builder_factory=ScenePromptBuilder,
-            ),
-            H3PromptPipeline(
-                llm_factory=_build_llm,
-                h3_prompt_builder_factory=H3PromptBuilder,
-                dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
-                    build_dspy_generator(llm), allow_fallback=True,
-                ),
-                checkpoint_store_factory=_build_h3_checkpoint_store,
-            ),
-            RenderPlanPipeline(
-                build_render_plan=build_render_plan,
-                regenerator_factory=_build_canonical_regenerator,
-            ),
+            *_common_pipeline_services(),
         ],
         storyboard_renderer_factory=_build_storyboard_renderer,
     )
@@ -175,34 +181,7 @@ def build_rebuild_render_plan_use_case(console: Console | None = None) -> Genera
     return GenerateRenderPlanUseCase(
         console=console,
         artifact_store=JsonArtifactStore(),
-        pipeline_services=[
-            SceneTimelinePipeline(
-                scene_generator_factory=_build_scene_generator,
-                enforce_scene_srt_file=enforce_scene_srt_file,
-                parse_scene_srt=parse_srt_scenes,
-                validate_scene_durations=validate_scene_durations,
-                build_stage1_segment_json=build_stage1_segment_json,
-                build_scene_prompt_relay=build_scene_prompt_relay,
-            ),
-            PromptGenerationPipeline(
-                llm_factory=_build_llm,
-                prompt_pipeline_factory=MusicVideoPromptPipeline,
-                concept_batcher_factory=ConceptPromptBatcher,
-                scene_prompt_builder_factory=ScenePromptBuilder,
-            ),
-            H3PromptPipeline(
-                llm_factory=_build_llm,
-                h3_prompt_builder_factory=H3PromptBuilder,
-                dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
-                    build_dspy_generator(llm), allow_fallback=True,
-                ),
-                checkpoint_store_factory=_build_h3_checkpoint_store,
-            ),
-            RenderPlanPipeline(
-                build_render_plan=build_render_plan,
-                regenerator_factory=_build_canonical_regenerator,
-            ),
-        ],
+        pipeline_services=_common_pipeline_services(),
         storyboard_renderer_factory=_build_storyboard_renderer,
     )
 
