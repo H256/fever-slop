@@ -100,24 +100,39 @@ def ensure_schema(
     return connection
 
 
+@contextmanager
+def _connect(db_path: str) -> Generator[sqlite3.Connection, None, None]:
+    conn = sqlite3.connect(db_path, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.row_factory = sqlite3.Row
+    ensure_schema(conn)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def _fingerprint_from_row(row: sqlite3.Row) -> ArtifactFingerprint:
+    return ArtifactFingerprint(
+        artifact_kind=ArtifactKind(row["artifact_kind"]),
+        scene_number=row["scene_number"],
+        prompt_hash=row["prompt_hash"],
+        workflow_hash=row["workflow_hash"],
+        reference_hash=row["reference_hash"],
+        timeline_hash=row["timeline_hash"],
+        dimensions_hash=row["dimensions_hash"],
+    )
+
+
 class SqliteRevisionStore(RevisionStorePort):
     """SQLite-backed implementation of RevisionStorePort."""
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
 
-    @contextmanager
     def _connection(self) -> Generator[sqlite3.Connection, None, None]:
-        """Open a connection with WAL mode and return it."""
-        conn = sqlite3.connect(self._db_path, timeout=30)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.row_factory = sqlite3.Row
-        ensure_schema(conn)
-        try:
-            yield conn
-        finally:
-            conn.close()
+        return _connect(self._db_path)
 
     def save_revision(self, revision: PromptRevision) -> None:
         with self._connection() as conn:
@@ -196,17 +211,8 @@ class SqliteArtifactProvenance(ArtifactProvenancePort):
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
 
-    @contextmanager
     def _connection(self) -> Generator[sqlite3.Connection, None, None]:
-        conn = sqlite3.connect(self._db_path, timeout=30)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.row_factory = sqlite3.Row
-        ensure_schema(conn)
-        try:
-            yield conn
-        finally:
-            conn.close()
+        return _connect(self._db_path)
 
     def record_fingerprint(self, project_id: str, fingerprint: ArtifactFingerprint) -> None:
         with self._connection() as conn:
@@ -246,15 +252,7 @@ class SqliteArtifactProvenance(ArtifactProvenancePort):
             row = cursor.fetchone()
             if not row:
                 return None
-            return ArtifactFingerprint(
-                artifact_kind=ArtifactKind(row["artifact_kind"]),
-                scene_number=row["scene_number"],
-                prompt_hash=row["prompt_hash"],
-                workflow_hash=row["workflow_hash"],
-                reference_hash=row["reference_hash"],
-                timeline_hash=row["timeline_hash"],
-                dimensions_hash=row["dimensions_hash"],
-            )
+            return _fingerprint_from_row(row)
 
     def load_fingerprints(self, project_id: str) -> list[ArtifactFingerprint]:
         with self._connection() as conn:
@@ -267,14 +265,6 @@ class SqliteArtifactProvenance(ArtifactProvenancePort):
                 (project_id,),
             )
             return [
-                ArtifactFingerprint(
-                    artifact_kind=ArtifactKind(row["artifact_kind"]),
-                    scene_number=row["scene_number"],
-                    prompt_hash=row["prompt_hash"],
-                    workflow_hash=row["workflow_hash"],
-                    reference_hash=row["reference_hash"],
-                    timeline_hash=row["timeline_hash"],
-                    dimensions_hash=row["dimensions_hash"],
-                )
+                _fingerprint_from_row(row)
                 for row in cursor.fetchall()
             ]
