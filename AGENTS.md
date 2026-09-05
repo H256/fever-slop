@@ -149,7 +149,7 @@ ruff check .
 Run the test suite:
 
 ```powershell
-uv run python -m unittest discover -s tests
+uv run python -m tests.suites.unit
 ```
 
 Run the default project helper:
@@ -161,7 +161,7 @@ uv run python run_pipeline.py ./projects/my_song
 ## Verification
 
 - For linting, use `ruff check .`.
-- For Python code changes, run the focused tests first, then the full `unittest` suite when practical.
+- For Python code changes, run the focused tests first, then the full unit suite (`uv run python -m tests.suites.unit`) when practical.
 - For CLI/script changes, verify the affected command path directly.
 - For render workflow changes, validate JSON structure and avoid requiring a full render unless explicitly requested.
 - If a change depends on local ComfyUI, FFmpeg, model files, GPU, or audio assets that are not available, say exactly what could not be verified.
