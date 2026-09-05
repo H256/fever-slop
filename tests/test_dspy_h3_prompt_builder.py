@@ -9,6 +9,7 @@ from unittest.mock import patch
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.h3_prompt_checkpoints import H3PromptCheckpointStore
 from feverslop.adapters.movie_minimax_visual import _h3_movie_prompt
+from feverslop.domain.h3_audio_delivery import H3AudioDelivery
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
 from feverslop.prompting.dspy_h3_generator_core import (
@@ -38,6 +39,7 @@ from feverslop.prompting.dspy_h3_models import (
 from feverslop.prompting.dspy_h3_prompt_builder import (
     DspyH3PromptBuilder,
     _format_relay_shots,
+    _normalize_resolved_scene_references,
     _normalize_relay_segments,
     _scene_references,
     _speaker_bindings_for_compile,
@@ -84,6 +86,35 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_audio_latent_delivery_marks_full_mix_as_copied_not_score_reference(self):
+        references, _ = _scene_references(
+            {"segment_id": "seg-1", "references": {}},
+            {"full_mix": Path("song.wav")},
+            reference_root=None,
+            audio_delivery=H3AudioDelivery(
+                audio_policy="preserve_original_av_audio_latent",
+                conditions_generation=True,
+                copies_to_output=True,
+            ),
+        )
+
+        full_mix = next(reference for reference in references if reference["name"] == "full_mix")
+        self.assertEqual("fully_copy", full_mix["copy_mode"])
+
+    def test_audio_latent_delivery_repairs_stale_full_mix_reference_metadata(self):
+        references = _normalize_resolved_scene_references(
+            [{
+                "label": "<Audio 1>", "kind": "audio", "name": "full_mix",
+                "description": "original full_mix song", "copy_mode": "reference",
+            }],
+            audio_delivery=H3AudioDelivery(
+                conditions_generation=True,
+                copies_to_output=True,
+            ),
+        )
+
+        self.assertEqual("fully_copy", references[0]["copy_mode"])
+
     def test_reconstructs_generic_speaker_bindings_for_stale_checkpoints(self):
         bindings = _speaker_bindings_for_compile(
             segment={"references": {
@@ -237,7 +268,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
-        self.assertEqual(37, revision["compiler_version"])
+        self.assertEqual(39, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
@@ -2034,6 +2065,68 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertIn("fallback scene", result["prompt"])
         self.assertEqual("deterministic_fallback", result["prompt_provenance"]["source"])
         self.assertEqual(result["dspy_error"], "DSPy unavailable")
+        self.assertTrue(result["prompt_contract"]["valid"])
+
+    def test_fallback_binds_each_picture_reference_as_a_defined_subject(self):
+        class BrokenGenerator:
+            def __call__(self, request):
+                raise RuntimeError("DSPy unavailable")
+
+        result = DspyH3PromptBuilder(BrokenGenerator()).build_h3_prompt(
+            segment={
+                "segment_id": "seg-1",
+                "references": {
+                    "actor_ids": ["actor-1"],
+                    "actor_sheet_paths": ["output/references/actor.png"],
+                    "actor_reference_descriptions": [{
+                        "id": "actor-1", "name": "Performer", "visual_description": "a singer",
+                    }],
+                },
+            },
+            concept="fallback scene",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        definitions = result["prompt"].split("summary:", 1)[0]
+        self.assertIn("<Subject 1>", definitions)
+        self.assertIn("<Picture 1>", definitions)
+
+    def test_retries_dspy_plan_once_after_a_prompt_contract_failure(self):
+        from types import SimpleNamespace
+
+        invalid = ResolvedPromptPlan(
+            creative_intent="A performer waits.",
+            style_opening="",
+            shots=[PlannedShot(shot_number=1, description="A performer waits.", start_seconds=0, end_seconds=2)],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+        valid = invalid.model_copy(update={
+            "style_opening": "Live-action cinematic imagery uses cool practical lighting.",
+        })
+
+        class RetryingGenerator:
+            def __init__(self):
+                self.calls = 0
+
+            def __call__(self, request):
+                self.calls += 1
+                return SimpleNamespace(plan=invalid if self.calls == 1 else valid)
+
+        generator = RetryingGenerator()
+        result = DspyH3PromptBuilder(generator).build_h3_prompt(
+            segment={"segment_id": "seg-1", "duration": 2},
+            concept="A performer waits.",
+            scene_details={},
+            global_context={},
+            mode="r2v",
+        )
+
+        self.assertEqual(2, generator.calls)
+        self.assertTrue(result["prompt_contract"]["valid"])
+        self.assertEqual("dspy_contract_repair", result["prompt_provenance"]["source"])
 
     def test_sanitizes_embedded_image_data_in_fallback_error(self):
         payload = "data:image/png;base64," + ("A" * 400)
