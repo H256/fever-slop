@@ -237,7 +237,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
-        self.assertEqual(37, revision["compiler_version"])
+        self.assertEqual(38, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
@@ -2034,6 +2034,68 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertIn("fallback scene", result["prompt"])
         self.assertEqual("deterministic_fallback", result["prompt_provenance"]["source"])
         self.assertEqual(result["dspy_error"], "DSPy unavailable")
+        self.assertTrue(result["prompt_contract"]["valid"])
+
+    def test_fallback_binds_each_picture_reference_as_a_defined_subject(self):
+        class BrokenGenerator:
+            def __call__(self, request):
+                raise RuntimeError("DSPy unavailable")
+
+        result = DspyH3PromptBuilder(BrokenGenerator()).build_h3_prompt(
+            segment={
+                "segment_id": "seg-1",
+                "references": {
+                    "actor_ids": ["actor-1"],
+                    "actor_sheet_paths": ["output/references/actor.png"],
+                    "actor_reference_descriptions": [{
+                        "id": "actor-1", "name": "Performer", "visual_description": "a singer",
+                    }],
+                },
+            },
+            concept="fallback scene",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        definitions = result["prompt"].split("summary:", 1)[0]
+        self.assertIn("<Subject 1>", definitions)
+        self.assertIn("<Picture 1>", definitions)
+
+    def test_retries_dspy_plan_once_after_a_prompt_contract_failure(self):
+        from types import SimpleNamespace
+
+        invalid = ResolvedPromptPlan(
+            creative_intent="A performer waits.",
+            style_opening="",
+            shots=[PlannedShot(shot_number=1, description="A performer waits.", start_seconds=0, end_seconds=2)],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+        valid = invalid.model_copy(update={
+            "style_opening": "Live-action cinematic imagery uses cool practical lighting.",
+        })
+
+        class RetryingGenerator:
+            def __init__(self):
+                self.calls = 0
+
+            def __call__(self, request):
+                self.calls += 1
+                return SimpleNamespace(plan=invalid if self.calls == 1 else valid)
+
+        generator = RetryingGenerator()
+        result = DspyH3PromptBuilder(generator).build_h3_prompt(
+            segment={"segment_id": "seg-1", "duration": 2},
+            concept="A performer waits.",
+            scene_details={},
+            global_context={},
+            mode="r2v",
+        )
+
+        self.assertEqual(2, generator.calls)
+        self.assertTrue(result["prompt_contract"]["valid"])
+        self.assertEqual("dspy_contract_repair", result["prompt_provenance"]["source"])
 
     def test_sanitizes_embedded_image_data_in_fallback_error(self):
         payload = "data:image/png;base64," + ("A" * 400)
