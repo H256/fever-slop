@@ -81,6 +81,60 @@ class SceneSeedPolicyTests(unittest.TestCase):
 
 
 class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
+    def test_image_backend_accepts_filename_upload_response(self):
+        from unittest.mock import MagicMock, patch
+
+        from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+        from feverslop.ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
+
+        client = MagicMock(spec=[
+            "upload_image", "queue_prompt", "wait_for_completion",
+            "extract_output_images", "download_view_file",
+        ])
+        client.upload_image.return_value = {"filename": "reference.png", "subfolder": "uploads"}
+        client.extract_output_images.return_value = [{"filename": "result.png"}]
+        backend = ComfyUIImageBackend(client, Path("workflow.json"), Path("out"))
+        workflow = {
+            "1": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT_POSITIVE"}},
+            "2": {"inputs": {"image": ""}, "_meta": {"title": "#IMAGE_1"}},
+        }
+        request = ImageRenderRequest(
+            scene={}, scene_number=1, prompt="portrait", workflow_path=Path("workflow.json"),
+            output_dir=Path("out"), reference_image=Path("reference.png"),
+            anchors=WorkflowAnchorConfig(negative_prompt_title="", save_image_title=""),
+        )
+        with patch.object(backend, "load_workflow", return_value=workflow):
+            backend.render_image(request)
+
+        queued = client.queue_prompt.call_args.args[0]
+        self.assertEqual("uploads/reference.png", queued["2"]["inputs"]["image"])
+
+    def test_edit_and_startframe_upload_paths_use_canonical_response_contract(self):
+        from unittest.mock import MagicMock
+
+        from feverslop.adapters.movie_edit_image_backend import MovieTwoRefEditImageBackend
+        from feverslop.adapters.startframe_director_comfyui import ComfyUIStartframeDirectorVisualAdapter
+
+        client = MagicMock(spec=["upload_image"])
+        edit = MovieTwoRefEditImageBackend(client=client, workflow_path="edit.json")
+        director = ComfyUIStartframeDirectorVisualAdapter(
+            client=client, director_workflow_path="director.json", mask_workflow_path="mask.json",
+            identity_repair_workflow_path="repair.json", detail_workflow_path="detail.json",
+            video_use_case=None, validator=None,
+        )
+        uploaders = [edit._upload_image, lambda path: director._upload(path, "startframes")]
+        for index, upload in enumerate(uploaders):
+            for response, expected in (
+                ({"filename": "ref.png", "subfolder": "uploads"}, "uploads/ref.png"),
+                ({"name": "ref.png"}, "ref.png"),
+            ):
+                with self.subTest(adapter=index, response=response):
+                    client.upload_image.return_value = response
+                    self.assertEqual(expected, upload(Path("ref.png")))
+            client.upload_image.return_value = {"subfolder": "uploads"}
+            with self.subTest(adapter=index), self.assertRaisesRegex(ValueError, "Unexpected ComfyUI upload response"):
+                upload(Path("ref.png"))
+
     def test_upload_audio_uses_comfyui_image_endpoint_contract(self):
         from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 

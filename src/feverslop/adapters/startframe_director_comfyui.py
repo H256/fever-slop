@@ -258,8 +258,6 @@ class ComfyUIStartframeDirectorVisualAdapter:
 
     def _upload(self, image_path: Path, subfolder: str) -> str:
         upload = self.client.upload_image(image_path, subfolder=subfolder, file_type="input", overwrite=True)
-        if hasattr(self.client, "comfy_path_from_upload"):
-            return self.client.comfy_path_from_upload(upload)
         return ComfyUIVideoAssetUploader.comfy_path_from_upload(upload)
 
     def _write_debug_workflow(self, debug_name: str, workflow: dict[str, Any]) -> None:
