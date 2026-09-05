@@ -163,6 +163,113 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertNotIn("The camera maintains a slow orbit around the musicians.", prompt)
         self.assertNotIn("Red petals swirl around the musicians.", prompt)
 
+    def test_r2v_compiler_keeps_missing_camera_behavior_for_description_owned_shot(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A reference-guided performance.",
+            shots=[PlannedShot(
+                shot_number=1,
+                prose_owner="description",
+                description="<Subject 1> reaches toward the flowers.",
+                camera_behavior="Slowly tracking inward toward the vocalist.",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Vocalist",
+                description="a vocalist", source_references=["<Picture 1>"],
+            )],
+            overall_soundscape="Quiet wind.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 2.0)},
+        )
+
+        self.assertIn("The camera slowly tracks inward toward <Subject 1>.", prompt)
+
+    def test_r2v_compiler_replaces_reference_ids_with_subject_labels(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A reference-guided performance.",
+            subjects=[
+                SubjectDefinition(
+                    label="<Subject 1>", name="Male Vocalist",
+                    description="a vocalist", source_references=["<Picture 1>"],
+                ),
+                SubjectDefinition(
+                    label="<Subject 2>", name="Crimson Field",
+                    description="a battlefield", source_references=["<Picture 2>"],
+                ),
+            ],
+            shots=[PlannedShot(
+                shot_number=1,
+                description=(
+                    "actor_vocalist stands in loc_crimson_bloom_field beneath moonlight."
+                ),
+                start_seconds=0,
+                end_seconds=2,
+                reference_labels=["<Picture 1>", "<Picture 2>"],
+            )],
+            overall_soundscape="Quiet wind.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 2.0)},
+            reference_metadata=[
+                {"label": "<Picture 1>", "kind": "picture", "id": "actor_vocalist"},
+                {
+                    "label": "<Picture 2>", "kind": "picture",
+                    "source": "references/locations/loc_crimson_bloom_field/sheet.png",
+                },
+            ],
+        )
+
+        self.assertIn("<Subject 1> stands in <Subject 2>", prompt)
+        self.assertNotIn("actor_vocalist", prompt)
+        self.assertNotIn("loc_crimson_bloom_field", prompt)
+
+    def test_r2v_compiler_preserves_diegetic_vocal_soundscape(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A reference-guided performance.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Male Vocalist",
+                description="a vocalist", source_references=["<Picture 1>"],
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="The performer braces against the wind.",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            overall_soundscape=(
+                "The diegetic sound of a powerful male vocal belt, accompanied by "
+                "the low roar of distant fires."
+            ),
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 2.0)},
+            relay_segments=[{
+                "state": "singing", "lyrics": "Churning",
+                "subject_label": "<Subject 1>", "speaker_id": "S1",
+            }],
+            speaker_bindings=[{"subject_label": "<Subject 1>", "speaker_id": "S1"}],
+        )
+
+        self.assertIn(
+            "overall_soundscape: The diegetic sound of a powerful male vocal belt, "
+            "accompanied by the low roar of distant fires.",
+            prompt,
+        )
+
     def test_legacy_shot_without_prose_owner_keeps_component_rendering(self):
         plan = ResolvedPromptPlan.model_validate({
             "creative_intent": "A legacy performance.",

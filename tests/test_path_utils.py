@@ -3,10 +3,37 @@ import unittest
 import warnings
 from pathlib import Path
 
+import feverslop.path_utils as path_utils
 from feverslop.path_utils import WORKFLOW_PATH_ALIASES, coerce_local_path, resolve_workflow_reference
 
 
 class PathUtilsTests(unittest.TestCase):
+    def test_normalize_workflow_path_preserves_separator_and_casefold_semantics(self):
+        self.assertEqual(
+            "workflows/image/image-model/example.json",
+            path_utils.normalize_workflow_path(r"Workflows\Image\Image-Model\Example.JSON"),
+        )
+
+    def test_workflow_path_matches_supports_exact_and_suffix_matches(self):
+        self.assertTrue(
+            path_utils.workflow_path_matches(
+                r"workflows\image\example.json",
+                "WORKFLOWS/IMAGE/EXAMPLE.JSON",
+            )
+        )
+        self.assertTrue(
+            path_utils.workflow_path_matches(
+                "workflows/image/example.json",
+                "C:/repo/workflows/image/example.json",
+            )
+        )
+        self.assertFalse(
+            path_utils.workflow_path_matches(
+                "image/example.json",
+                "C:/repo/workflows/image/example.json.bak",
+            )
+        )
+
     def test_windows_relative_path_is_coerced_to_current_platform_path(self):
         self.assertEqual(Path("app_config.json"), coerce_local_path(".\\app_config.json"))
 
