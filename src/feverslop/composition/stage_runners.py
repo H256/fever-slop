@@ -63,6 +63,7 @@ from feverslop.composition.generate_render_plan import (
 )
 from feverslop.composition.canonical_plan_regenerator import CanonicalPlanRegenerator
 from feverslop.composition.resume_plan import reference_manifests_reusable
+from feverslop.composition.continuation_capability import resolve_continuation_capability
 from feverslop.composition.continuation_scheduler import (
     ContinuationScheduler,
     chains_from_predecessors,
@@ -559,7 +560,7 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         stem_files=stem_files,
         project_dir=config.project_dir,
         max_scene_actors=config.max_scene_actors,
-        duration_capability=(profile.duration_capability if profile is not None else None),
+        duration_capability=resolve_continuation_capability(config.video_pipeline, profile),
         plan_writer=regenerator.write,
     )
     if selected_scene_spec:
@@ -1949,6 +1950,7 @@ def _assemble_declared_cutless_groups(
             diagnostics_file=diagnostics_file,
             fps=int(render_plan[0].get("fps") or 24),
             duplicate_policy=str(group.get("duplicate_policy") or "reject"),
+            reporter=ConsoleReporter(console),
         )
         first_clip_index = min(assembled.index(clips_by_segment[segment_id]) for segment_id in segment_ids)
         assembled = [
@@ -1972,11 +1974,10 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
     selected_scenes = parse_scene_list(getattr(args, "scenes", None))
     if selected_scenes is None and getattr(args, "smoke_only", False):
         selected_scenes = {int(args.smoke_scene)}
-    scene_numbers = [
-        int(entry["scene"])
-        for entry in render_plan
-        if selected_scenes is None or int(entry["scene"]) in selected_scenes
-    ]
+    render_plan = RenderPlan.from_dicts(render_plan).select(
+        scene_numbers=selected_scenes,
+    ).to_dicts()
+    scene_numbers = [int(entry["scene"]) for entry in render_plan]
     canonical_clips = [layout.scene_final_video(scene_number) for scene_number in scene_numbers]
     canonical_available = [clip for clip in canonical_clips if clip.is_file()]
     if canonical_available and len(canonical_available) != len(canonical_clips):
