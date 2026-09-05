@@ -335,14 +335,6 @@ class VideoPostProcessor:
         self._run_ffmpeg(cmd)
         return output_file
 
-    def mux_original_audio_for_diagnostics(
-        self,
-        video_file: str | Path,
-        audio_file: str | Path,
-        output_file: str | Path,
-    ) -> Path:
-        return self.mux_original_audio(video_file, audio_file, output_file)
-
     @staticmethod
     def write_concat_list(video_files: list[Path], output_file: str | Path) -> Path:
         return write_media_concat_list(video_files, output_file)
