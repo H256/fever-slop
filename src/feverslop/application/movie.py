@@ -38,7 +38,6 @@ from feverslop.application.movie_continuity import (
     build_movie_continuity_fallback,
     movie_continuity_plan_from_dict,
     movie_continuity_plan_to_dict,
-    normalize_movie_continuity_plan,
 )
 
 # Reference prompts
@@ -88,7 +87,6 @@ __all__ = [
     "build_movie_continuity_fallback",
     "movie_continuity_plan_from_dict",
     "movie_continuity_plan_to_dict",
-    "normalize_movie_continuity_plan",
     # References
     "build_movie_actor_reference_prompt",
     "build_movie_actor_visual_description",

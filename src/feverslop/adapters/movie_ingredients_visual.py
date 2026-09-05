@@ -7,6 +7,7 @@ from pathlib import Path
 from feverslop.adapters.comfyui_ingredients_video_backend import (
     ComfyUIIngredientsVideoRenderBackend,
 )
+from feverslop.domain.movie_utils import movie_slug
 from feverslop.ports.rendering import VideoRenderRequest
 
 
@@ -30,7 +31,7 @@ class ComfyUIMovieIngredientsVisualAdapter:
         project_dir = Path(project_dir)
         plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
         output_dir = self.backend.output_dir
-        final_output = project_dir / "output" / "movie" / f"{_movie_slug(plan, project_dir)}.mp4"
+        final_output = project_dir / "output" / "movie" / f"{movie_slug(plan, project_dir)}.mp4"
         scenes = self._movie_scenes(plan, project_dir=project_dir)
         if not scenes:
             raise ValueError("Movie ingredients render plan has no shots or scenes to render")
@@ -105,10 +106,3 @@ def _ingredients_prompt(scene: dict) -> str:
     if target_prompt:
         return target_prompt
     return str(scene.get("description") or "").strip()
-
-
-def _movie_slug(plan: dict, project_dir: Path) -> str:
-    title = str(plan.get("title") or "").strip()
-    if not title:
-        return project_dir.name
-    return "".join(char.lower() if char.isalnum() else "-" for char in title).strip("-") or project_dir.name
