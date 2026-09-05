@@ -13,7 +13,7 @@ from feverslop.adapters.comfyui_seedvr2_backend import (
     SeedVR2RenderSettings,
 )
 from feverslop.adapters.reporting import NullReporter
-from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.adapters.video_postprocessor import VideoPostProcessor, final_video_postprocessor
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.seedvr2 import (
     SeedVR2Pass,
@@ -66,16 +66,6 @@ def _probe_duration(path: Path) -> float | None:
     except (OSError, ValueError, subprocess.CalledProcessError):
         return None
     return value if value >= 0 else None
-
-
-def _resolve_vae_temporal_size(configured: int, duration_seconds: float | None) -> int:
-    if duration_seconds is None:
-        return configured
-    if duration_seconds > 10.0:
-        return min(configured, 16)
-    if duration_seconds > 6.0:
-        return min(configured, 32)
-    return configured
 
 
 def _source_clip(layout: SceneArtifactLayout, scene_number: int) -> Path:
@@ -237,10 +227,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
     )
     probe_size = options.probe_size or _probe_size
     probe_duration = options.probe_duration or _probe_duration
-    postprocessor = VideoPostProcessor(
-        ffmpeg_path="ffmpeg",
-        audio_bitrate="320k",
-    )
+    postprocessor = final_video_postprocessor()
     plan = json.loads(Path(options.render_plan_path).read_text(encoding="utf-8-sig"))
     if options.scene_numbers is not None:
         plan = [
