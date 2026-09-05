@@ -21,12 +21,47 @@ from feverslop.config.project_config import ProjectConfig
 from feverslop.path_utils import resolve_workflow_reference
 
 JobHandler = Callable[[Callable[[str], None]], Any]
+MINIMAX_H3_MOVIE_WORKFLOWS = frozenset({"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"})
 
 
 class ProjectStorePort(Protocol):
     """Minimal project-store surface needed by CLI movie jobs."""
 
     def resolve_project_path(self, project_id: str, relative: str) -> Path: ...
+
+
+def _minimax_workflow_key(workflow: str) -> str:
+    return {
+        "minimax-h3-r2v": "r2v_workflow",
+        "minimax-h3-t2v": "t2v_workflow",
+        "minimax-h3-i2v": "i2v_workflow",
+    }[workflow]
+
+
+def _render_minimax_movie(
+    project_dir: Path,
+    config: dict[str, str],
+    render_plan_path: Path,
+    log: Callable[[str], None],
+    *,
+    selected_scenes: list[int] | None = None,
+    concat_only: bool = False,
+) -> Any:
+    workflow = config["movie_video_workflow"]
+    adapter = build_movie_visual_adapter(
+        project_dir,
+        Path(config[_minimax_workflow_key(workflow)]),
+        movie_config=config,
+    )
+    return adapter.render_movie(
+        project_dir=project_dir,
+        render_plan_path=render_plan_path,
+        selected_scenes=selected_scenes,
+        concat_only=concat_only,
+        on_clip_rendered=lambda completed, total, scene_number: log(
+            f"[MoviePipeline] Rendered MiniMax clip {completed}/{total}: scene {scene_number}",
+        ),
+    )
 
 
 def build_movie_full_auto_handler(*, store: ProjectStorePort, project_id: str, render_plan_path: Path, movie_config: dict[str, Any] | None = None) -> JobHandler:
@@ -46,24 +81,10 @@ def build_movie_full_auto_handler(*, store: ProjectStorePort, project_id: str, r
         log(f"[Krea2_Adapter] Preparing visual consistency references via {config['reference_backend']}")
         manifest_path = ensure_movie_references(project_dir, movie_config=config)
         log(f"[Krea2_Adapter] Reference sheets ready: {manifest_path}")
-        if config["movie_video_workflow"] in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}:
-            workflow_key = {
-                "minimax-h3-r2v": "r2v_workflow",
-                "minimax-h3-t2v": "t2v_workflow",
-                "minimax-h3-i2v": "i2v_workflow",
-            }[config["movie_video_workflow"]]
+        if config["movie_video_workflow"] in MINIMAX_H3_MOVIE_WORKFLOWS:
             log(f"[MoviePipeline] Stage: MiniMax {config['movie_video_workflow']} render")
-            adapter = build_movie_visual_adapter(
-                project_dir,
-                Path(config[workflow_key]),
-                movie_config=config,
-            )
-            final_video = adapter.render_movie(
-                project_dir=project_dir,
-                render_plan_path=planning.render_plan_path,
-                on_clip_rendered=lambda completed, total, scene_number: log(
-                    f"[MoviePipeline] Rendered MiniMax clip {completed}/{total}: scene {scene_number}",
-                ),
+            final_video = _render_minimax_movie(
+                project_dir, config, planning.render_plan_path, log,
             )
             log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
             return final_video
@@ -191,25 +212,14 @@ def build_movie_render_handler(
         project_dir = store.resolve_project_path(project_id, ".").resolve()
         config = movie_runtime_config(movie_config)
         log(f"[MoviePipeline] Stage: Existing Movie MSR plan: {render_plan_path}")
-        if config["movie_video_workflow"] in {"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"}:
-            workflow_key = {
-                "minimax-h3-r2v": "r2v_workflow",
-                "minimax-h3-t2v": "t2v_workflow",
-                "minimax-h3-i2v": "i2v_workflow",
-            }[config["movie_video_workflow"]]
-            adapter = build_movie_visual_adapter(
+        if config["movie_video_workflow"] in MINIMAX_H3_MOVIE_WORKFLOWS:
+            final_video = _render_minimax_movie(
                 project_dir,
-                Path(config[workflow_key]),
-                movie_config=config,
-            )
-            final_video = adapter.render_movie(
-                project_dir=project_dir,
-                render_plan_path=render_plan_path,
+                config,
+                render_plan_path,
+                log,
                 selected_scenes=selected_scenes,
                 concat_only=concat_only,
-                on_clip_rendered=lambda completed, total, scene_number: log(
-                    f"[MoviePipeline] Rendered MiniMax clip {completed}/{total}: scene {scene_number}",
-                ),
             )
             log(f"[MoviePipeline] Stage: Movie Complete: {final_video}")
             return final_video
