@@ -754,6 +754,20 @@ class PatchSeedTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class BuildWorkflowTests(unittest.TestCase):
+    def test_continuation_generation_budget_is_not_replaced_by_timeline_duration(self):
+        backend = self._backend(workflow=_native_r2v_workflow())
+        result = backend.build_workflow(
+            {"scene": 2, "render_frame_count": 73, "frame_count": 64, "anchor_frames": 1, "abs_start_seconds": 10,
+             "references": {"actor_sheet_paths": ["/tmp/actor.png"]}},
+            prompt="continue", duration_seconds=64 / 24,
+        )
+        self.assertEqual(73, result["30"]["inputs"]["value"])
+        window = backend._audio_timing_window(
+            {"abs_start_seconds": 10, "abs_end_seconds": 13, "anchor_frames": 1}, 3,
+        )
+        self.assertEqual(239 / 24, window.start_seconds)
+        self.assertEqual(13, window.end_seconds)
+
     def _backend(self, workflow: dict | None = None):
         uploader = FakeAssetUploader()
         return ComfyUIMiniMaxH3R2VBackend(
@@ -1195,6 +1209,36 @@ class LatentUpscalerDeviceTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class RenderVideoTests(unittest.TestCase):
+    def test_continuation_keeps_anchor_and_records_generation_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            template = root / "workflow.json"
+            template.write_text(json.dumps(_native_r2v_workflow()))
+            plan = root / "plan.json"
+            plan.write_text("[]")
+            processor = FakePostProcessor()
+            backend = ComfyUIMiniMaxH3R2VBackend(
+                client=FakeClient(), workflow_path=template, output_dir=root / "render",
+                project_dir=root, asset_uploader=FakeAssetUploader(),
+                render_queue=FakeRenderQueue(), postprocessor=processor,
+                model_resolver=FakeModelResolver(), workflow=_native_r2v_workflow(),
+            )
+            request = VideoRenderRequest(
+                scene={"scene": 2, "fps": 24, "duration_seconds": 3,
+                       "abs_start_seconds": 10, "frame_count": 72,
+                       "render_frame_count": 90, "anchor_frames": 1,
+                       "references": {"actor_sheet_paths": ["actor.png"]}},
+                scene_number=2, prompt="continue", workflow_path=template,
+                output_dir=root / "render", audio_file=root / "song.wav",
+                storyboard_dir=root, render_plan_path=plan,
+            )
+            with patch.object(backend, "_manifest_assets", return_value=[]):
+                output = backend.render_video(request)
+            self.assertEqual(73, processor.trim_specs[0].keep_frames)
+            manifest = json.loads(output.with_name("manifest.json").read_text())
+            self.assertEqual(73, manifest["frame_count"])
+            self.assertEqual(90, manifest["render_frame_count"])
+
     def test_full_flow(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

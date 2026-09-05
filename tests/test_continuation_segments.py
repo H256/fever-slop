@@ -52,8 +52,8 @@ class ContinuationSegmentTests(unittest.TestCase):
         self.assertEqual(10, segments[0].start_seconds)
         self.assertEqual(35, segments[-1].end_seconds)
         self.assertTrue(all(item.duration_seconds <= 12 for item in segments))
-        self.assertEqual(5, round(segments[0].duration_seconds * 24) % 17)
-        self.assertTrue(all(round(item.duration_seconds * 24) % 17 == 0 for item in segments[1:]))
+        self.assertEqual(5, segments[0].render_frame_count % 17)
+        self.assertTrue(all(item.render_frame_count % 17 == 5 for item in segments))
 
     def test_rejects_impossible_or_invalid_inputs(self):
         with self.assertRaises(ValueError):
