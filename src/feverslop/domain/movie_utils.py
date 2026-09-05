@@ -7,6 +7,7 @@ and adapter layers.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -156,3 +157,10 @@ def configured_locations(config: dict) -> list:
             name = str(location).strip()
             locations.append(MovieLocation(id=safe_id(name, f"location_{index}"), name=name, visual_description=name))
     return locations
+
+
+def movie_slug(plan: dict[str, Any], project_dir: Path) -> str:
+    title = str(plan.get("title") or "").strip()
+    if not title:
+        return project_dir.name
+    return "".join(char.lower() if char.isalnum() else "-" for char in title).strip("-") or project_dir.name

@@ -63,6 +63,7 @@ def resolve_scene_duration_policy(
     workflow_paths: Sequence[str | Path],
     default_max_render_duration_seconds: float | None,
     duration_capability: DurationCapability | None = None,
+    allow_continuation: bool = False,
 ) -> ResolvedSceneDurationPolicy:
     requested_min = _positive_finite(requested_min_seconds, "requested_min_seconds")
     requested_max = _positive_finite(requested_max_seconds, "requested_max_seconds")
@@ -82,7 +83,7 @@ def resolve_scene_duration_policy(
         profile_min = duration_capability.min_seconds
         profile_max = duration_capability.max_seconds
         resolved_fps = duration_capability.fps
-        if requested_max < profile_min or requested_min > profile_max:
+        if not allow_continuation and (requested_max < profile_min or requested_min > profile_max):
             raise FeverSlopValidationError(
                 f"Requested scene duration [{requested_min}, {requested_max}] seconds "
                 f"cannot be represented by the selected profile limits "
@@ -173,6 +174,8 @@ def resolve_scene_duration_policy(
             "The selected workflow limits leave no duration in the selected profile range",
         )
     effective_min = max(profile_min, min(requested_min, effective_max))
+    if allow_continuation and duration_capability is not None:
+        effective_min, effective_max = requested_min, requested_max
     return ResolvedSceneDurationPolicy(
         requested_min_seconds=requested_min,
         requested_max_seconds=requested_max,

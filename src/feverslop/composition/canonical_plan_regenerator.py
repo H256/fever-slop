@@ -10,6 +10,7 @@ from feverslop.application.canonical_plan_regeneration import (
 from feverslop.errors import FeverSlopDataError
 from feverslop.ports.reporting import Reporter
 from feverslop.utils.io import read_json_document
+from feverslop.pipeline.continuation_render_plan import project_continuation_sources
 
 
 class CanonicalPlanRegenerator:
@@ -38,11 +39,20 @@ class CanonicalPlanRegenerator:
             raise FeverSlopDataError(
                 f"Canonical regenerator cannot write a different artifact: {target}",
             )
+        existing = project_continuation_sources(self.snapshot.scenes, scenes)
+        references = project_continuation_sources(self.reference_scenes, scenes)
+        selected = self.selected_scene_numbers
+        if selected is not None:
+            selected = set(selected)
+            selected.update(
+                int(scene["scene"]) for scene in [*existing, *scenes]
+                if scene.get("semantic_scene") in self.selected_scene_numbers
+            )
         result = self.service.merge(
-            self.snapshot.scenes,
+            existing,
             scenes,
-            selected_scene_numbers=self.selected_scene_numbers,
-            reference_scenes=self.reference_scenes,
+            selected_scene_numbers=selected,
+            reference_scenes=references,
         )
         if self.reporter is not None:
             for diagnostic in result.diagnostics:
