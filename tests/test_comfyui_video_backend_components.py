@@ -19,6 +19,67 @@ class FakeComfyUIClient:
         return {"name": upload_name or Path(path).name, "subfolder": subfolder}
 
 
+class SceneSeedPolicyTests(unittest.TestCase):
+    def _video_backends(self, *, randomize):
+        from types import SimpleNamespace
+
+        from feverslop.adapters.comfyui_ingredients_video_backend import ComfyUIIngredientsVideoRenderBackend
+        from feverslop.adapters.comfyui_minimax_h3_r2v_backend import ComfyUIMiniMaxH3R2VBackend
+        from feverslop.adapters.comfyui_minimax_h3_t2v_backend import ComfyUIMiniMaxH3T2VBackend
+        from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
+        from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
+
+        patcher = LTXWorkflowPatcher.__new__(LTXWorkflowPatcher)
+        patcher.settings = SimpleNamespace(seed_offset=1000, randomize_seed=randomize)
+        backends = []
+        for backend_type in (
+            ComfyUIIngredientsVideoRenderBackend, ComfyUIMiniMaxH3R2VBackend,
+            ComfyUIMiniMaxH3T2VBackend, ComfyUIMSRVideoRenderBackend, ComfyUIVideoRenderBackend,
+        ):
+            backend = backend_type.__new__(backend_type)
+            backend.seed_offset = 1000
+            backend.randomize_seed = randomize
+            backend.workflow_patcher = patcher
+            backends.append(backend)
+        return backends
+
+    def test_deterministic_seed_precedence_across_video_backends(self):
+        from unittest.mock import patch
+
+        with patch("random.randint") as random_seed:
+            for backend in self._video_backends(randomize=False):
+                for scene, expected in (
+                    (3, 1003), ({"scene": "3"}, 1003), ({}, 1000),
+                    ({"scene": 3, "seed": None}, 1003),
+                    ({"scene": 3, "seed": 0}, 0),
+                    ({"scene": "unused", "seed": "42"}, 42),
+                ):
+                    with self.subTest(backend=type(backend).__name__, scene=scene):
+                        self.assertEqual(expected, backend._seed_for_scene(scene))
+            random_seed.assert_not_called()
+
+    def test_randomization_precedes_explicit_seed_and_uses_63_bit_range(self):
+        from unittest.mock import patch
+
+        for backend in self._video_backends(randomize=True):
+            with self.subTest(backend=type(backend).__name__):
+                with patch("random.randint", side_effect=[0, 2**63 - 1]) as random_seed:
+                    scene = {"scene": "unused", "seed": "unused"}
+                    self.assertEqual(0, backend._seed_for_scene(scene))
+                    self.assertEqual(2**63 - 1, backend._seed_for_scene(scene))
+                    self.assertEqual(2, random_seed.call_count)
+                    random_seed.assert_called_with(0, 2**63 - 1)
+
+    def test_image_seed_keeps_fixed_offset_and_integer_conversion(self):
+        from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
+
+        self.assertEqual(100003, ComfyUIImageBackend._seed_for_scene(3))
+        self.assertEqual(100003, ComfyUIImageBackend._seed_for_scene("3"))
+        with self.assertRaises(TypeError):
+            ComfyUIImageBackend._seed_for_scene({"scene": 3})
+
+
 class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
     def test_upload_audio_uses_comfyui_image_endpoint_contract(self):
         from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
@@ -165,6 +226,50 @@ class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
             "ref_sound.wav",
             uploader.resolve_reference_audio_name(Path("ref_sound.wav"), upload_references=False),
         )
+
+    def test_reference_image_upload_uses_image_endpoint(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        client = FakeComfyUIClient()
+        uploader = ComfyUIVideoAssetUploader(client)
+
+        name = uploader.resolve_reference_image_name(Path("ref_image.png"))
+
+        self.assertEqual("feverslop/references/ref_image.png", name)
+        self.assertEqual(
+            [(Path("ref_image.png"), "feverslop/references", "input", True, "ref_image.png")],
+            client.image_uploads,
+        )
+
+    def test_reference_image_can_be_skipped(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        client = FakeComfyUIClient()
+        uploader = ComfyUIVideoAssetUploader(client)
+
+        self.assertEqual(
+            "ref_image.png",
+            uploader.resolve_reference_image_name(Path("ref_image.png"), upload_references=False),
+        )
+        self.assertEqual([], client.image_uploads)
+
+    def test_reference_resolvers_share_identical_behavior(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        client = FakeComfyUIClient()
+        uploader = ComfyUIVideoAssetUploader(client)
+
+        names = [
+            uploader.resolve_reference_image_name(Path("ref_asset.mp4")),
+            uploader.resolve_reference_video_name(Path("ref_asset.mp4")),
+            uploader.resolve_reference_audio_name(Path("ref_asset.mp4")),
+        ]
+
+        self.assertEqual(["feverslop/references/ref_asset.mp4"] * 3, names)
+        uploads = client.image_uploads
+        self.assertEqual(3, len(uploads))
+        self.assertEqual(uploads[0], uploads[1])
+        self.assertEqual(uploads[0], uploads[2])
 
     def test_reference_video_content_addressed(self):
         from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader

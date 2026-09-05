@@ -507,12 +507,9 @@ class ArchitecturePortsTests(unittest.TestCase):
 
     def test_comfy_video_render_backend_is_primary_adapter_not_rendering_subclass(self):
         from feverslop.adapters.comfyui_video_backend import (
-            ComfyUIVideoBackend,
             ComfyUIVideoRenderBackend,
         )
 
-        self.assertTrue(issubclass(ComfyUIVideoBackend, ComfyUIVideoRenderBackend))
-        self.assertFalse(issubclass(ComfyUIVideoRenderBackend, ComfyUIVideoBackend))
         self.assertEqual(
             "feverslop.adapters.comfyui_video_backend",
             ComfyUIVideoRenderBackend.__module__,

@@ -109,7 +109,10 @@ class PublicCompatibilityTests(unittest.TestCase):
         )
 
     def test_legacy_renderer_imports_remain_available(self):
+        from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+
         self.assertTrue(hasattr(ltx_video_renderer, "LTXVideoRenderer"))
+        self.assertTrue(issubclass(ltx_video_renderer.LTXVideoRenderer, ComfyUIVideoRenderBackend))
         self.assertTrue(hasattr(storyboard_renderer, "StoryboardRenderer"))
         self.assertTrue(hasattr(workflow_patcher, "WorkflowPatcher"))
 
