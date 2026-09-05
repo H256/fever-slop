@@ -8,6 +8,30 @@ from feverslop.adapters.insightface_tracker import InsightFaceTracker
 from feverslop.domain.face_detection import FaceBox, FaceCropResult
 
 
+class TestCosineMatch(unittest.TestCase):
+    def test_zero_vectors_return_invalid_similarity(self):
+        from feverslop.adapters.insightface_tracker import _cosine_match
+
+        zero = np.zeros(2)
+        nonzero = np.array([1.0, 0.0])
+        for query, reference in ((zero, nonzero), (nonzero, zero), (zero, zero)):
+            with self.subTest(query=query, reference=reference):
+                self.assertEqual(-1.0, _cosine_match(query, "hero", {"hero": reference}))
+
+    def test_missing_actor_has_no_similarity(self):
+        from feverslop.adapters.insightface_tracker import _cosine_match
+
+        embedding = np.array([1.0, 0.0])
+        self.assertIsNone(_cosine_match(embedding, None, {"hero": embedding}))
+        self.assertIsNone(_cosine_match(embedding, "missing", {"hero": embedding}))
+
+    def test_nonzero_embeddings_use_cosine_score(self):
+        from feverslop.adapters.insightface_tracker import _cosine_match
+
+        self.assertAlmostEqual(
+            0.8, _cosine_match(np.array([4.0, 3.0]), "hero", {"hero": np.array([2.0, 0.0])}),
+        )
+
 class TestInsightFaceTracker(unittest.TestCase):
     def test_track_video_no_frames(self):
         extractor = MagicMock()

@@ -36,6 +36,19 @@ class TestCropSquare(unittest.TestCase):
 
 
 class TestBestMatchActor(unittest.TestCase):
+    def test_zero_vectors_do_not_match(self):
+        zero = np.zeros(2)
+        nonzero = np.array([1.0, 0.0])
+        for query, reference in ((zero, nonzero), (nonzero, zero), (zero, zero)):
+            with self.subTest(query=query, reference=reference):
+                self.assertIsNone(_best_match_actor(query, {"hero": reference}, 0.70))
+
+    def test_exact_threshold_uses_unbiased_cosine_score(self):
+        reference = np.array([1.0, 0.0])
+        query = np.array([0.8, 0.6])
+        self.assertEqual("hero", _best_match_actor(query, {"hero": reference}, 0.8))
+        self.assertIsNone(_best_match_actor(query, {"hero": reference}, 0.81))
+
     def test_no_embeddings(self):
         emb = np.array([1.0, 0.0, 0.0])
         result = _best_match_actor(emb, {}, 0.5)
