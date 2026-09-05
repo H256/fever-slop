@@ -16,7 +16,7 @@ This file gives working instructions for AI coding agents in this repository.
 - Tests live under `tests/`.
 - User/project data normally lives under `projects/`; avoid editing generated outputs unless the task explicitly targets them.
 - ComfyUI workflow JSON files live under `workflows/`.
-- Configuration examples live in the repository root and `config/`.
+- Configuration examples live in the repository root.
 
 ## Working Rules
 
@@ -152,20 +152,6 @@ Run the test suite:
 uv run python -m unittest discover -s tests
 ```
 
-Validate all QML files:
-
-```powershell
-uv run python scripts/qml_lint.py
-```
-
-Run the desktop startup smoke test:
-
-```powershell
-$env:QT_QPA_PLATFORM = "offscreen"
-$env:QT_QUICK_BACKEND = "software"
-The deprecated Studio/QML package has been removed; no Studio startup smoke test is required.
-```
-
 Run the default project helper:
 
 ```powershell
@@ -179,38 +165,6 @@ uv run python run_pipeline.py ./projects/my_song
 - For CLI/script changes, verify the affected command path directly.
 - For render workflow changes, validate JSON structure and avoid requiring a full render unless explicitly requested.
 - If a change depends on local ComfyUI, FFmpeg, model files, GPU, or audio assets that are not available, say exactly what could not be verified.
-
-## PySide6 and QML Verification
-
-Changes affecting any of the following require Qt/QML-specific verification:
-
-- `src/feverslop/studio/desktop/`
-- Python `QObject`, `Property`, `Signal`, `Slot`, or Qt model classes
-- `.qml` files
-- QML registrations, context properties, resources, or import paths
-- desktop application startup and root component loading
-
-Required checks:
-
-1. Run `uv run python scripts/qml_lint.py` on the complete QML tree. QML
-   syntax and type errors must fail the task. Existing static warnings remain
-   visible and should not be increased; do not suppress new warnings without a
-   documented reason.
-2. Run the desktop startup smoke test offscreen through the production entry
-   point, with Python `RuntimeWarning` messages promoted to errors.
-3. Treat QML parse errors, unavailable component types, failed root-object
-   creation, and PySide metaobject warnings as failures.
-4. When changing a Python object exposed to QML, instantiate it in a test and
-   validate the relevant Qt metaobject properties, signals, slots, and model
-   types.
-5. When changing a reusable QML component, ensure it is covered by the full-tree
-   lint command and by the production-root smoke test where reachable.
-6. Run the interactive desktop entry point when the environment and requested
-   scope support it.
-7. Do not declare a desktop/QML task complete based only on Python unit tests.
-
-If Qt platform plugins or required native libraries are unavailable, report the
-exact missing dependency and do not claim that desktop startup was verified.
 
 ## Style
 
