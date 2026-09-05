@@ -41,6 +41,7 @@ from feverslop.prompting.dspy_h3_prompt_builder import (
     _format_relay_shots,
     _normalize_resolved_scene_references,
     _normalize_relay_segments,
+    _relay_vocal_binding,
     _scene_references,
     _speaker_bindings_for_compile,
     _stamp_relay_speaker_binding,
@@ -972,6 +973,25 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual("<Subject 2>", shots[0]["subject_label"])
         self.assertEqual("S2", shots[0]["speaker_id"])
+
+    def test_relay_vocal_binding_counts_singing_states_and_reads_subject(self):
+        self.assertEqual(
+            (2, "<Subject 1>"),
+            _relay_vocal_binding(
+                [
+                    {"state": "singing"},
+                    {"state": " VOCALS "},
+                    {"state": "dialogue"},
+                ],
+                {"vocals": {"subject_label": " <Subject 1> "}},
+            ),
+        )
+
+    def test_relay_vocal_binding_returns_no_subject_without_vocal_binding(self):
+        self.assertEqual(
+            (1, None),
+            _relay_vocal_binding([{"state": "vocal"}], {}),
+        )
 
     def test_passes_relay_segments_to_generator_without_appending_non_guide_sections(self):
         generator = FakeGenerator()

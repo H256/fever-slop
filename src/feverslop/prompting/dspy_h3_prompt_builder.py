@@ -597,6 +597,22 @@ def _stamp_relay_speaker_binding(
             shot["speaker_id"] = speaker_id
 
 
+def _relay_vocal_binding(
+    relay_segments: list[dict[str, Any]],
+    raw_bindings: dict[str, dict[str, str]],
+) -> tuple[int, str | None]:
+    """Return the sung relay-event count and bound vocal subject label."""
+    relay_vocal_events = sum(
+        1
+        for shot in relay_segments
+        if str(shot.get("state") or "").strip().casefold() in _SING_RELAY_STATES
+    )
+    bound_vocal_subject = (
+        str((raw_bindings.get("vocals") or {}).get("subject_label") or "").strip() or None
+    )
+    return relay_vocal_events, bound_vocal_subject
+
+
 def _format_relay_shots(shots: list[dict[str, Any]]) -> str:
     if not shots:
         return ""
@@ -783,14 +799,7 @@ class DspyH3PromptBuilder:
                 # and the compiler emits exactly one dialogue event per sung
                 # window. Both counts must agree, and a bound vocal stem must be
                 # anchored to its visible subject rather than an audible voice.
-                relay_vocal_events = sum(
-                    1
-                    for shot in relay_segments
-                    if str(shot.get("state") or "").strip().casefold() in _SING_RELAY_STATES
-                )
-                bound_vocal_subject = (
-                    str((raw_bindings.get("vocals") or {}).get("subject_label") or "").strip() or None
-                )
+                relay_vocal_events, bound_vocal_subject = _relay_vocal_binding(relay_segments, raw_bindings)
                 for attempt in range(max_attempts):
                     normalized_plan = _normalize_plan_audio_usage(
                         current_plan,
@@ -1088,14 +1097,7 @@ class DspyH3PromptBuilder:
             )
             relay_segments = _normalize_relay_segments(segment)
             _stamp_relay_speaker_binding(relay_segments, raw_bindings)
-            relay_vocal_events = sum(
-                1
-                for shot in relay_segments
-                if str(shot.get("state") or "").strip().casefold() in _SING_RELAY_STATES
-            )
-            bound_vocal_subject = (
-                str((raw_bindings.get("vocals") or {}).get("subject_label") or "").strip() or None
-            )
+            relay_vocal_events, bound_vocal_subject = _relay_vocal_binding(relay_segments, raw_bindings)
             plan = plan_with_authoritative_relay(
                 plan,
                 relay_segments,
