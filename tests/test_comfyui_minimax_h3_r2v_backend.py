@@ -1377,7 +1377,7 @@ class RenderVideoTests(unittest.TestCase):
                 storyboard_dir=tmp_path / "storyboard",
             )
             with patch(
-                "feverslop.adapters.comfyui_minimax_h3_r2v_backend.random.randint",
+                "feverslop.adapters.scene_seed.random.randint",
                 side_effect=[111, 222],
             ):
                 backend.render_video(request)

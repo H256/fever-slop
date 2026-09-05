@@ -496,7 +496,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 randomize_seed=True,
             )
 
-            with patch("feverslop.adapters.comfyui_msr_video_backend.random.randint", return_value=123456789):
+            with patch("feverslop.adapters.scene_seed.random.randint", return_value=123456789):
                 patched = backend.build_workflow(
                     {
                         "scene": 7,

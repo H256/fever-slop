@@ -6,6 +6,7 @@ from pathlib import Path
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
+from feverslop.adapters.scene_seed import resolve_scene_seed
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.errors import FeverSlopRenderError
 from feverslop.ports.rendering import ImageRenderRequest
@@ -142,7 +143,7 @@ class ComfyUIImageBackend:
 
     @staticmethod
     def _seed_for_scene(scene_number: int) -> int:
-        return 100000 + int(scene_number)
+        return resolve_scene_seed(100000, False, int(scene_number))
 
     @staticmethod
     def _patch_seed_inputs(patcher: WorkflowPatcher, seed: int) -> None:
