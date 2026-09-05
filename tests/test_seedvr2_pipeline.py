@@ -139,7 +139,7 @@ class SeedVR2PipelineTests(unittest.TestCase):
             backend = FakeBackend()
             postprocessor = FakePostProcessor()
 
-            with patch("feverslop.composition.seedvr2_pipeline.VideoPostProcessor", return_value=postprocessor):
+            with patch("feverslop.composition.seedvr2_pipeline._final_video_postprocessor", return_value=postprocessor):
                 run_seedvr2(SeedVR2CompositionOptions(
                     project_config_path=config,
                     render_plan_path=plan,
@@ -237,7 +237,7 @@ class SeedVR2PipelineTests(unittest.TestCase):
                 (layout.scene_dir(1) / f"upscale_pass_01_segment_{index:04d}.mp4").write_bytes(b"old segment")
 
             postprocessor = FakePostProcessor()
-            with patch("feverslop.composition.seedvr2_pipeline.VideoPostProcessor", return_value=postprocessor):
+            with patch("feverslop.composition.seedvr2_pipeline._final_video_postprocessor", return_value=postprocessor):
                 run_seedvr2(SeedVR2CompositionOptions(
                     project_config_path=config,
                     render_plan_path=plan,

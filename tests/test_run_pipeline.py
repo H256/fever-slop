@@ -9,7 +9,9 @@ from unittest.mock import Mock, patch
 from rich.progress import TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn
 
 import run_pipeline
+from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.composition.arg_parser import PipelineStage
+from feverslop.composition import stage_runners
 from feverslop.composition.stage_runners import (
     _discover_stem_files,
     _initial_render_plan,
@@ -36,6 +38,17 @@ from feverslop.scene_artifacts import SceneArtifactLayout
 
 
 class RunPipelinePathTests(unittest.TestCase):
+    def test_final_video_postprocessor_factory_returns_fresh_320k_processors(self):
+        factory = getattr(stage_runners, "_final_video_postprocessor", None)
+        self.assertTrue(callable(factory))
+        first = factory()
+        second = factory()
+
+        self.assertIsInstance(first, VideoPostProcessor)
+        self.assertIsNot(first, second)
+        self.assertEqual("ffmpeg", first.ffmpeg_path)
+        self.assertEqual("320k", first.audio_bitrate)
+
     def test_render_plan_stage_uses_one_regenerator_for_selection_and_reference_handoff(self):
         with TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
