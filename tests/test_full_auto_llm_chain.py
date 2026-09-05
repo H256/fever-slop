@@ -14,33 +14,8 @@ from pathlib import Path
 
 from feverslop.adapters.llm_song_brief_generator import LLMSongBriefGenerator
 from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
-from feverslop.domain.full_auto import GeneratedSong, SongSpec
+from tests.full_auto_fakes import FakeSongGenerator
 from tests.prompt_fakes import GeneralModulesFake
-
-
-class FakeSongGenerator:
-    """Minimal song generator that writes a stub mp3 and records calls."""
-
-    def __init__(self):
-        self.calls: list[tuple[SongSpec, str, Path, int]] = []
-
-    def generate(self, spec: SongSpec, *, project_slug: str, output_dir: Path, seed: int) -> GeneratedSong:
-        self.calls.append((spec, project_slug, Path(output_dir), seed))
-        path = Path(output_dir) / f"{project_slug}.mp3"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"mp3")
-        return GeneratedSong(audio_path=path, manifest={"prompt_id": "test", "seed": seed})
-
-
-class FakeRunner:
-    """Minimal pipeline runner that records calls."""
-
-    def __init__(self):
-        self.calls: list[tuple[Path, dict]] = []
-
-    def run(self, *, project_config_path: Path, options: dict) -> Path | None:
-        self.calls.append((Path(project_config_path), dict(options)))
-        return Path(project_config_path).parent / "output" / "render" / "ltx_single_prompt" / "joy-demo.mp4"
 
 
 # ---------------------------------------------------------------------------
