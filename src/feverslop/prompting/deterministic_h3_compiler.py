@@ -13,7 +13,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 40
+H3_COMPILER_VERSION = 41
 
 
 def plan_with_authoritative_relay(
@@ -310,8 +310,8 @@ class DeterministicH3Compiler:
                 )
                 retention_lines.append(f"{label}: {marker} - reference is applied in the target video.")
             retention_lines.extend(usage_retention_lines)
-            detailed_parts = [_replace_subject_names(
-                _remove_authored_dialogue_blocks(plan.style_opening or ""),
+            detailed_parts = [_render_style_opening(
+                plan.style_opening,
                 plan,
                 reference_metadata=metadata_by_label,
             )]
@@ -551,6 +551,44 @@ def _replace_subject_names(
     labels: Sequence[str] | None = None,
     reference_metadata: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> str:
+    for phrase, label in _subject_replacements(plan, labels, reference_metadata):
+        text = re.sub(
+            _reference_phrase_pattern(phrase),
+            label,
+            text,
+            flags=re.IGNORECASE,
+        )
+    return text
+
+
+def _render_style_opening(
+    value: str | None,
+    plan: ResolvedPromptPlan,
+    *,
+    reference_metadata: Mapping[str, Mapping[str, Any]] | None = None,
+) -> str:
+    """Keep the guide's pre-shot style opening free of cast and reference content."""
+    text = _remove_authored_dialogue_blocks(value or "")
+    replacements = _subject_replacements(plan, None, reference_metadata)
+    kept = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        if re.search(r"<(?:Subject|Picture|Video|Audio)\s+\d+>", sentence, re.IGNORECASE):
+            continue
+        if any(
+            re.search(_reference_phrase_pattern(phrase), sentence, re.IGNORECASE)
+            for phrase, _label in replacements
+        ):
+            continue
+        if sentence.strip():
+            kept.append(sentence.strip())
+    return " ".join(kept) or "Live-action cinematic imagery establishes the requested visual treatment."
+
+
+def _subject_replacements(
+    plan: ResolvedPromptPlan,
+    labels: Sequence[str] | None,
+    reference_metadata: Mapping[str, Mapping[str, Any]] | None,
+) -> list[tuple[str, str]]:
     allowed = set(labels or (subject.label for subject in plan.subjects))
     replacements: list[tuple[str, str]] = []
     for subject in plan.subjects:
@@ -567,15 +605,12 @@ def _replace_subject_names(
                 parent = PurePosixPath(source).parent.name.strip()
                 if parent and parent not in {"actors", "locations", "references"}:
                     replacements.append((parent, subject.label))
-    for phrase, label in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
-        normalized_phrase = re.sub(r"^(?:the\s+)", "", phrase.strip(), flags=re.IGNORECASE)
-        text = re.sub(
-            rf"(?<![\w>])(?:the\s+)?{re.escape(normalized_phrase)}(?=\b|'s\b)",
-            label,
-            text,
-            flags=re.IGNORECASE,
-        )
-    return text
+    return sorted(replacements, key=lambda item: len(item[0]), reverse=True)
+
+
+def _reference_phrase_pattern(phrase: str) -> str:
+    normalized_phrase = re.sub(r"^(?:the\s+)", "", phrase.strip(), flags=re.IGNORECASE)
+    return rf"(?<![\w>])(?:the\s+)?{re.escape(normalized_phrase)}(?=\b|'s\b)"
 
 
 def _audio_relationship_phrase(label: str, metadata: Mapping[str, Any]) -> str:
