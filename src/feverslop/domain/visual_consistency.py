@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from feverslop.domain.artifact_hash import is_sha256_hex
+
 SCHEMA = "feverslop.visual-consistency/v1"
 _MODES = {"ingredients", "msr", "i2v"}
 _HANDOFF_MODES = {"msr", "i2v"}
@@ -34,11 +36,7 @@ def _required(value: str, field: str) -> None:
 
 
 def _validate_sha256(value: str, field: str) -> None:
-    if (
-        not isinstance(value, str)
-        or len(value) != 64
-        or any(character not in "0123456789abcdef" for character in value)
-    ):
+    if not is_sha256_hex(value):
         raise ValueError(
             f"{field} must be a lowercase SHA-256, 64-character hexadecimal hash",
         )

@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
+from feverslop.domain.artifact_hash import is_sha256_hex
 from feverslop.domain.canonical_render_plan import (
     PromptRole,
     resolve_effective_role,
@@ -83,7 +84,7 @@ class CanonicalSceneDependencies:
                 )
         for field in ("source_revision", "workflow_fingerprint", "reference_fingerprint"):
             value = values[field]
-            if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+            if not is_sha256_hex(value):
                 raise FeverSlopDataError(
                     f"canonical dependencies {field} must be a SHA-256 hex digest",
                 )
