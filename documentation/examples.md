@@ -84,8 +84,11 @@ vocal; Tamsin never lip-syncs. Vocal timing still determines which shots show
 the performance.
 
 When the LLM and ComfyUI cannot keep their models loaded simultaneously, run
-the R2V pipeline in four resumable phases. This is also useful when debugging
-the hand-off artifacts:
+the R2V pipeline in four resumable phases. The recommended path is the
+machine-local manual handoff described in [Running pipelines](running.md#manual-vram-handoff-on-a-shared-gpu).
+The explicit `run_pipeline.py --stage` sequence below is an advanced
+compatibility fallback and is not partitioned by `execution.vram_handoff`.
+It is also useful when debugging the hand-off artifacts:
 
 ```powershell
 # LLM phase: general prompts and model-neutral subject directives
