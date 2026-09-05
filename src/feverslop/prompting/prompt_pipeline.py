@@ -172,26 +172,19 @@ class MusicVideoPromptPipeline:
                     }
             t2i_prompt = self.prompt_modules.t2i(t2i_payload, build_t2i_system_prompt())
 
-            prompt_payload = json.dumps(
-                build_video_payload(
-                    segment=segment,
-                    concept=concept,
-                    scene_details=details,
-                    global_context=global_context,
-                    t2i_prompt=t2i_prompt,
-                ),
-                ensure_ascii=False,
-                indent=2,
+            video_payload = build_video_payload(
+                segment=segment,
+                concept=concept,
+                scene_details=details,
+                global_context=global_context,
+                t2i_prompt=t2i_prompt,
             )
 
             final_prompt = self.prompt_modules.i2v(
-                json.loads(prompt_payload),
+                video_payload,
                 build_i2v_system_prompt(str(segment.get("type", "")),
                     silent_mode=bool(global_context.get("silent_mode", False))),
-                performance_policy=str(build_video_payload(
-                    segment=segment, concept=concept, scene_details=details,
-                    global_context=global_context, t2i_prompt=t2i_prompt,
-                )["performance_policy"]),
+                performance_policy=str(video_payload["performance_policy"]),
             )
 
             result.append({
