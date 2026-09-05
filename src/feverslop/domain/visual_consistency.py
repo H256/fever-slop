@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-from feverslop.domain.artifact_hash import is_sha256_hex
+from feverslop.domain.artifact_hash import fingerprint_json, is_sha256_hex
 
 SCHEMA = "feverslop.visual-consistency/v1"
 _MODES = {"ingredients", "msr", "i2v"}
@@ -246,12 +244,7 @@ def _canonical_payload(
 
 
 def _fingerprint(payload: dict[str, Any]) -> str:
-    canonical_json = json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+    return fingerprint_json(payload, ensure_ascii=True)
 
 
 def can_handoff(

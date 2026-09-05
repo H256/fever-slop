@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
+
+from feverslop.domain.artifact_hash import fingerprint_json
 
 
 @dataclass(frozen=True)
@@ -91,10 +92,4 @@ class ProjectRenderSettings:
 
 
 def _fingerprint(value: Any) -> str:
-    payload = json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
+    return fingerprint_json(value, ensure_ascii=False)

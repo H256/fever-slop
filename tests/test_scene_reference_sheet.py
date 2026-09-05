@@ -91,6 +91,27 @@ class IngredientsSheetSizeTests(unittest.TestCase):
         self.assertEqual(len(variants), len(set(variants)))
         self.assertNotIn(baseline, variants)
 
+    def test_signature_preserves_ascii_escaping_for_non_ascii_references(self):
+        references = [{"id": "主人公", "type": "actor", "sha256": "a" * 64}]
+        payload = {
+            "layout_version": "scene-reference-grid/v1",
+            "size": [1280, 704],
+            "references": references,
+        }
+        expected = hashlib.sha256(
+            json.dumps(
+                payload,
+                ensure_ascii=True,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8"),
+        ).hexdigest()
+
+        self.assertEqual(
+            expected,
+            ingredients_sheet_signature(references, size=(1280, 704)),
+        )
+
     def test_fit_contain_same_size_returns_copy(self):
         src = Image.new("RGB", (100, 100), color=(0, 255, 0))
         result = _fit_contain_image(src, (100, 100))
