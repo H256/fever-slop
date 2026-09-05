@@ -293,10 +293,13 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("The performer faces the camera.", prompt)
         self.assertIn("The camera slowly pushes forward.", prompt)
 
-    def test_r2v_compiler_replaces_subject_names_in_style_opening(self):
+    def test_r2v_compiler_keeps_subject_labels_out_of_style_opening(self):
         plan = ResolvedPromptPlan(
             creative_intent="A reference-guided performance.",
-            style_opening="Dark Entity 1 is framed in severe blue light.",
+            style_opening=(
+                "Dark Entity 1 is framed in severe blue light. "
+                "High-contrast cinematography uses a cold cobalt palette."
+            ),
             subjects=[SubjectDefinition(
                 label="<Subject 1>",
                 name="Dark Entity 1",
@@ -306,7 +309,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             reference_usage=[],
             shots=[PlannedShot(
                 shot_number=1,
-                description="The figure holds a rigid pose.",
+                description="Dark Entity 1 holds a rigid pose.",
                 start_seconds=0,
                 end_seconds=2,
             )],
@@ -325,8 +328,11 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         detailed = prompt.split("detailed_description:", 1)[1].split(
             "overall_soundscape:", 1,
         )[0]
-        self.assertIn("<Subject 1> is framed in severe blue light.", detailed)
-        self.assertNotIn("Dark Entity 1", detailed)
+        opening, first_shot = detailed.split("[Shot 1]", 1)
+        self.assertIn("High-contrast cinematography uses a cold cobalt palette.", opening)
+        self.assertNotIn("<Subject 1>", opening)
+        self.assertNotIn("Dark Entity 1", opening)
+        self.assertIn("<Subject 1> holds a rigid pose.", first_shot)
 
     def test_r2v_compiler_removes_reference_description_placeholders(self):
         plan = ResolvedPromptPlan(
