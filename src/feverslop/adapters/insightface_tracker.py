@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 
 from feverslop.adapters.insightface_extractor import InsightFaceExtractor, _crop_square
-from feverslop.domain.face_detection import FaceBox, FaceCropResult, FaceTrackEntry
+from feverslop.domain.face_detection import FaceBox, FaceCropResult, FaceTrackEntry, cosine_similarity
 
 logger = logging.getLogger(__name__)
 
@@ -236,9 +236,7 @@ def _cosine_match(
     if target_id is None or target_id not in actor_embeddings:
         return None
     ref = actor_embeddings[target_id]
-    return float(np.dot(embedding, ref) / (
-        np.linalg.norm(embedding) * np.linalg.norm(ref) + 1e-8
-    ))
+    return cosine_similarity(embedding, ref)
 
 
 def _bbox_iou(a: FaceBox, b: FaceBox) -> float:

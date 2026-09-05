@@ -1,22 +1,13 @@
 from __future__ import annotations
 
 import json
-import threading
 import time
 import uuid
-import weakref
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-_PATH_LOCKS_GUARD = threading.Lock()
-_PATH_LOCKS: weakref.WeakValueDictionary[Path, threading.RLock] = weakref.WeakValueDictionary()
-
-
-def _lock_for_path(path: Path) -> threading.RLock:
-    canonical_path = path.resolve()
-    with _PATH_LOCKS_GUARD:
-        return _PATH_LOCKS.setdefault(canonical_path, threading.RLock())
+from feverslop.adapters.artifact_locking import artifact_write_lock
 
 
 _MAIN_PIPELINE_DOWNSTREAM_STAGES = frozenset({
@@ -83,7 +74,7 @@ class PipelineStateStore:
     def record_pipeline_run(self, project_id: str, *, action: str, stages: list[str], status: str) -> dict[str, Any]:
         root = self.project_root(project_id)
         path = root / ".studio" / "pipeline_state.json"
-        with _lock_for_path(path):
+        with artifact_write_lock(path.resolve()):
             state = self.read_json_file(path)
             if not isinstance(state, dict):
                 state = {}

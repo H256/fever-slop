@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-import random
 import re
 from copy import deepcopy
 from pathlib import Path
 
+from feverslop.adapters.scene_seed import resolve_scene_seed
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
@@ -412,12 +412,7 @@ class ComfyUIMSRVideoRenderBackend:
         )
 
     def _seed_for_scene(self, scene: int | dict) -> int:
-        if self.randomize_seed:
-            return random.randint(0, 2**63 - 1)
-        if isinstance(scene, dict) and scene.get("seed") is not None:
-            return int(scene["seed"])
-        scene_number = int(scene.get("scene", 0)) if isinstance(scene, dict) else int(scene)
-        return self.seed_offset + int(scene_number)
+        return resolve_scene_seed(self.seed_offset, self.randomize_seed, scene)
 
     def _resolve_project_path(self, path: str | Path) -> Path:
         if self.project_dir is None:

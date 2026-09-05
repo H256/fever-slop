@@ -10,21 +10,28 @@ import weakref
 from pathlib import Path
 from unittest.mock import patch
 
-from feverslop.adapters import pipeline_state_store
+from feverslop.adapters import artifact_locking
 from feverslop.adapters.pipeline_state_store import PipelineStateStore
 
 
 class PipelineStateStoreTests(unittest.TestCase):
     def test_path_locks_are_released_when_no_run_uses_them(self):
-        path = Path("pipeline_state.json").resolve()
-        lock = pipeline_state_store._lock_for_path(path)
-        lock_reference = weakref.ref(lock)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            lock_key = str((root / ".studio" / "pipeline_state.json").resolve())
+            lock_references = []
 
-        del lock
-        gc.collect()
+            def read_json(path: Path):
+                lock_references.append(weakref.ref(artifact_locking._LOCKS[lock_key]))
+                return {}
 
-        self.assertIsNone(lock_reference())
-        self.assertNotIn(path, pipeline_state_store._PATH_LOCKS)
+            store = PipelineStateStore(lambda _project_id: root, read_json)
+            store.record_pipeline_run("demo", action="first", stages=[], status="succeeded")
+            gc.collect()
+
+            self.assertEqual(1, len(lock_references))
+            self.assertIsNone(lock_references[0]())
+            self.assertNotIn(lock_key, artifact_locking._LOCKS)
 
     def test_successful_main_pipeline_invalidates_downstream_completion(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -120,9 +127,10 @@ class PipelineStateStoreTests(unittest.TestCase):
                 time.sleep(0.05)
                 return value
 
+            (root / "alias").mkdir()
             stores = [
                 PipelineStateStore(lambda _project_id: root, read_json),
-                PipelineStateStore(lambda _project_id: root, read_json),
+                PipelineStateStore(lambda _project_id: root / "alias" / "..", read_json),
             ]
 
             def record(store: PipelineStateStore, action: str, stage: str) -> None:

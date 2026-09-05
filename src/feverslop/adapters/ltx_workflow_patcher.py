@@ -1,10 +1,10 @@
 ﻿from __future__ import annotations
 
 import json
-import random
 from dataclasses import dataclass
 from pathlib import Path
 
+from feverslop.adapters.scene_seed import resolve_scene_seed
 from feverslop.adapters.lora_workflow_patcher import (
     LoraPatchSettings,
     LoraWorkflowPatcher,
@@ -152,12 +152,7 @@ class LTXWorkflowPatcher:
         return "relay"
 
     def seed_for_scene(self, scene: int | dict) -> int:
-        if self.settings.randomize_seed:
-            return random.randint(0, 2**63 - 1)
-        if isinstance(scene, dict) and scene.get("seed") is not None:
-            return int(scene["seed"])
-        scene_number = int(scene.get("scene", 0)) if isinstance(scene, dict) else int(scene)
-        return self.settings.seed_offset + scene_number
+        return resolve_scene_seed(self.settings.seed_offset, self.settings.randomize_seed, scene)
 
     def build_workflow(
         self,
