@@ -14,6 +14,9 @@ class SemanticRenderSegment:
     end_seconds: float
     duration_seconds: float
     starts_with_anchor: bool
+    fps: int = 24
+    render_frame_count: int = 0
+    anchor_frames: int = 0
 
 
 def split_semantic_action(
@@ -48,47 +51,41 @@ def split_semantic_action(
         maximum = capability.max_seconds
         minimum = max(minimum, capability.min_seconds)
 
-    total_frames = round(duration * fps)
+    total_frames = round((start + duration) * fps) - round(start * fps)
+    if total_frames < 1:
+        raise ValueError("duration must contain at least one frame")
     maximum_frames = (
         capability.frames_for(maximum)
         if capability is not None
         else max(1, int(maximum * fps))
     )
-    segment_count = max(1, ceil(total_frames / maximum_frames))
+    anchor = 1 if capability is not None else 0
+    capacity = maximum_frames - anchor
+    if capacity < 1:
+        raise ValueError("profile cannot fit a continuation frame after its anchor")
+    segment_count = max(1, ceil((total_frames - anchor) / capacity))
     if segment_count > 1 and total_frames / segment_count < minimum * fps:
         raise ValueError("duration would produce an unusably short continuation segment")
-
-    if capability is None:
-        base_frames, remainder = divmod(total_frames, segment_count)
-        lengths = [base_frames + (1 if index < remainder else 0) for index in range(segment_count)]
-    else:
-        alignment = capability.frame_alignment
-        offset = capability.frame_offset
-        min_frames = round(minimum * fps)
-        max_frames = maximum_frames
-        candidates = []
-        for first in range(offset, max_frames + 1, alignment):
-            remaining = total_frames - first
-            if remaining < max(0, segment_count - 1) * min_frames:
-                break
-            if remaining > max(0, segment_count - 1) * max_frames:
-                continue
-            if remaining % alignment == 0:
-                candidates.append(first)
-        if not candidates:
-            raise ValueError("duration cannot be partitioned into aligned continuation segments")
-        first = min(candidates, key=lambda value: abs(value - total_frames / segment_count))
-        remaining = total_frames - first
-        base_frames, remainder = divmod(remaining, segment_count - 1) if segment_count > 1 else (0, 0)
-        lengths = [first]
-        if segment_count > 1:
-            lengths.extend(base_frames + (1 if index < remainder else 0) for index in range(segment_count - 1))
+    # Balance timeline frames, then round generation budgets UP independently.
+    # Padding is trimmed after rendering; it must never extend semantic timing.
+    base_frames, remainder = divmod(total_frames, segment_count)
+    lengths = [base_frames + (1 if index < remainder else 0) for index in range(segment_count)]
     segments: list[SemanticRenderSegment] = []
     elapsed_frames = 0
     for index, frames in enumerate(lengths, start=1):
+        anchor_frames = anchor if index > 1 else 0
+        render_frames = frames + anchor_frames
+        if capability is not None:
+            required = max(render_frames, ceil(minimum * fps))
+            render_frames = capability.frame_offset + ceil(
+                (required - capability.frame_offset) / capability.frame_alignment
+            ) * capability.frame_alignment
+            if render_frames > maximum_frames:
+                raise ValueError("segment exceeds the profile generation frame budget")
         chunk_duration = frames / fps
         chunk_start = round(start + elapsed_frames / fps, 6)
-        end = round(start + (elapsed_frames + frames) / fps, 6)
+        end = (round(start + duration, 6) if index == segment_count
+               else round(start + (elapsed_frames + frames) / fps, 6))
         segments.append(
             SemanticRenderSegment(
                 segment_id=f"{identifier}-{index:04d}",
@@ -97,6 +94,9 @@ def split_semantic_action(
                 end_seconds=end,
                 duration_seconds=round(chunk_duration, 6),
                 starts_with_anchor=index > 1,
+                fps=fps,
+                render_frame_count=render_frames,
+                anchor_frames=anchor_frames,
             )
         )
         elapsed_frames += frames

@@ -9,6 +9,7 @@ from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.canonical_render_plan import (
     PromptRole,
     build_canonical_scene,
+    stable_scene_id,
     validate_canonical_plan,
 )
 from feverslop.domain.continuation_contract import ContinuationGroup
@@ -380,39 +381,40 @@ def _continuation_groups_for_scene(
     h3_entry: dict | None,
     segment_id: str,
     start_seconds: float,
+    end_seconds: float,
     duration_capability: DurationCapability | None,
 ) -> list[dict]:
     if h3_entry is None or duration_capability is None:
         return []
+    # The scene interval owns the audio timeline. LLM intents describe the
+    # action, but cannot extend it into the next scene or duplicate its time.
+    duration = end_seconds - start_seconds
+    timeline_frames = round(end_seconds * duration_capability.fps) - round(start_seconds * duration_capability.fps)
+    if timeline_frames <= duration_capability.frames_for(
+        duration_capability.max_seconds,
+    ):
+        return []
+    intents = [item for item in h3_entry.get("continuation_intents") or []
+               if isinstance(item, dict) and item.get("requires_continuation")]
+    action_id = str(intents[0].get("action_id") or "continuous") if intents else "continuous"
+    group_id = f"{segment_id}:{action_id}"
+    segments = split_semantic_action(
+        action_id=stable_scene_id(f"{segment_id}:continuation"),
+        start_seconds=start_seconds,
+        duration_seconds=duration,
+        max_duration_seconds=duration_capability.max_seconds,
+        fps=duration_capability.fps,
+        capability=duration_capability,
+    )
+    group = ContinuationGroup.create(
+        group_id=group_id,
+        semantic_action=action_id,
+        semantic_start_seconds=start_seconds,
+        semantic_end_seconds=start_seconds + duration,
+        segments=segments,
+    )
+    return [group.to_dict()]
 
-    groups: list[dict] = []
-    for raw_intent in h3_entry.get("continuation_intents") or []:
-        if not isinstance(raw_intent, dict) or not raw_intent.get("requires_continuation"):
-            continue
-        action_id = str(raw_intent.get("action_id") or "").strip()
-        desired_duration = raw_intent.get("desired_duration_seconds")
-        if not action_id or desired_duration is None:
-            continue
-        duration = float(desired_duration)
-        if duration <= duration_capability.max_seconds:
-            continue
-        segments = split_semantic_action(
-            action_id=action_id,
-            start_seconds=start_seconds,
-            duration_seconds=duration,
-            max_duration_seconds=duration_capability.max_seconds,
-            fps=duration_capability.fps,
-            capability=duration_capability,
-        )
-        group = ContinuationGroup.create(
-            group_id=f"{segment_id}:{action_id}",
-            semantic_action=action_id,
-            semantic_start_seconds=start_seconds,
-            semantic_end_seconds=start_seconds + duration,
-            segments=segments,
-        )
-        groups.append(group.to_dict())
-    return groups
 
 def build_render_plan(
     scene_prompts_json: str | Path,
@@ -614,14 +616,17 @@ def build_render_plan(
             render_scene.setdefault("metadata", {})["continuation_intents"] = list(
                 h3_entry["continuation_intents"],
             )
-            continuation_groups = _continuation_groups_for_scene(
-                h3_entry=h3_entry,
-                segment_id=segment_id,
-                start_seconds=ab_start,
-                duration_capability=duration_capability,
-            )
-            if continuation_groups:
-                render_scene["metadata"]["continuation_groups"] = continuation_groups
+        continuation_groups = _continuation_groups_for_scene(
+            h3_entry=h3_entry,
+            segment_id=segment_id,
+            start_seconds=ab_start,
+            end_seconds=ab_end,
+            duration_capability=duration_capability,
+        )
+        if continuation_groups:
+            if duration_capability.fps != video_settings.fps:
+                raise ValueError("continuation profile FPS must match the scene timeline FPS")
+            render_scene["metadata"]["continuation_groups"] = continuation_groups
 
         generated_roles = {
             PromptRole.Z_IMAGE: zimage_prompt,

@@ -10,7 +10,7 @@ import numpy as np
 from insightface.app import FaceAnalysis
 from insightface.model_zoo import get_model
 
-from feverslop.domain.face_detection import FaceBox
+from feverslop.domain.face_detection import FaceBox, cosine_similarity
 
 logger = logging.getLogger(__name__)
 
@@ -296,9 +296,7 @@ def _best_match_actor(
     best_score = 0.0
     best_id = None
     for actor_id, ref_emb in actor_embeddings.items():
-        score = float(np.dot(embedding, ref_emb) / (
-            np.linalg.norm(embedding) * np.linalg.norm(ref_emb) + 1e-8
-        ))
+        score = cosine_similarity(embedding, ref_emb)
         if score > best_score:
             best_score = score
             best_id = actor_id

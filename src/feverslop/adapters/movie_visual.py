@@ -13,7 +13,7 @@ from feverslop.adapters.postprocessor_frame_extractor import (
     PostprocessorFrameExtractor,
 )
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
-from feverslop.domain.movie_utils import transition_from_previous
+from feverslop.domain.movie_utils import movie_slug, transition_from_previous
 from feverslop.domain.visual_consistency import (
     ReferenceAnchor,
     SceneConsistencyContract,
@@ -142,7 +142,7 @@ class ComfyUIMovieVisualAdapter:
         project_dir = Path(project_dir)
         plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
         output_dir = project_dir / "output" / "movie" / "ltx_msr"
-        final_output = project_dir / "output" / "movie" / f"{_movie_slug(plan, project_dir)}.mp4"
+        final_output = project_dir / "output" / "movie" / f"{movie_slug(plan, project_dir)}.mp4"
         scenes = self._movie_scenes(plan, project_dir=project_dir)
         if not scenes:
             raise ValueError("Movie render plan has no shots or scenes to render")
@@ -333,13 +333,6 @@ def _movie_scene_prompt(scene: dict[str, Any]) -> str:
         scene.get("location"),
     ]
     return ", ".join(str(part).strip() for part in parts if str(part or "").strip())
-
-
-def _movie_slug(plan: dict[str, Any], project_dir: Path) -> str:
-    title = str(plan.get("title") or "").strip()
-    if not title:
-        return project_dir.name
-    return "".join(char.lower() if char.isalnum() else "-" for char in title).strip("-") or project_dir.name
 
 
 def _continuity_keyframes(value: object) -> str:

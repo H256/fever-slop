@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-import random
 from pathlib import Path
 
+from feverslop.adapters.scene_seed import resolve_scene_seed
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_minimax_h3_video_backend import (
     ComfyUIMiniMaxH3VideoRenderBackend,
@@ -292,12 +292,7 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     # -----------------------------------------------------------------------
 
     def _seed_for_scene(self, scene: int | dict) -> int:
-        if self.randomize_seed:
-            return random.randint(0, 2**63 - 1)
-        if isinstance(scene, dict) and scene.get("seed") is not None:
-            return int(scene["seed"])
-        scene_number = int(scene.get("scene", 0)) if isinstance(scene, dict) else int(scene)
-        return self.seed_offset + int(scene_number)
+        return resolve_scene_seed(self.seed_offset, self.randomize_seed, scene)
 
     @staticmethod
     def _resolve_project_path(path: str | Path, project_dir: Path | None = None) -> Path:
