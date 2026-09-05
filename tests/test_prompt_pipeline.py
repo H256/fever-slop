@@ -1,5 +1,6 @@
 import unittest
 
+from feverslop.prompting.music_video_prompt_style import build_i2v_system_prompt, build_video_payload
 from feverslop.prompting.prompt_pipeline import MusicVideoPromptPipeline
 from tests.prompt_fakes import MusicVideoModulesFake
 
@@ -107,6 +108,49 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
         }]
         self.assertEqual(3, len(spatial_calls))
         self.assertEqual("Spatial Relations", spatial_calls[-1].payload["label"])
+
+    def test_create_final_scene_prompts_passes_video_payload_and_performance_policy_to_i2v(self):
+        """The i2v module must receive the video payload dict and its performance policy."""
+        segment = {"segment_id": "segment_001", "type": "vocals"}
+        concept = "A youth stands in the allowed forest."
+        details = {
+            "segment_001": {
+                "camera_motion": "slow dolly in",
+                "character_motion": "singing into the light",
+                "spatial_relations": "subject centered, camera low",
+            },
+        }
+        global_context = {
+            "subject": "a singer",
+            "story_idea": "A forest myth.",
+            "style": "cinematic",
+            "locations": ["ancient forest"],
+            "prompt_guidance": {"tone": "warm"},
+        }
+        modules = MusicVideoModulesFake(t2i="T2I RESULT", i2v="I2V RESULT")
+        pipeline = MusicVideoPromptPipeline(object(), prompt_modules=modules)
+
+        result = pipeline.create_final_scene_prompts(
+            stage1_segments=[segment],
+            concept_prompts={"segment_001": concept},
+            scene_details=details,
+            global_context=global_context,
+        )
+
+        expected_payload = build_video_payload(
+            segment=segment,
+            concept=concept,
+            scene_details=details["segment_001"],
+            global_context=global_context,
+            t2i_prompt="T2I RESULT",
+        )
+
+        self.assertEqual(2, len(modules.calls))
+        t2i_call, i2v_call = modules.calls
+        self.assertEqual(expected_payload, i2v_call.payload)
+        self.assertEqual(str(expected_payload["performance_policy"]), i2v_call.payload["performance_policy"])
+        self.assertEqual(build_i2v_system_prompt("vocals", silent_mode=False), i2v_call.guide)
+        self.assertEqual("I2V RESULT", result[0]["final_prompt"])
 
 
 if __name__ == "__main__":
