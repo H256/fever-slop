@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, TypedDict
 
+from feverslop.domain.artifact_hash import is_sha256_hex
+
 
 class ContinuityHandoffPayload(TypedDict, total=False):
     """Pipeline-neutral metadata for an optional scene-boundary handoff."""
@@ -48,7 +50,7 @@ class BoundaryFrameManifest:
 
         def digest(value: str, field: str) -> str:
             raw = str(value).strip().lower()
-            if len(raw) != 64 or any(char not in "0123456789abcdef" for char in raw):
+            if not is_sha256_hex(raw):
                 raise ValueError(f"{field} must be a SHA-256 hex digest")
             return raw
 
