@@ -28,7 +28,7 @@ from feverslop.adapters.project_visual_consistency import (
     validate_project_scene_artifacts,
 )
 from feverslop.adapters.reporting import ConsoleReporter
-from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.adapters.video_postprocessor import VideoPostProcessor, final_video_postprocessor
 from feverslop.adapters.cutless_assembly import CutlessAssemblyService
 from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
 from feverslop.composition.cutless_assembly import assemble_declared_cutless_group
@@ -2011,10 +2011,10 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
         render_plan,
         clips,
         output_dir=layout.final_dir,
-        postprocessor=VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k"),
+        postprocessor=final_video_postprocessor(),
     )
     rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
-    postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+    postprocessor = final_video_postprocessor()
     console.print(f"Concatenating base variant: {len(clips)} scene clips")
     state.video_only_path = postprocessor.concat_clips(
         concat_list=state.context.concat_list,
@@ -2103,7 +2103,7 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
             "facefix": layout.movie_facefix,
             "upscaled": layout.movie_upscaled,
         }
-        postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+        postprocessor = final_video_postprocessor()
         results: dict[str, Path] = {}
         for variant in ("base", "facefix", "upscaled"):
             video_file = variants.get(variant)
@@ -2121,7 +2121,7 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
     video_only_path = state.video_only_path or state.context.final_concat_video
     if state.video_only_path is None and not Path(video_only_path).exists():
         raise FileNotFoundError(f"Video-only concat not found: {video_only_path}")
-    postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+    postprocessor = final_video_postprocessor()
     output_file = state.context.final_concat
     if Path(video_only_path).name == "video_only_upscaled.mp4":
         output_file = Path(state.context.final_concat).with_name("movie_upscaled.mp4")
@@ -2168,7 +2168,7 @@ def _run_upscale_stage(state: PipelineRunState) -> None:
 
 
 def _run_diagnostic_scene_audio_concat_stage(state: PipelineRunState) -> None:
-    postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+    postprocessor = final_video_postprocessor()
     postprocessor.concat_clips(
         concat_list=state.context.concat_list,
         output_file=state.context.final_concat_scene_audio_debug,
