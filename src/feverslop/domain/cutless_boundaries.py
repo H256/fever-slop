@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from feverslop.domain.artifact_hash import is_sha256_hex
+
 CutlessDuplicatePolicy = Literal["reject", "warn", "accept"]
 
 
@@ -16,7 +18,7 @@ class CutlessBoundary:
         if not self.predecessor_segment_id or not self.successor_segment_id:
             raise ValueError("boundary segment IDs are required")
         digest = str(self.boundary_frame_sha256).lower()
-        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        if not is_sha256_hex(digest):
             raise ValueError("boundary_frame_sha256 must be a SHA-256 digest")
 
 
@@ -36,7 +38,7 @@ class CutlessBoundaryDiagnostic:
             raise ValueError("diagnostic segment IDs are required")
         for name in ("predecessor_last_frame_sha256", "successor_first_frame_sha256"):
             digest = str(getattr(self, name)).lower()
-            if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+            if not is_sha256_hex(digest):
                 raise ValueError(f"{name} must be a SHA-256 digest")
         if not 0.0 <= float(self.similarity) <= 1.0:
             raise ValueError("boundary similarity must be between 0 and 1")
