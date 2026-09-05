@@ -5,6 +5,7 @@ import json
 import re
 from pathlib import Path
 
+from feverslop.domain.artifact_hash import is_sha256_hex
 from feverslop.domain.visual_consistency import SceneConsistencyContract
 
 CONTINUITY_ANCHOR_HEADER = "Continuity anchors (keep unchanged):"
@@ -196,11 +197,7 @@ def _validate_ingredients_signature(
         raise ValueError("Ingredients signature source path is missing")
     for reference in references:
         value = reference.get("sha256") if isinstance(reference, dict) else None
-        if (
-            not isinstance(value, str)
-            or len(value) != 64
-            or any(character not in "0123456789abcdef" for character in value)
-        ):
+        if not is_sha256_hex(value):
             raise ValueError("Ingredients signature reference hash is invalid")
     if len(size) != 2:
         raise ValueError("Ingredients signature size is missing")
