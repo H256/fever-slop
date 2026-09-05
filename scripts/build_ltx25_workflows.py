@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from copy import deepcopy
 from pathlib import Path
+
+from feverslop.utils.io import read_json, write_json_document
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "workflows" / "video" / "ltx_25"
@@ -61,12 +62,12 @@ def main() -> None:
         "ingredients": ROOT / "workflows" / "video_ltxv_ingredients_2stage_gguf_v6.json",
     }
     for mode, source in templates.items():
-        template = json.loads(source.read_text(encoding="utf-8-sig"))
+        template = read_json(source)
         for quality in ("draft", "standard", "final"):
             output = OUT / mode / f"{mode}_{quality}.json"
             output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_text(json.dumps(_transform(template), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            output.with_suffix(".profile.json").write_text(json.dumps({
+            write_json_document(output, _transform(template), ensure_ascii=False)
+            write_json_document(output.with_suffix(".profile.json"), {
                 "profile_id": f"ltx25-{mode}-{quality}",
                 "model_version": "2.5",
                 "mode": mode,
@@ -76,7 +77,7 @@ def main() -> None:
                 "timing_policy": "absolute_frame_windows",
                 "preserve_audio_latent": True,
                 "anchor_policy": "start_frame_and_optional_end_frame" if mode in {"i2v", "r2v"} else "none",
-            }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            }, ensure_ascii=False)
 
 
 if __name__ == "__main__":
