@@ -1,7 +1,9 @@
 import unittest
 from contextlib import nullcontext
+from typing import Any
 
 from feverslop.prompting.general_modules import GeneralPromptModules
+from feverslop.prompting.general_signatures import build_general_signature_bundle
 from feverslop.prompting.msr_modules import MSRPromptModules
 
 
@@ -35,6 +37,11 @@ class MultiItemDspyLimitTests(unittest.TestCase):
         modules.lyric_alignment({"WHISPER_SEGMENTS": [{"key": str(i)} for i in range(13)]})
 
         self.assertEqual(15360, calls[0]["config"]["max_tokens"])
+
+    def test_i2v_signature_transports_optional_performers_without_pydantic_validation(self):
+        signature = build_general_signature_bundle()["i2v_prompt"]
+
+        self.assertEqual(dict[str, Any], signature.fields["result"].annotation)
 
     def test_i2v_prompt_discards_invalid_optional_vocal_performer_metadata(self):
         calls = []

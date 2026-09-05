@@ -101,7 +101,7 @@ def build_general_signature_bundle(dspy_module: Any | None = None):
 
         guide: str = dspy_module.InputField()
         payload: dict[str, Any] = dspy_module.InputField()
-        result: PromptResult = dspy_module.OutputField()
+        result: dict[str, Any] = dspy_module.OutputField()
 
     class StoryboardTransform(dspy_module.Signature):
         """Transform a storyboard prompt using the supplied editable template."""
