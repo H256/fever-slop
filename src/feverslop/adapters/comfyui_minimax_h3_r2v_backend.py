@@ -176,7 +176,10 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         self._patch_seed(patcher, self._seed_for_scene(scene))
 
         # -- frame count ---------------------------------------------------
-        if duration_seconds is not None:
+        generation_frames = scene.get("render_frame_count") or frame_count
+        if generation_frames is not None:
+            patcher.set_input_by_title("#FRAMECOUNT", "value", int(generation_frames))
+        elif duration_seconds is not None:
             patcher.set_input_by_title(
                 "#FRAMECOUNT", "value", int(round(float(duration_seconds) * 24)),
             )
@@ -388,7 +391,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # use render plan frame_count for audio sync, fall back to 17N+5
         scene_frame_count = request.scene.get("frame_count")
         if scene_frame_count:
-            keep_frames = int(scene_frame_count)
+            keep_frames = int(scene_frame_count) + int(request.scene.get("anchor_frames") or 0)
         else:
             keep_frames = self._frames_from_duration(
                 duration_seconds or 5.0,
@@ -832,7 +835,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             return None
         start = float(scene.get("abs_start_seconds", 0.0) or 0.0)
         end = float(scene.get("abs_end_seconds", start + float(duration_seconds)))
-        start_frame = round(start * fps)
+        start_frame = round(start * fps) - int(scene.get("anchor_frames") or 0)
         end_frame = round(end * fps)
         return AudioTimingWindow(start_frame / fps, end_frame / fps)
 

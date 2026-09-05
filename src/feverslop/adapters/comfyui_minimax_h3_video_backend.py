@@ -407,7 +407,8 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
             assets=assets,
             seed=self._workflow_seed(workflow),
             fps=int(scene.get("fps") or 24),
-            frame_count=int(scene.get("frame_count") or 0),
+            frame_count=int(scene.get("frame_count") or 0) + int(scene.get("anchor_frames") or 0),
+            render_frame_count=int(scene.get("render_frame_count") or scene.get("frame_count") or 0),
             width=int(scene.get("width") or 0),
             height=int(scene.get("height") or 0),
         ).write(workflow_path.with_name("manifest.json"))
