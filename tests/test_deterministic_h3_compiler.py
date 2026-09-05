@@ -1076,7 +1076,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
                 reference_labels=["<Audio 1>"],
             )],
             overall_soundscape="Quiet room tone.",
-            music_intent=MusicIntent.NONE,
+            music_intent=MusicIntent.REFERENCE,
         )
 
         prompt = DeterministicH3Compiler().compile(
@@ -1121,7 +1121,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
                 reference_labels=["<Audio 1>"],
             )],
             overall_soundscape="Quiet room tone.",
-            music_intent=MusicIntent.NONE,
+            music_intent=MusicIntent.REFERENCE,
         )
 
         prompt = DeterministicH3Compiler().compile(
@@ -1145,6 +1145,35 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             "is partially copied into the target video.",
             prompt,
         )
+
+    def test_r2v_compiler_does_not_invent_audience_only_music_when_music_is_none(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A performer crosses an illuminated room.",
+            shots=[PlannedShot(
+                shot_number=1,
+                description="A performer crosses an illuminated room.",
+                start_seconds=0,
+                end_seconds=4,
+                reference_labels=["<Audio 1>"],
+            )],
+            overall_soundscape="The synchronized source audio drives the performance.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v",
+            plan=plan,
+            facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 4.0)},
+            prepared_reference_labels=["<Audio 1>"],
+            reference_metadata=[{
+                "label": "<Audio 1>", "kind": "audio", "name": "full_mix",
+                "description": "synchronized full mix", "copy_mode": "fully_copy",
+            }],
+        )
+
+        self.assertIn("non_diegetic_music: N/A", prompt)
 
     def test_r2v_compiler_tracks_all_subjects_and_keeps_non_music_ambience(self):
         plan = ResolvedPromptPlan(

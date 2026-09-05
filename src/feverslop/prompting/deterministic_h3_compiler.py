@@ -6,13 +6,13 @@ from typing import Any
 
 from feverslop.domain.locked_scene_facts import LockedSceneFacts
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload
-from feverslop.prompting.dspy_h3_models import PromptMode
+from feverslop.prompting.dspy_h3_models import MusicIntent, PromptMode
 from feverslop.prompting.dspy_h3_models import ResolvedPromptPlan
 from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_prompt_contract
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 37
+H3_COMPILER_VERSION = 38
 
 
 def plan_with_authoritative_relay(
@@ -688,6 +688,8 @@ def _render_non_diegetic_music(
     plan: ResolvedPromptPlan,
     metadata_by_label: Mapping[str, Mapping[str, Any]],
 ) -> str:
+    if plan.music_intent is MusicIntent.NONE:
+        return "N/A"
     parts = [_remove_authored_dialogue_blocks(plan.non_diegetic_music or "")]
     for label, metadata in sorted(metadata_by_label.items()):
         if str(metadata.get("kind") or "").casefold() != "audio":

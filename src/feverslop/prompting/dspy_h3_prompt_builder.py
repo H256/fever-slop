@@ -16,7 +16,9 @@ from feverslop.prompting.dspy_h3_models import (
     H3PromptSections,
     MusicIntent,
     PlannedShot,
+    ReferenceUsage,
     ResolvedPromptPlan,
+    SubjectDefinition,
 )
 from feverslop.prompting.deterministic_h3_compiler import (
     H3_COMPILER_NAME,
@@ -29,6 +31,7 @@ from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.prompt_contract_validation import (
     PromptContractError,
     validate_h3_prompt_contract,
+    validate_h3_prompt_shape,
 )
 from feverslop.prompting.subject_directive_planning import (
     project_directives_to_prompt,
@@ -714,8 +717,9 @@ class DspyH3PromptBuilder:
                 # Generation is intentionally single-pass. A scene must fall
                 # back or retain an advisory BAD verdict rather than entering a
                 # retry loop that can stall a long render batch.
-                max_attempts = 1
+                max_attempts = 2
                 judge_attempts = []
+                contract_repaired = False
                 current_plan = generated.plan
                 speaker_bindings = _speaker_bindings_for_compile(
                     segment=segment,
@@ -779,6 +783,21 @@ class DspyH3PromptBuilder:
                         bound_vocal_subject=bound_vocal_subject,
                     )
                     if shape_issues:
+                        if attempt + 1 < max_attempts:
+                            repair_request = dict(request)
+                            repair_request["notes"] = (
+                                f"{request['notes']}\n\n"
+                                "Repair the typed H3 plan so the deterministic compiler satisfies "
+                                "these contract requirements: "
+                                + ", ".join(issue.code for issue in shape_issues)
+                                + ". Preserve all locked facts, references, relay timing, and bindings."
+                            )
+                            repaired = self.generator(repair_request)
+                            repaired_plan = getattr(repaired, "plan", None)
+                            if repaired_plan is not None:
+                                current_plan = repaired_plan
+                                contract_repaired = True
+                                continue
                         raise PromptContractError(shape_issues)
                     result = {
                         "prompt": prompt,
@@ -796,7 +815,10 @@ class DspyH3PromptBuilder:
                         "prompt_provenance": {
                             "compiler": H3_COMPILER_NAME,
                             "compiler_version": H3_COMPILER_VERSION,
-                            "source": "dspy_section_plan",
+                            "source": (
+                                "dspy_contract_repair"
+                                if contract_repaired else "dspy_section_plan"
+                            ),
                         },
                     }
                     judge_compiled = getattr(self.generator, "judge_compiled_prompt", None)
@@ -849,6 +871,13 @@ class DspyH3PromptBuilder:
         if segment.get("performance_timing"):
             result["performance_timing"] = segment["performance_timing"]
         if isinstance(generated, dict) and generated.get("dspy_error"):
+            fallback_shape_issues = validate_h3_prompt_shape(result["prompt"], mode=mode)
+            if fallback_shape_issues:
+                raise RuntimeError(
+                    "deterministic H3 fallback violates the guide shape: "
+                    + "; ".join(issue.code for issue in fallback_shape_issues),
+                )
+            result["prompt_contract"] = _valid_prompt_contract(result["prompt"])
             result["dspy_error"] = generated["dspy_error"]
             result["prompt_provenance"] = {
                 "compiler": H3_COMPILER_NAME,
@@ -879,6 +908,20 @@ class DspyH3PromptBuilder:
         description = str(
             concept or segment.get("h3_creative_prompt") or "The planned scene continues."
         ).strip()
+        picture_references = [
+            reference for reference in references
+            if str(reference.get("kind") or "").casefold() == "picture"
+        ]
+        subjects = [
+            SubjectDefinition(
+                label=f"<Subject {index}>",
+                name=str(reference.get("name") or f"referenced subject {index}").strip(),
+                description=str(reference.get("description") or "the referenced appearance").strip(),
+                source_references=[str(reference["label"])],
+            )
+            for index, reference in enumerate(picture_references, start=1)
+        ]
+        reference_labels = [str(reference["label"]) for reference in references]
         count = max(1, len(relay_segments))
         shots = [
             PlannedShot(
@@ -886,14 +929,23 @@ class DspyH3PromptBuilder:
                 start_seconds=duration * (index - 1) / count,
                 end_seconds=duration * index / count,
                 description=description,
+                involved_subjects=[subject.name for subject in subjects],
+                reference_labels=reference_labels,
             )
             for index in range(1, count + 1)
         ]
         plan = ResolvedPromptPlan(
             creative_intent=description,
             style_opening="Live-action cinematic imagery preserves the planned composition and scene facts.",
-            subjects=[],
-            reference_usage=[],
+            subjects=subjects,
+            reference_usage=[
+                ReferenceUsage(
+                    reference_label=str(reference["label"]),
+                    purpose=str(reference.get("role") or "reference"),
+                    details=str(reference.get("description") or reference.get("name") or "reference"),
+                )
+                for reference in references
+            ],
             shots=shots,
             overall_soundscape="The planned ambient and physical sounds continue through the scene.",
             music_intent=MusicIntent.NONE,
