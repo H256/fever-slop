@@ -54,19 +54,7 @@ class ComfyUIVideoAssetUploader:
         *,
         upload_references: bool = True,
     ) -> str:
-        image_path = Path(image_path)
-        if not upload_references:
-            return image_path.name
-
-        image_upload = self.client.upload_image(
-            image_path,
-            subfolder="feverslop/references",
-            file_type="input",
-            overwrite=True,
-            upload_name=ComfyUIVideoAssetUploader.content_addressed_name(image_path),
-        )
-        return self.comfy_path_from_upload(image_upload)
-
+        return self._resolve_reference_asset_name(image_path, upload_references=upload_references)
 
     def resolve_reference_video_name(
         self,
@@ -74,17 +62,7 @@ class ComfyUIVideoAssetUploader:
         *,
         upload_references: bool = True,
     ) -> str:
-        video_path = Path(video_path)
-        if not upload_references:
-            return video_path.name
-        image_upload = self.client.upload_image(
-            video_path,
-            subfolder="feverslop/references",
-            file_type="input",
-            overwrite=True,
-            upload_name=ComfyUIVideoAssetUploader.content_addressed_name(video_path),
-        )
-        return self.comfy_path_from_upload(image_upload)
+        return self._resolve_reference_asset_name(video_path, upload_references=upload_references)
 
     def resolve_reference_audio_name(
         self,
@@ -92,15 +70,23 @@ class ComfyUIVideoAssetUploader:
         *,
         upload_references: bool = True,
     ) -> str:
-        audio_path = Path(audio_path)
+        return self._resolve_reference_asset_name(audio_path, upload_references=upload_references)
+
+    def _resolve_reference_asset_name(
+        self,
+        path: str | Path,
+        *,
+        upload_references: bool = True,
+    ) -> str:
+        path = Path(path)
         if not upload_references:
-            return audio_path.name
+            return path.name
         image_upload = self.client.upload_image(
-            audio_path,
+            path,
             subfolder="feverslop/references",
             file_type="input",
             overwrite=True,
-            upload_name=ComfyUIVideoAssetUploader.content_addressed_name(audio_path),
+            upload_name=ComfyUIVideoAssetUploader.content_addressed_name(path),
         )
         return self.comfy_path_from_upload(image_upload)
 
