@@ -368,7 +368,7 @@ existing integrations.
 
 ```bash
 ruff check .
-uv run python -m unittest discover -s tests
+uv run python -m tests.suites.unit
 ```
 
 Install the checked-in pre-commit hooks with:
