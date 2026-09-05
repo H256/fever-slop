@@ -7,6 +7,7 @@ from typing import Any
 
 from feverslop.config.comfyui import ComfyUIModelOverride
 from feverslop.errors import FeverSlopAdaptationError
+from feverslop.path_utils import normalize_workflow_path, workflow_path_matches
 
 
 class ComfyUIModelResolutionError(FeverSlopAdaptationError):
@@ -293,24 +294,15 @@ class ComfyUIModelResolver:
         })
 
     def _matching_overrides(self, workflow_path: str) -> list[ComfyUIModelOverride]:
-        normalized_path = self._normalize_workflow_path(workflow_path)
         return [
             override
             for override in self.overrides
-            if self._workflow_matches(normalized_path, self._normalize_workflow_path(override.workflow))
+            if workflow_path_matches(override.workflow, workflow_path)
         ]
 
     @staticmethod
-    def _workflow_matches(workflow_path: str, override_path: str) -> bool:
-        return workflow_path == override_path or workflow_path.endswith(f"/{override_path}")
-
-    @staticmethod
     def _workflow_label(workflow_path: str | PurePosixPath | None) -> str:
-        return ComfyUIModelResolver._normalize_workflow_path(str(workflow_path or "<workflow>"))
-
-    @staticmethod
-    def _normalize_workflow_path(value: str) -> str:
-        return value.replace("\\", "/").casefold()
+        return normalize_workflow_path(str(workflow_path or "<workflow>"))
 
     @staticmethod
     def _normalize_model_ref(value: str) -> str:
