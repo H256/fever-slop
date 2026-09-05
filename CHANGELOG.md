@@ -5,6 +5,76 @@ All notable changes to FeverSlop are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-05
+
+### Added
+
+- Deterministic MiniMax H3 prompt compilation from structured creative scene
+  data, including typed creative-shot payloads and compiler-owned prompt
+  sections.
+- H3 prompt contract validation for guide syntax, references, dialogue,
+  lyrics, vocal relays, retention markers, and timing.
+- Field-addressable H3 prompt repairs based on judge feedback.
+- Staged H3 prompt checkpoints with compiler, model, input, and dependency
+  fingerprints, plus explainable resume decisions.
+- Native MiniMax H3 two-pass workflow profiles for T2V and R2V, including
+  audio-preserving and split audio/video processing paths.
+- MiniMax H3 full-mix audio-reference workflows and Turbo workflow variants.
+- H3 workflow capability metadata, profile manifests, and automatic upscaler
+  device detection with device and VRAM reporting.
+- LTX 2.5 workflow family with versioned capability metadata and draft,
+  standard, and final profiles for T2V, I2V, R2V, Ingredients, and MSR.
+- Continuation contracts, duration-limit capabilities, resumable segment
+  scheduling, verified continuation anchors, and cutless boundary assembly
+  with absolute audio timing.
+- Shared workflow inventory, profile resolution, capability validation, and
+  workflow materialization support.
+
+### Changed
+
+- H3 prompts are now compiled from canonical effective scene facts instead of
+  relying on free-form planner output.
+- Compiler-owned syntax is removed from creative fields and repair candidates,
+  while judge findings and repair decisions are surfaced through progress
+  reporting.
+- H3 checkpoint reuse and resume behavior now account for compiler and model
+  revisions.
+- MiniMax H3 preparation now supports validated two-pass topology, dynamic
+  upscaler settings, required memory inputs, and explicit audio branches.
+- Workflow assets are organized into typed model and pipeline directories,
+  with workflow selection driven by profile and capability metadata.
+- Token budgets for longer songs, lyrics, structured plans, and creative plans
+  use a shared calculation policy.
+- Configuration and documentation now cover H3 quality profiles, LTX 2.5
+  profiles, continuation rendering, workflow selection, and release gates.
+
+### Fixed
+
+- H3 guide labels, reference syntax, style openings, subject names, speaker
+  identifiers, dialogue anchors, and lyric tags are canonicalized consistently.
+- Generated vocal relay bindings, explicit vocalist lip-sync attributes, and
+  H3 soundscape ambience are preserved during compilation and repair.
+- Stale and rejected H3 checkpoints are invalidated and regenerated correctly.
+- H3 judge retries and checkpoint serialization handle malformed or partial
+  results safely.
+- DSPy chat-template keyword arguments are passed to the correct request body.
+- H3 upscaler API, scale, memory, and device inputs are materialized correctly,
+  and audio latent branches are protected from spatial upscaling.
+- Cached continuation frame indices and selected-scene behavior are preserved
+  during resume and final video-only assembly.
+
+### Removed
+
+- Obsolete H3 upscaling primitives and compatibility workflow wrappers.
+- Unused legacy application helpers, dead workflow-related code, and the
+  unwired service-health probe module.
+
+### Migration
+
+- Existing workflow assets were moved into typed model and pipeline
+  directories. Legacy paths remain only where compatibility requires them;
+  new configurations should use versioned workflow profiles.
+
 ## [0.5.0] - 2026-08-25
 
 ### Added
@@ -118,6 +188,7 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Previous tagged release.
 
 [0.5.0]: https://forgejo.elysium.lan/H256/fever-slop/compare/v0.4.1...v0.5.0
+[0.6.0]: https://forgejo.elysium.lan/H256/fever-slop/compare/v0.5.0...v0.6.0
 [0.4.1]: https://forgejo.elysium.lan/H256/fever-slop/compare/v0.4.0...v0.4.1
 [0.4.0]: https://forgejo.elysium.lan/H256/fever-slop/compare/v0.3.0...v0.4.0
 [0.3.0]: https://forgejo.elysium.lan/H256/fever-slop/releases/tag/v0.3.0
