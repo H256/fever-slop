@@ -68,16 +68,6 @@ def _probe_duration(path: Path) -> float | None:
     return value if value >= 0 else None
 
 
-def _resolve_vae_temporal_size(configured: int, duration_seconds: float | None) -> int:
-    if duration_seconds is None:
-        return configured
-    if duration_seconds > 10.0:
-        return min(configured, 16)
-    if duration_seconds > 6.0:
-        return min(configured, 32)
-    return configured
-
-
 def _source_clip(layout: SceneArtifactLayout, scene_number: int) -> Path:
     candidates = [layout.scene_final_facefix_video(scene_number), layout.scene_final_video(scene_number)]
     legacy_dirs = []
