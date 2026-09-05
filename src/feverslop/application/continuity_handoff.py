@@ -105,7 +105,6 @@ class ContinuityHandoffUseCase:
             and resolved_frame.is_relative_to(resolved_project_dir)
             else resolved_frame.as_posix()
         )
-        frame_index = int(getattr(self.frame_extractor, "last_frame_index", 0) or 0)
         manifest = BoundaryFrameManifest.create(
             source_clip_path=stored_source_clip,
             source_clip_sha256=source_clip_sha256,

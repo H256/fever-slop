@@ -215,8 +215,16 @@ class ContinuityHandoffTests(unittest.TestCase):
             use_case = ContinuityHandoffUseCase(extractor)
             previous, current = _contract(1), _contract(2, mode="i2v", transition="continuous")
 
-            use_case.execute(previous, current, clip, frame, {"scene": 2})
-            use_case.execute(previous, current, clip, frame, {"scene": 2})
+            extractor.last_frame_index = 47
+            first = use_case.execute(previous, current, clip, frame, {"scene": 2})
+            extractor.last_frame_index = 0
+            cached = use_case.execute(previous, current, clip, frame, {"scene": 2})
+
+            self.assertEqual(47, cached["keyframes"]["boundary_frame_manifest"]["frame_index"])
+            self.assertEqual(
+                first["keyframes"]["boundary_frame_manifest"],
+                cached["keyframes"]["boundary_frame_manifest"],
+            )
 
         self.assertEqual(1, len(extractor.calls))
 
