@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from feverslop.domain.performance_sync import select_performance_audio_paths
+from feverslop.domain.h3_audio_delivery import H3AudioDelivery
 from feverslop.domain.h3_prompt_checkpoint import H3PromptCheckpointInput
 from feverslop.domain.locked_scene_facts import LockedSceneFacts, locked_scene_facts_from_scene
 from feverslop.prompting.dspy_h3_models import (
@@ -253,21 +254,38 @@ def _scene_audio_copy_mode(name: str, description: str) -> str:
     return "reference" if "full_mix" in identity else "partially_copy"
 
 
+def _is_full_mix_audio(name: str, description: str) -> bool:
+    return "full_mix" in f"{name} {description}".casefold()
+
+
 def _normalize_resolved_scene_references(
     references: list[dict[str, Any]],
+    *,
+    audio_delivery: H3AudioDelivery | None = None,
 ) -> list[dict[str, Any]]:
     """Upgrade stale scene-level full-song metadata before compile and judge."""
     normalized: list[dict[str, Any]] = []
     for reference in references:
         item = dict(reference)
-        identity = f"{item.get('name', '')} {item.get('description', '')}".casefold()
-        if item.get("kind") == "audio" and "full_mix" in identity:
-            item["copy_mode"] = "reference"
+        if item.get("kind") == "audio" and _is_full_mix_audio(
+            str(item.get("name") or ""),
+            str(item.get("description") or ""),
+        ):
+            item["copy_mode"] = (
+                "fully_copy"
+                if audio_delivery and audio_delivery.copies_to_output
+                else "reference"
+            )
         normalized.append(item)
     return normalized
 
 
-def _normalize_plan_audio_usage(plan: Any, references: list[dict[str, Any]]) -> Any:
+def _normalize_plan_audio_usage(
+    plan: Any,
+    references: list[dict[str, Any]],
+    *,
+    audio_delivery: H3AudioDelivery | None = None,
+) -> Any:
     """Align planner-owned audio wording with deterministic scene metadata."""
     by_label = {str(item.get("label")): item for item in references}
     usages = []
@@ -276,6 +294,7 @@ def _normalize_plan_audio_usage(plan: Any, references: list[dict[str, Any]]) -> 
         if (
             str(reference.get("kind") or "").casefold() == "audio"
             and str(reference.get("copy_mode") or "").casefold() == "reference"
+            and not (audio_delivery and audio_delivery.conditions_generation)
         ):
             usage = usage.model_copy(update={
                 "purpose": "audio reference",
@@ -285,7 +304,13 @@ def _normalize_plan_audio_usage(plan: Any, references: list[dict[str, Any]]) -> 
                 ),
             })
         usages.append(usage)
-    return plan.model_copy(update={"reference_usage": usages})
+    updates: dict[str, Any] = {"reference_usage": usages}
+    if audio_delivery and audio_delivery.conditions_generation and any(
+        str(reference.get("kind") or "").casefold() == "audio"
+        for reference in references
+    ):
+        updates["music_intent"] = MusicIntent.NONE
+    return plan.model_copy(update=updates)
 
 
 def _scene_references(
@@ -293,6 +318,7 @@ def _scene_references(
     audio_paths: dict[str, Path] | None,
     reference_root: Path | None,
     mode: str = "r2v",
+    audio_delivery: H3AudioDelivery | None = None,
 ) -> tuple[list[dict[str, str]], list[Path]]:
     references = segment.get("references") or {}
     selected_audio_paths = (
@@ -431,6 +457,12 @@ def _scene_references(
             continue
         description = tag or _audio_description(path.stem, audio_bindings.get(path.stem))
         copy_mode = _scene_audio_copy_mode(path.stem, description)
+        if (
+            audio_delivery is not None
+            and audio_delivery.copies_to_output
+            and _is_full_mix_audio(path.stem, description)
+        ):
+            copy_mode = "fully_copy"
         if tag and path.stem in audio_bindings:
             binding = audio_bindings[path.stem]
             speaker = f" ({binding['speaker_id']})" if binding.get("speaker_id") else ""
@@ -454,7 +486,15 @@ def _scene_references(
             name=name,
             description=_audio_description(name, audio_bindings.get(name)),
             role="audio_reuse",
-        ) | {"copy_mode": _scene_audio_copy_mode(name, _audio_description(name, audio_bindings.get(name)))})
+        ) | {
+            "copy_mode": (
+                "fully_copy"
+                if audio_delivery is not None
+                and audio_delivery.copies_to_output
+                and _is_full_mix_audio(name, _audio_description(name, audio_bindings.get(name)))
+                else _scene_audio_copy_mode(name, _audio_description(name, audio_bindings.get(name)))
+            ),
+        })
 
     for reference in pending_audio_references:
         add_reference(reference)
@@ -625,11 +665,15 @@ class DspyH3PromptBuilder:
                 global_context=global_context,
                 sections=structured_sections,
             )
+        audio_delivery = H3AudioDelivery.from_context(
+            global_context.get("h3_audio_delivery"),
+        )
         references, images = _scene_references(
             segment,
             audio_paths,
             reference_root or self.reference_root,
             mode=mode,
+            audio_delivery=audio_delivery,
         )
         raw_bindings = _audio_subject_bindings(
             segment.get("references") or {},
@@ -701,11 +745,17 @@ class DspyH3PromptBuilder:
             reference.get("kind") == "audio" and reference.get("role") == "audio_reuse"
             for reference in references
         )
-        if audio_paths or has_reused_audio_reference:
+        if (
+            audio_delivery.conditions_generation
+            and any(reference.get("kind") == "audio" for reference in references)
+        ):
             # Reused scene/song audio is already supplied to H3 as <Audio N>.
-            # It is not an additional audience-only score to invent. This must
-            # be explicit even when the audio reference came from segment
-            # metadata rather than the managed audio_paths argument.
+            # The selected workflow supplies it as a masked audio latent and
+            # carries it into the result, not as audience-only score to invent.
+            request["music_intent"] = MusicIntent.NONE.value
+        elif audio_paths or has_reused_audio_reference:
+            # Legacy callers without a workflow delivery contract preserve the
+            # earlier safe behavior. Production H3 runs always pass the contract.
             request["music_intent"] = MusicIntent.NONE.value
         # Resolve immutable inputs before the planner runs. Creative planning
         # may add actions, but it must not be the authority for scene facts.
@@ -742,7 +792,11 @@ class DspyH3PromptBuilder:
                     str((raw_bindings.get("vocals") or {}).get("subject_label") or "").strip() or None
                 )
                 for attempt in range(max_attempts):
-                    normalized_plan = _normalize_plan_audio_usage(current_plan, references)
+                    normalized_plan = _normalize_plan_audio_usage(
+                        current_plan,
+                        references,
+                        audio_delivery=audio_delivery,
+                    )
                     normalized_plan = plan_with_authoritative_relay(
                         normalized_plan,
                         request.get("relay_segments") or (),
@@ -1006,10 +1060,18 @@ class DspyH3PromptBuilder:
         if raw_h3_sections is not None:
             h3_sections = H3PromptSections.model_validate(raw_h3_sections)
             plan = h3_sections.to_plan()
+            audio_delivery = H3AudioDelivery.from_context(
+                global_context.get("h3_audio_delivery"),
+            )
             resolved_references = _normalize_resolved_scene_references(
                 list(sections.get("resolved_references") or []),
+                audio_delivery=audio_delivery,
             )
-            plan = _normalize_plan_audio_usage(plan, resolved_references)
+            plan = _normalize_plan_audio_usage(
+                plan,
+                resolved_references,
+                audio_delivery=audio_delivery,
+            )
             speaker_bindings = _speaker_bindings_for_compile(
                 segment=segment,
                 references=resolved_references,

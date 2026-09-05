@@ -12,7 +12,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 38
+H3_COMPILER_VERSION = 39
 
 
 def plan_with_authoritative_relay(

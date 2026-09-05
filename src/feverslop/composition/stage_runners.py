@@ -76,6 +76,7 @@ from feverslop.composition.render_video import (
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
+from feverslop.domain.h3_audio_delivery import load_h3_audio_delivery
 from feverslop.domain.render_plan import RenderPlan, RenderScene
 from feverslop.domain.visual_consistency import (
     PreflightMode,
@@ -461,6 +462,14 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             f"{', '.join(str(number) for number in sorted(selected))}[/cyan]",
         )
     global_context = _read_h3_input(state.context.resolved_context, "resolved context")
+    if state.args.video_pipeline.startswith("minimax-h3"):
+        # Prompt semantics must reflect the workflow that will consume them.
+        # In particular, audio-latent workflows do not turn a supplied mix into
+        # audience-only score merely because its filename resembles a music stem.
+        global_context = dict(global_context)
+        global_context["h3_audio_delivery"] = load_h3_audio_delivery(
+            state.single_prompt_workflow,
+        ).to_context()
     h3_prompts_json = paths.prompts_dir / f"h3_prompts_{config.song_id}.json"
     paths.prompts_dir.mkdir(parents=True, exist_ok=True)
     reporter = ConsoleReporter(console)
