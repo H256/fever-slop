@@ -195,7 +195,6 @@ def _dialogue_actor_names(value: str) -> list[str]:
 
 
 # Backwards-compatible alias for re-export via movie_planning.py
-_display_name = display_name
 
 
 def _location_base_name(name: str) -> str:
@@ -276,7 +275,6 @@ def _is_character_action(sentence: str, *, character_names: tuple[str, ...]) -> 
 
 
 # Backwards-compatible alias for re-export via movie_planning.py
-_clean_visual_description = clean_visual_description
 
 
 def _continuity_from_data(raw) -> list[MovieContinuityRule]:
