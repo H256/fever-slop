@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from feverslop.domain.canonical_render_plan import stable_scene_id
+from feverslop.domain.canonical_render_plan import PromptRole, stable_scene_id
 
 
 def materialize_continuation_entries(scene: dict[str, Any], *, group: dict[str, Any]) -> list[dict[str, Any]]:
@@ -26,6 +26,7 @@ def materialize_continuation_entries(scene: dict[str, Any], *, group: dict[str, 
         entry = deepcopy(scene)
         entry["scene"] = semantic_scene * 1_000_000 + 1_000 + index
         entry["semantic_scene"] = semantic_scene
+        entry["semantic_segment_id"] = semantic_segment_id
         entry["technical_segment_id"] = technical_id
         entry["continuation_group_id"] = str(group.get("group_id") or "").strip()
         entry["continuation_predecessor_id"] = (
@@ -36,6 +37,9 @@ def materialize_continuation_entries(scene: dict[str, Any], *, group: dict[str, 
         entry["abs_end_seconds"] = float(segment["end_seconds"])
         entry["duration_seconds"] = float(segment["duration_seconds"])
         entry["frame_count"] = round(entry["duration_seconds"] * int(entry["fps"]))
+        entry["render_frame_count"] = int(segment.get("render_frame_count") or entry["frame_count"])
+        entry["anchor_frames"] = int(segment.get("anchor_frames") or 0)
+        entry["cut"] = index == 1
         metadata = dict(entry.get("metadata") or {})
         metadata.update({
             "segment_id": technical_id,
@@ -55,8 +59,37 @@ def materialize_continuation_entries(scene: dict[str, Any], *, group: dict[str, 
         else:
             entry.setdefault("metadata", {}).pop("continuation_groups", None)
         _project_prompt_relay(entry, scene, segment)
+        roles = (entry.get("canonical") or {}).get("roles") or {}
+        relay_role = roles.get(str(PromptRole.LTX_RELAY)) or {}
+        for owner in ("generated", "override"):
+            owned = relay_role.get(owner)
+            if isinstance(owned, dict) and isinstance(owned.get("value"), list):
+                holder = {"fps": entry["fps"], "ltx": {"prompt_relay": owned["value"]}}
+                _project_prompt_relay(holder, scene, segment)
+                owned["value"] = holder["ltx"]["prompt_relay"]
         entries.append(entry)
     return entries
+
+
+def project_continuation_sources(sources, generated):
+    """Carry semantic overrides and reference bindings into technical identities."""
+    groups = {}
+    for entry in generated:
+        for group in (entry.get("metadata") or {}).get("continuation_groups") or []:
+            if entry.get("semantic_scene") is not None:
+                groups[str(entry.get("semantic_segment_id") or "")] = group
+    projected = []
+    for source in sources:
+        segment_id = str(
+            source.get("segment_id") or (source.get("metadata") or {}).get("segment_id")
+            or (source.get("canonical") or {}).get("segment_id") or "",
+        )
+        group = groups.get(segment_id)
+        if group is not None and not source.get("technical_segment_id"):
+            projected.extend(materialize_continuation_entries(source, group=group))
+        else:
+            projected.append(source)
+    return projected
 
 
 def _project_prompt_relay(entry: dict[str, Any], source: dict[str, Any], segment: dict[str, Any]) -> None:

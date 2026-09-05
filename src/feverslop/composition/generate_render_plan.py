@@ -5,6 +5,8 @@ from pathlib import Path
 
 from rich.console import Console
 
+from feverslop.composition.continuation_capability import resolve_continuation_capability
+
 from feverslop.adapters.audio.beat_analysis import (
     BeatImpactAnalyzer,
     BeatSceneDurationGenerator,
@@ -117,6 +119,7 @@ def build_generate_render_plan_execution_request(
         pipeline=config.video_pipeline,
         purpose="final",
     )
+    duration_capability = resolve_continuation_capability(config.video_pipeline, profile)
     preroll_frames, tail_frames, round_render_frames_to_8n1 = resolve_rolling_frame_profile(
         request.rolling_frame_profile,
         video_pipeline=config.video_pipeline,
@@ -137,7 +140,8 @@ def build_generate_render_plan_execution_request(
         default_max_render_duration_seconds=(
             app_config.comfyui.default_max_render_duration_seconds
         ),
-        duration_capability=profile.duration_capability if profile else None,
+        duration_capability=duration_capability,
+        allow_continuation=config.video_pipeline == "minimax-h3-r2v",
     )
     song_id = getattr(config, "song_id", None) or getattr(config, "project_name", "") or config.input_audio.stem
     return GenerateRenderPlanExecutionRequest(
@@ -148,7 +152,7 @@ def build_generate_render_plan_execution_request(
         video_settings=video_settings,
         song_id=song_id,
         scene_duration_policy=scene_duration_policy,
-        duration_capability=profile.duration_capability if profile else None,
+        duration_capability=duration_capability,
     )
 
 
