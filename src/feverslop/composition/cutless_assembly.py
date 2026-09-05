@@ -6,6 +6,8 @@ from pathlib import Path
 
 from feverslop.adapters.cutless_assembly import CutlessAssemblyService
 from feverslop.domain.artifact_hash import sha256_file
+from feverslop.ports.reporting import Reporter
+from feverslop.utils.sub_step_progress import SubStepProgress
 from feverslop.domain.cutless_boundaries import (
     CutlessBoundary,
     CutlessBoundaryDiagnostic,
@@ -25,6 +27,7 @@ def assemble_declared_cutless_group(
     diagnostics_file: Path,
     fps: int,
     duplicate_policy: str = "reject",
+    reporter: Reporter | None = None,
 ) -> Path:
     segments = list(group.get("segments") or [])
     segment_ids = [str(segment.get("segment_id") or "").strip() for segment in segments]
@@ -43,13 +46,16 @@ def assemble_declared_cutless_group(
     last_hashes: dict[str, str] = {}
     frame_dir = diagnostics_file.with_suffix("")
     frame_dir.mkdir(parents=True, exist_ok=True)
-    for segment_id in segment_ids:
+    progress = SubStepProgress(reporter, "Verify continuation clips", len(segment_ids), interval=1)
+    progress.update(0, force=True)
+    for item_index, segment_id in enumerate(segment_ids, start=1):
         clip = clips_by_segment[segment_id]
         frame_counts[segment_id] = int(frame_count(clip))
         first = extract_first_frame(clip, frame_dir / f"{segment_id}.first.png")
         last = extract_last_frame(clip, frame_dir / f"{segment_id}.last.png")
         first_hashes[segment_id] = sha256_file(first)
         last_hashes[segment_id] = sha256_file(last)
+        progress.update(item_index)
 
     for predecessor, successor in zip(segment_ids, segment_ids[1:]):
         boundaries.append(CutlessBoundary(
@@ -61,7 +67,10 @@ def assemble_declared_cutless_group(
             segment for segment in segments
             if str(segment.get("segment_id") or "").strip() == successor
         )
-        expected_successor_frames = round(float(successor_segment.get("duration_seconds", 0.0)) * fps)
+        expected_successor_frames = (
+            round(float(successor_segment.get("duration_seconds", 0.0)) * fps)
+            + int(successor_segment.get("anchor_frames") or 0)
+        )
         diagnostics.append(CutlessBoundaryDiagnostic(
             predecessor_segment_id=predecessor,
             successor_segment_id=successor,
@@ -77,6 +86,15 @@ def assemble_declared_cutless_group(
         diagnostics,
         duplicate_policy=duplicate_policy,
     )
+    if any(int(segment.get("anchor_frames") or 0) for segment in segments):
+        for segment in segments:
+            segment_id = str(segment["segment_id"])
+            timeline_frames = round(float(segment["duration_seconds"]) * fps)
+            trimmed = int(segment_id in plan.trim_first_frame_segments)
+            if frame_counts[segment_id] - trimmed != timeline_frames:
+                raise ValueError(f"cutless segment {segment_id} does not preserve timeline frame count")
+    if reporter is not None:
+        reporter.message("Assembling verified continuation segments")
     diagnostics_file.parent.mkdir(parents=True, exist_ok=True)
     diagnostics_file.write_text(
         json.dumps({**group, "assembly": {

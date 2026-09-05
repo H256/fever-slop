@@ -466,6 +466,16 @@ class TestFaceIdentityAdapter(unittest.TestCase):
         actor_ids = {e.actor_id for e in embeddings}
         self.assertEqual(actor_ids, {"hero", "villain"})
 
+    def test_best_match_is_returned_below_threshold(self):
+        from feverslop.adapters.face_identity import FaceIdentityAdapter
+
+        adapter = FaceIdentityAdapter(min_similarity=0.9)
+        adapter.register_reference(np.array([1.0, 0.0]), "hero")
+        actor_id, score = adapter.verify_identity(np.array([0.6, 0.8]))
+
+        self.assertEqual(actor_id, "hero")
+        self.assertAlmostEqual(score, 0.6)
+
 
 class TestSceneArtifactLayoutExtensions(unittest.TestCase):
     def test_actor_methods(self):

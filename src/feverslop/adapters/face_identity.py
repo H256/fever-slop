@@ -48,10 +48,6 @@ class FaceIdentityAdapter(FaceIdentityPort):
             "Identity verification: best=%s, score=%.4f (threshold=%.4f)",
             best_id, best_score, self._min_similarity,
         )
-        if best_score >= self._min_similarity:
-            return best_id, best_score
-
-        # Return best match anyway — pipeline decides if it's acceptable.
         return best_id, best_score
 
     def get_actor_embedding(self, actor_id: str) -> np.ndarray | None:
