@@ -33,6 +33,19 @@ TWO_SCENE_SRT = textwrap.dedent("""\
 
 
 class SceneDurationLimitTests(unittest.TestCase):
+    def test_continuation_keeps_semantic_scene_longer_than_render_budget(self):
+        policy = resolve_scene_duration_policy(
+            requested_min_seconds=20, requested_max_seconds=30, fps=24,
+            preroll_frames=0, tail_frames=0, round_render_frames_to_8n1=False,
+            workflow_limits={}, workflow_paths=[], default_max_render_duration_seconds=None,
+            duration_capability=DurationCapability.create(
+                fps=24, min_seconds=2, max_seconds=12, preferred_seconds=8,
+            ), allow_continuation=True,
+        )
+        self.assertEqual(20, policy.effective_min_seconds)
+        self.assertEqual(30, policy.effective_max_seconds)
+        self.assertEqual(288, policy.max_render_frames)
+
     def test_minimax_does_not_use_ltx_rolling_frame_overhead(self):
         self.assertEqual(
             (0, 0, False),

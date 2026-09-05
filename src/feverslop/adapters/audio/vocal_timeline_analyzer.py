@@ -9,16 +9,8 @@ import torch
 import whisper
 
 from feverslop.domain.timeline import TimelineSegment
-from feverslop.domain.timeline_transform import (
-    merge_same_kind_segments,
-    normalize_empty_vocals,
-)
 
-__all__ = [
-    "VocalTimelineAnalyzer",
-    "merge_same_kind_segments",
-    "normalize_empty_vocals",
-]
+__all__ = ["VocalTimelineAnalyzer"]
 
 
 class VocalTimelineAnalyzer:
@@ -26,7 +18,6 @@ class VocalTimelineAnalyzer:
         self,
         whisper_model: str = "large-v3",
         language: str = "de",
-        silence_threshold_db: float | None = None,  # bleibt kompatibel, wird aber als RMS-Threshold ignoriert
         merge_gap: float = 0.5,
         min_vocal_duration: float = 0.4,
         min_silence_duration: float = 0.8,
