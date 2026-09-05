@@ -483,9 +483,12 @@ class SceneWorkflowManifest:
             mismatches.append(
                 "consistency: exactly one ingredients_sheet SHA-256 is required",
             )
-        if (
+        is_continuous_handoff = (
             contract.transition_from_previous == "continuous"
             and contract.mode in {"msr", "i2v"}
+        )
+        if (
+            is_continuous_handoff
             and len(by_role.get("startframe", [])) != 1
         ):
             mismatches.append(
@@ -493,8 +496,7 @@ class SceneWorkflowManifest:
             )
         startframes = by_role.get("startframe", [])
         if (
-            contract.transition_from_previous == "continuous"
-            and contract.mode in {"msr", "i2v"}
+            is_continuous_handoff
             and (
                 len(startframes) != 1
                 or self.startframe_sha256 is None
@@ -505,8 +507,7 @@ class SceneWorkflowManifest:
                 "consistency: startframe SHA-256 does not match extracted frame",
             )
         if (
-            contract.transition_from_previous == "continuous"
-            and contract.mode in {"msr", "i2v"}
+            is_continuous_handoff
             and (
                 self.startframe_mode != "last_frame_from_previous"
                 or self.startframe_source_scene != contract.scene - 1
@@ -518,8 +519,7 @@ class SceneWorkflowManifest:
                 "consistency: continuous handoff startframe lineage is invalid",
             )
         if (
-            contract.transition_from_previous == "continuous"
-            and contract.mode in {"msr", "i2v"}
+            is_continuous_handoff
             and self.startframe_source_clip is not None
             and self.startframe_source_clip.path
             != (
