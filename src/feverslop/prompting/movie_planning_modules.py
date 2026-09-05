@@ -63,7 +63,7 @@ class MoviePlanningModules:
             for name, signature in build_movie_planning_signature_bundle(dspy).items()
         }
 
-    def _call(self, name: str, payload: dict[str, Any], output: str, *, timeout: float | None = None, system_prompt: str = "") -> Any:
+    def _call(self, name: str, payload: dict[str, Any], output: str, *, timeout: float | None = None) -> Any:
         # Movie-planning outputs are intentionally NOT bounded by a static
         # token policy (the endpoint default applies), per #529 LLM-302.
         guide_name = {
@@ -79,31 +79,31 @@ class MoviePlanningModules:
             return _value(self._predictors[name](**kwargs), output)
 
     def story_arch(self, payload: dict[str, Any], *, timeout: float | None = None) -> Any:
-        return self._call("story_arch", payload, "result", timeout=timeout, system_prompt="You are a film writer. Return ONLY valid JSON.")
+        return self._call("story_arch", payload, "result", timeout=timeout)
 
     def movie_bible(self, payload: dict[str, Any], *, timeout: float | None = None) -> Any:
-        return self._call("movie_bible", payload, "result", timeout=timeout, system_prompt="You are a film development producer. Return ONLY valid JSON.")
+        return self._call("movie_bible", payload, "result", timeout=timeout)
 
     def refine_locations(self, payload: dict[str, Any], *, timeout: float | None = None) -> Any:
-        return self._call("refine_locations", payload, "result", timeout=timeout, system_prompt="You are a production designer. Return ONLY valid JSON.")
+        return self._call("refine_locations", payload, "result", timeout=timeout)
 
     def refine_actors(self, payload: dict[str, Any], *, timeout: float | None = None) -> Any:
-        return self._call("refine_actors", payload, "result", timeout=timeout, system_prompt="You are a character designer. Return ONLY valid JSON.")
+        return self._call("refine_actors", payload, "result", timeout=timeout)
 
     def continuity_plan(self, payload: dict[str, Any], *, timeout: float | None = None) -> Any:
-        return self._call("continuity_plan", payload, "result", timeout=timeout, system_prompt="You are a film continuity supervisor. Return ONLY valid JSON.")
+        return self._call("continuity_plan", payload, "result", timeout=timeout)
 
     def story_design(self, payload: dict[str, Any], *, timeout: float | None = None) -> Any:
-        return self._call("story_design", payload, "result", timeout=timeout, system_prompt="You are a dramaturg and story editor. Return ONLY valid JSON.")
+        return self._call("story_design", payload, "result", timeout=timeout)
 
     def screenplay(self, payload: dict[str, Any], *, timeout: float | None = None) -> Any:
-        return self._call("screenplay", payload, "result", timeout=timeout, system_prompt="You are a film screenwriter. Return ONLY valid JSON.")
+        return self._call("screenplay", payload, "result", timeout=timeout)
 
     def narrative_plan(self, payload: dict[str, Any], *, timeout: float | None = None) -> Any:
-        return self._call("narrative_plan", payload, "result", timeout=timeout, system_prompt="You are a film story editor. Return ONLY valid JSON.")
+        return self._call("narrative_plan", payload, "result", timeout=timeout)
 
     def shot_plan_from_bible(self, payload: dict[str, Any], *, timeout: float | None = None) -> Any:
-        return self._call("shot_plan_from_bible", payload, "result", timeout=timeout, system_prompt="You are a film director and shot planner. Return ONLY valid JSON.")
+        return self._call("shot_plan_from_bible", payload, "result", timeout=timeout)
 
     def shot_plan(self, payload: dict[str, Any], *, timeout: float | None = None) -> Any:
-        return self._call("shot_plan", payload, "result", timeout=timeout, system_prompt="You are a film director and shot planner. Return ONLY valid JSON.")
+        return self._call("shot_plan", payload, "result", timeout=timeout)

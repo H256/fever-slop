@@ -7,6 +7,7 @@ from unittest.mock import patch
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.duration_capability import DurationCapability
+from feverslop.domain.canonical_render_plan import stable_scene_id
 from feverslop.errors import FeverSlopDataError
 
 # Access the private helper for direct unit testing
@@ -175,11 +176,11 @@ class BuildRenderPlanTests(unittest.TestCase):
 
             scenes = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual([1_001_001, 1_001_002, 1_001_003], [scene["scene"] for scene in scenes])
-            self.assertEqual(["orbit-0001", "orbit-0002", "orbit-0003"], [scene["segment_id"] for scene in scenes])
+            self.assertEqual([f"{stable_scene_id("scene-001:continuation")}-{n:04d}" for n in (1, 2, 3)], [scene["segment_id"] for scene in scenes])
             group = scenes[0]["metadata"]["continuation_groups"][0]
             segments = group["segments"]
             self.assertEqual("scene-001:orbit", group["group_id"])
-            self.assertEqual(["orbit-0001", "orbit-0002", "orbit-0003"], [s["segment_id"] for s in segments])
+            self.assertEqual([f"{stable_scene_id("scene-001:continuation")}-{n:04d}" for n in (1, 2, 3)], [s["segment_id"] for s in segments])
             self.assertEqual(10.0, group["semantic_start_seconds"])
             self.assertEqual(18.0, group["semantic_end_seconds"])
             self.assertEqual(10.0, segments[0]["start_seconds"])

@@ -246,10 +246,6 @@ def _project_reference_path(value: Any) -> str:
     return f"movie/references/{path}"
 
 
-def _resolve_reference_path(value: str) -> str:
-    return _project_reference_path(value)
-
-
 def build_movie_actor_visual_description(cues: str) -> str:
     return _sanitize_actor_cues(cues)
 
@@ -265,16 +261,6 @@ def build_movie_actor_reference_prompt(name: str, cues: str = "") -> str:
         "posture, neutral expression, plain white seamless studio background, even reference-sheet lighting, "
         "no environment, no scenery, no props, no text, no extra characters."
     )
-
-
-def _actor_static_cues(shots: list) -> str:
-    parts: list[str] = []
-    for shot in shots[:4]:
-        for value in (getattr(shot, "description", ""), getattr(shot, "expression", "")):
-            text = _sanitize_actor_cue_fragment(str(value or ""))
-            if text and text not in parts:
-                parts.append(text)
-    return "; ".join(parts)[:700]
 
 
 def _sanitize_actor_cues(cues: str) -> str:
@@ -336,18 +322,3 @@ def _sanitize_actor_cue_fragment(value: str) -> str:
     if text.lower().endswith("'s") or text.lower() in {"the man", "the woman", "the character"}:
         return ""
     return text
-
-
-def _shot_cues(shots: list, *, include_location: bool) -> str:
-    parts: list[str] = []
-    for shot in shots[:4]:
-        for value in (
-            getattr(shot, "description", ""),
-            getattr(shot, "action", ""),
-            getattr(shot, "expression", ""),
-            getattr(shot, "location", "") if include_location else "",
-        ):
-            text = str(value or "").strip()
-            if text and text not in parts:
-                parts.append(text)
-    return "; ".join(parts)[:700]
