@@ -226,6 +226,21 @@ class WorkflowPatcher:
         node.setdefault("inputs", {})[input_name] = value
         return self
 
+    def _set_first_matching_input(
+        self,
+        title: str,
+        candidates: tuple[str, ...],
+        value: Any,
+    ) -> str | None:
+        # Set the first existing candidate input on the titled node.
+        # Returns the matched input name, or None if no candidate exists.
+        # Never raises: missing title or missing inputs both yield None
+        # (try_set_existing_input_by_title semantics). Error policy is the caller's.
+        for input_name in candidates:
+            if self.try_set_existing_input_by_title(title, input_name, value):
+                return input_name
+        return None
+
     def patch_lora_strength_by_title(
         self,
         title: str,
@@ -264,23 +279,17 @@ class WorkflowPatcher:
         self.set_existing_input_by_title(title, "lora_name", lora_name)
         patched.append("lora_name")
 
-        model_strength_patched = False
-        for input_name in ("strength_model", "model_strength", "strength"):
-            if self.try_set_existing_input_by_title(title, input_name, strength_model):
-                patched.append(input_name)
-                model_strength_patched = True
-                break
-
-        if not model_strength_patched:
+        model_input = self._set_first_matching_input(title, _MODEL_STRENGTH_INPUTS, strength_model)
+        if model_input is None:
             raise KeyError(
                 f"No known LoRA model strength input found on node '{title}'. "
                 "Tried: strength_model, model_strength, strength",
             )
+        patched.append(model_input)
 
-        for input_name in ("strength_clip", "clip_strength"):
-            if self.try_set_existing_input_by_title(title, input_name, strength_clip):
-                patched.append(input_name)
-                break
+        clip_input = self._set_first_matching_input(title, _CLIP_STRENGTH_INPUTS, strength_clip)
+        if clip_input is not None:
+            patched.append(clip_input)
 
         return patched
 
@@ -299,24 +308,18 @@ class WorkflowPatcher:
             patched.append("lora_name")
 
         if strength_model is not None:
-            model_strength_patched = False
-            for input_name in ("strength_model", "model_strength", "strength"):
-                if self.try_set_existing_input_by_title(title, input_name, strength_model):
-                    patched.append(input_name)
-                    model_strength_patched = True
-                    break
-
-            if not model_strength_patched:
+            model_input = self._set_first_matching_input(title, _MODEL_STRENGTH_INPUTS, strength_model)
+            if model_input is None:
                 raise KeyError(
                     f"No known LoRA model strength input found on node '{title}'. "
                     "Tried: strength_model, model_strength, strength",
                 )
+            patched.append(model_input)
 
         if strength_clip is not None:
-            for input_name in ("strength_clip", "clip_strength"):
-                if self.try_set_existing_input_by_title(title, input_name, strength_clip):
-                    patched.append(input_name)
-                    break
+            clip_input = self._set_first_matching_input(title, _CLIP_STRENGTH_INPUTS, strength_clip)
+            if clip_input is not None:
+                patched.append(clip_input)
 
         if not patched:
             raise KeyError(f"No LoRA fields were patched on node '{title}'")
@@ -331,15 +334,13 @@ class WorkflowPatcher:
     ) -> list[str]:
         patched = []
 
-        for input_name in ("strength_model", "model_strength", "strength"):
-            if self.try_set_existing_input_by_title(title, input_name, strength_model):
-                patched.append(input_name)
-                break
+        model_input = self._set_first_matching_input(title, _MODEL_STRENGTH_INPUTS, strength_model)
+        if model_input is not None:
+            patched.append(model_input)
 
-        for input_name in ("strength_clip", "clip_strength"):
-            if self.try_set_existing_input_by_title(title, input_name, strength_clip):
-                patched.append(input_name)
-                break
+        clip_input = self._set_first_matching_input(title, _CLIP_STRENGTH_INPUTS, strength_clip)
+        if clip_input is not None:
+            patched.append(clip_input)
 
         if not patched:
             raise KeyError(
@@ -418,6 +419,9 @@ class WorkflowPatcher:
 
 
 _PATH_PART_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)(?:\[(\d+)])?")
+
+_MODEL_STRENGTH_INPUTS = ("strength_model", "model_strength", "strength")
+_CLIP_STRENGTH_INPUTS = ("strength_clip", "clip_strength")
 
 
 def _workflow_dependency_ids(value: Any) -> set[str]:
