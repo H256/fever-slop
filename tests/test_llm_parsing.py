@@ -1,7 +1,7 @@
 ﻿import json
 import unittest
 
-from feverslop.application.llm_parsing import extract_json_object
+from feverslop.domain.llm_parsing import extract_json_object
 
 
 class LLMParsingTests(unittest.TestCase):
