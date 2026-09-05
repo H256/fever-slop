@@ -1537,6 +1537,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
     def test_reference_renderer_keeps_single_unknown_subject_attempt_advisory(self):
         generator = object.__new__(CoreVideoPromptGenerator)
         calls = []
+        warnings = []
 
         def renderer(**kwargs):
             calls.append(kwargs)
@@ -1553,6 +1554,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         generator.reference_renderer = renderer
         generator.reference_guide_path = "minimax-h3-references.md"
+        generator.warning_callback = lambda message, **_kwargs: warnings.append(message)
         plan = ResolvedPromptPlan(
             creative_intent="Performance",
             subjects=[SubjectDefinition(
@@ -1572,6 +1574,9 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual(1, len(calls))
         self.assertEqual("<Subject 3> performs.", output.summary)
+        self.assertIn("automatically repairing", warnings[0])
+        self.assertIn("No action is needed", warnings[0])
+        self.assertIn("undefined_subjects", warnings[0])
 
     def test_reference_renderer_keeps_single_instrumental_contract_attempt_advisory(self):
         generator = object.__new__(CoreVideoPromptGenerator)

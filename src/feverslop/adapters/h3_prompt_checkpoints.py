@@ -20,6 +20,7 @@ from feverslop.domain.h3_prompt_checkpoint import (
     checkpoint_status,
 )
 from feverslop.errors import FeverSlopDataError
+from feverslop.prompting.h3_user_messages import checkpoint_unjudged_message
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.utils.io import atomic_write_json, read_json_document
 
@@ -145,15 +146,17 @@ class H3PromptCheckpointStore:
     def _report(self, action: str, checkpoint: H3PromptCheckpoint) -> None:
         if self.reporter is None:
             return
-        verdict = {
-            "good": "GOOD",
-            "advisory_bad": "BAD",
-            "unjudged": "UNJUDGED",
-        }[checkpoint.status]
-        message = (
-            f"H3 prompt checkpoint {action}: scene {checkpoint.scene_number}, "
-            f"judge {verdict}, status {checkpoint.status}, path {checkpoint.path}"
-        )
+        if checkpoint.status == "unjudged":
+            message = (
+                f"H3 prompt checkpoint {action}: scene {checkpoint.scene_number}, "
+                f"quality check NOT RUN, path {checkpoint.path}"
+            )
+        else:
+            verdict = {"good": "GOOD", "advisory_bad": "BAD"}[checkpoint.status]
+            message = (
+                f"H3 prompt checkpoint {action}: scene {checkpoint.scene_number}, "
+                f"judge {verdict}, status {checkpoint.status}, path {checkpoint.path}"
+            )
         if checkpoint.status == "advisory_bad":
             judge = checkpoint.generated.get("prompt_judge")
             issues = judge.get("issues") if isinstance(judge, dict) else None
@@ -163,6 +166,8 @@ class H3PromptCheckpointStore:
                     message += f"; issues: {summary[:500]}"
                     if len(summary) > 500:
                         message += "..."
+        elif checkpoint.status == "unjudged":
+            message += "; " + checkpoint_unjudged_message(checkpoint.generated)
         self.reporter.message(message)
 
     def _sync_canonical(self, checkpoint: H3PromptCheckpoint) -> None:
