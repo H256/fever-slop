@@ -55,6 +55,8 @@ def build(template: Path, output: Path, *, audio: bool = False) -> None:
         # ComfyUI serializes the mode-dependent multiplier under the
         # mode.scale API input name, not as a standalone scale input.
         "mode.scale": 2.0,
+        "keep_proportion": True,
+        "offload_after_upscale": False,
         "align": 32,
         "enable_chunking": False,
         "force_unload": True,
