@@ -2,8 +2,9 @@
 
 import random
 import re
+import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ from feverslop.ports.rendering import (
     WorkflowAnchorConfig,
 )
 from feverslop.ports.reporting import Reporter
+from feverslop.utils.sub_step_progress import SubStepProgress
 from feverslop.utils.io import file_is_valid
 from feverslop.utils.io import atomic_write_json, read_json_object
 
@@ -72,7 +74,11 @@ class RenderVideoScenesUseCase:
         rendered: list[Path] = []
         rendered_by_segment: dict[str, Path] = {}
         total = len(plan.scenes)
+        progress = SubStepProgress(self.reporter, "Render segments", total, interval=1)
+        progress.update(0, force=True)
         for scene in plan.scenes:
+            if self.reporter is not None:
+                self.reporter.message(f"Preparing render segment {len(rendered) + 1}/{total}")
             scene_payload = scene.to_dict()
             technical_segment_id = str(
                 scene_payload.get("technical_segment_id")
@@ -141,15 +147,28 @@ class RenderVideoScenesUseCase:
                 else (direct_path if file_is_valid(direct_path)
                       else (per_scene_path if file_is_valid(per_scene_path) else None))
             )
-            if predecessor_id and not (scene_payload.get("keyframes") or {}).get(
-                "boundary_frame_manifest"
-            ):
+            if predecessor_id and not boundary_is_current:
                 existing_path = None
+                video_request = replace(video_request, skip_existing=False)
+            probe_frames = getattr(getattr(self.backend, "postprocessor", None), "_frame_count", None)
+            if existing_path and scene_payload.get("technical_segment_id") and callable(probe_frames):
+                expected_frames = int(scene_payload.get("frame_count") or 0) + int(
+                    scene_payload.get("anchor_frames") or 0,
+                )
+                if expected_frames:
+                    try:
+                        valid = int(probe_frames(existing_path)) == expected_frames
+                    except (OSError, ValueError, subprocess.SubprocessError):
+                        valid = False
+                    if not valid:
+                        existing_path = None
+                        video_request = replace(video_request, skip_existing=False)
             if request.skip_existing and existing_path:
                 ensure_manifest = getattr(self.backend, "ensure_scene_manifest", None)
                 if ensure_manifest is not None:
                     ensure_manifest(video_request)
                 rendered.append(existing_path)
+                progress.update(len(rendered))
                 self._log_scene_available(existing_path, len(rendered), total, skipped=True)
                 if request.on_scene_complete:
                     request.on_scene_complete(existing_path, len(rendered), total)
@@ -157,6 +176,12 @@ class RenderVideoScenesUseCase:
                     rendered_by_segment[technical_segment_id] = existing_path
                 continue
 
+            if predecessor_id:
+                # A failed rerender must not leave its old successful boundary
+                # sidecar available to authorize a later cache hit.
+                (request.output_dir / f"scene_{scene.scene_number:04}" / "continuation_boundary.json").unlink(
+                    missing_ok=True,
+                )
             randomize_seed = bool(getattr(self.backend, "randomize_seed", False))
             if randomize_seed:
                 scene_payload["seed"] = random.SystemRandom().randint(0, 2**63 - 1)
@@ -177,7 +202,7 @@ class RenderVideoScenesUseCase:
                     self.backend.randomize_seed = original_randomize_seed
             else:
                 output_path = self.backend.render_video(video_request)
-            if predecessor_id and not boundary_is_current:
+            if predecessor_id:
                 boundary_manifest = (scene_payload.get("keyframes") or {}).get(
                     "boundary_frame_manifest"
                 )
@@ -189,6 +214,7 @@ class RenderVideoScenesUseCase:
                         boundary_manifest,
                     )
             rendered.append(output_path)
+            progress.update(len(rendered))
             if technical_segment_id:
                 rendered_by_segment[technical_segment_id] = output_path
             self._log_scene_available(output_path, len(rendered), total, skipped=False)
@@ -234,10 +260,12 @@ def _attach_r2v_continuation_anchor(
     project = Path(project_dir).resolve() if project_dir is not None else None
     source_stored = _stored_continuation_path(source_clip, project)
     frame_stored = _stored_continuation_path(extracted, project)
+    last_frame_index = getattr(postprocessor, "last_frame_index", 0)
+    frame_index = last_frame_index(source_clip) if callable(last_frame_index) else last_frame_index
     manifest = BoundaryFrameManifest.create(
         source_clip_path=source_stored,
         source_clip_sha256=sha256_file(source_clip),
-        frame_index=int(getattr(postprocessor, "last_frame_index", 0) or 0),
+        frame_index=int(frame_index or 0),
         extractor_revision="last-frame-v1",
         frame_path=frame_stored,
         frame_sha256=sha256_file(extracted),

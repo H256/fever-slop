@@ -227,6 +227,50 @@ class ComfyUIVideoAssetUploaderTests(unittest.TestCase):
             uploader.resolve_reference_audio_name(Path("ref_sound.wav"), upload_references=False),
         )
 
+    def test_reference_image_upload_uses_image_endpoint(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        client = FakeComfyUIClient()
+        uploader = ComfyUIVideoAssetUploader(client)
+
+        name = uploader.resolve_reference_image_name(Path("ref_image.png"))
+
+        self.assertEqual("feverslop/references/ref_image.png", name)
+        self.assertEqual(
+            [(Path("ref_image.png"), "feverslop/references", "input", True, "ref_image.png")],
+            client.image_uploads,
+        )
+
+    def test_reference_image_can_be_skipped(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        client = FakeComfyUIClient()
+        uploader = ComfyUIVideoAssetUploader(client)
+
+        self.assertEqual(
+            "ref_image.png",
+            uploader.resolve_reference_image_name(Path("ref_image.png"), upload_references=False),
+        )
+        self.assertEqual([], client.image_uploads)
+
+    def test_reference_resolvers_share_identical_behavior(self):
+        from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
+
+        client = FakeComfyUIClient()
+        uploader = ComfyUIVideoAssetUploader(client)
+
+        names = [
+            uploader.resolve_reference_image_name(Path("ref_asset.mp4")),
+            uploader.resolve_reference_video_name(Path("ref_asset.mp4")),
+            uploader.resolve_reference_audio_name(Path("ref_asset.mp4")),
+        ]
+
+        self.assertEqual(["feverslop/references/ref_asset.mp4"] * 3, names)
+        uploads = client.image_uploads
+        self.assertEqual(3, len(uploads))
+        self.assertEqual(uploads[0], uploads[1])
+        self.assertEqual(uploads[0], uploads[2])
+
     def test_reference_video_content_addressed(self):
         from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 
