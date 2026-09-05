@@ -4493,6 +4493,43 @@ class MovieProjectTests(unittest.TestCase):
             self.assertEqual(1, len(fake_planner.story_calls))
             self.assertEqual(1, len(fake_planner.shot_calls))
 
+    def test_planning_artifacts_use_movie_input_defaults_and_config_fallbacks(self):
+        from feverslop.application.movie_artifacts import ensure_movie_screenplay, regenerate_movie_bible
+
+        story = "A locksmith finds a glowing door below an abandoned station and pulls it open."
+        render_plan = {"duration_seconds": 20, "shots": [{"description": story}]}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = Path(temp_dir) / "legacy-fallback"
+            (project_dir / "movie").mkdir(parents=True)
+            (project_dir / "movie" / "render_plan.json").write_text(json.dumps(render_plan), encoding="utf-8")
+
+            ensure_movie_screenplay(project_dir)
+
+            screenplay = json.loads((project_dir / "movie" / "screenplay.json").read_text(encoding="utf-8"))
+            story_design = json.loads((project_dir / "movie" / "story_design.json").read_text(encoding="utf-8"))
+            self.assertEqual("legacy-fallback", screenplay["title"])
+            self.assertEqual("legacy-fallback", story_design["title"])
+            self.assertEqual("", screenplay["dialogue_language"])
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = Path(temp_dir) / "configured-movie"
+            (project_dir / "movie").mkdir(parents=True)
+            (project_dir / "movie" / "render_plan.json").write_text(json.dumps(render_plan), encoding="utf-8")
+            (project_dir / "config.json").write_text(
+                json.dumps({"dialogue_language": "German", "story_idea": "A locksmith and a glowing door."}),
+                encoding="utf-8",
+            )
+            fake_planner = FakeMoviePlanner()
+            regenerate_movie_bible(project_dir, planner=fake_planner)
+
+            self.assertEqual([("configured-movie", "short_story", story, 20.0)], fake_planner.story_calls)
+            constraints = json.loads((project_dir / "movie" / "bible.json").read_text(encoding="utf-8"))["runtime_constraints"]
+            self.assertEqual(1280, constraints["width"])
+            self.assertEqual(704, constraints["height"])
+            self.assertEqual(20.0, constraints["desired_length"])
+            self.assertEqual("German", constraints["dialogue_language"])
+
     def test_api_rejects_invalid_screenplay(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             client = NativeStudioHarness(temp_dir)

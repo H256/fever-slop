@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+import re
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 
 class SongBriefResult(BaseModel):
@@ -34,6 +36,39 @@ class VocalPerformer(BaseModel):
 
 class StoryboardPromptResult(PromptResult):
     """Transport model; the transformer applies the configured word limit."""
+
+
+def parse_prompt_result(value: Any) -> PromptResult:
+    """Validate an LLM prompt result without treating optional performer hints as fatal."""
+    try:
+        return PromptResult.model_validate(value)
+    except ValidationError as error:
+        if not isinstance(value, Mapping) or not _only_vocal_performer_errors(error):
+            raise
+        sanitized = dict(value)
+        sanitized["vocal_performers"] = _valid_vocal_performers(value.get("vocal_performers"))
+        return PromptResult.model_validate(sanitized)
+
+
+def _only_vocal_performer_errors(error: ValidationError) -> bool:
+    return all(
+        issue.get("loc", ())[0:1] == ("vocal_performers",)
+        for issue in error.errors()
+    )
+
+
+def _valid_vocal_performers(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    performers = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        subject_id = str(item.get("subject_id") or "").strip()
+        match = re.fullmatch(r"[sS]([1-9][0-9]*)", str(item.get("speaker_id") or "").strip())
+        if subject_id and match:
+            performers.append({"subject_id": subject_id, "speaker_id": f"S{match.group(1)}"})
+    return performers
 
 
 def build_general_signature_bundle(dspy_module: Any | None = None):

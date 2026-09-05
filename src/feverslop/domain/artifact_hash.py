@@ -3,6 +3,15 @@ import json
 from pathlib import Path
 
 
+def is_sha256_hex(value: object) -> bool:
+    """Return whether value is an exact lowercase SHA-256 hex digest."""
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
 def sha256_bytes(data: bytes) -> str:
     """Hash already-loaded content without performing filesystem I/O."""
     return hashlib.sha256(data).hexdigest()

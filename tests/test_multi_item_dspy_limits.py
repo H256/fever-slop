@@ -36,6 +36,34 @@ class MultiItemDspyLimitTests(unittest.TestCase):
 
         self.assertEqual(15360, calls[0]["config"]["max_tokens"])
 
+    def test_i2v_prompt_discards_invalid_optional_vocal_performer_metadata(self):
+        calls = []
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        modules = GeneralPromptModules(
+            LLM(),
+            dspy_runtime=self._runtime(calls, {
+                "result": {
+                    "prompt": "Mara sings into the rain.",
+                    "vocal_performers": [
+                        {"subject_id": "mara", "speaker_id": "s1"},
+                        {"subject_id": "jon", "speaker_id": "lead vocalist"},
+                    ],
+                },
+            }),
+        )
+
+        result = modules.i2v_prompt({}, guide="test guide")
+
+        self.assertEqual("Mara sings into the rain.", result.prompt)
+        self.assertEqual(
+            [{"subject_id": "mara", "speaker_id": "S1"}],
+            [performer.model_dump() for performer in result.vocal_performers],
+        )
+
     def test_msr_segments_scales_limit_by_relay_count(self):
         calls = []
 
