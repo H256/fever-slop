@@ -286,7 +286,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertIn("CREATIVE DESCRIPTION", result["prompt"])
         self.assertEqual("good", result["prompt_judge"]["verdict"])
 
-    def test_typed_plan_recompiles_after_bad_judge_with_feedback(self):
+    def test_typed_plan_keeps_bad_judge_verdict_advisory(self):
         from types import SimpleNamespace
 
         from feverslop.prompting.dspy_h3_models import (
@@ -306,20 +306,14 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
             music_intent=MusicIntent.NONE,
         )
         requests = []
-        judges = iter((
-            PromptJudgeResult(verdict="bad", issues=["use the required guide label"]),
-            PromptJudgeResult(verdict="good"),
-        ))
 
         class Generator:
-            judge_attempts = 2
-
             def __call__(self, request):
                 requests.append(request)
                 return SimpleNamespace(plan=plan)
 
             def judge_compiled_prompt(self, **_kwargs):
-                return next(judges)
+                return PromptJudgeResult(verdict="bad", issues=["use the required guide label"])
 
         result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
             segment={"segment_id": "s1", "duration": 2},
@@ -329,11 +323,10 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
             mode="t2v",
         )
 
-        self.assertEqual(2, len(requests))
-        self.assertIn("use the required guide label", requests[1]["notes"])
-        self.assertIn("Do not add reference labels or timestamps", requests[1]["notes"])
-        self.assertIn("<d>[Language] ...</d>", requests[1]["notes"])
-        self.assertEqual("good", result["prompt_judge"]["verdict"])
+        self.assertEqual(1, len(requests))
+        self.assertEqual("bad", result["prompt_judge"]["verdict"])
+        self.assertEqual("bad", result["prompt_judge_attempts"][0]["verdict"])
+        self.assertIn("CREATIVE DESCRIPTION", result["prompt"])
         self.assertEqual("action-1", result["continuation_intents"][0]["action_id"])
 
     def test_advisory_judge_saves_bad_verdict_without_regenerating(self):
@@ -377,7 +370,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertEqual(1, len(requests))
         self.assertEqual("bad", result["prompt_judge"]["verdict"])
 
-    def test_judge_feedback_does_not_feed_compiler_labels_back_to_planner(self):
+    def test_judge_feedback_never_reaches_planner_or_prompt(self):
         from types import SimpleNamespace
 
         from feverslop.prompting.dspy_h3_models import (
@@ -395,25 +388,20 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
             music_intent=MusicIntent.NONE,
         )
         requests = []
-        verdicts = iter((
-            PromptJudgeResult(
-                verdict="bad",
-                issues=["<Subject 2> must not be followed by He"],
-            ),
-            PromptJudgeResult(verdict="good"),
-        ))
 
         class Generator:
-            judge_attempts = 2
-
             def __call__(self, request):
                 requests.append(request)
                 return SimpleNamespace(plan=plan)
 
             def judge_compiled_prompt(self, **_kwargs):
-                return next(verdicts)
+                return PromptJudgeResult(
+                    verdict="bad",
+                    issues=["<Subject 2> must not be followed by He"],
+                    suggested_prompt="<Subject 2> replacement prose",
+                )
 
-        DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
+        result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
             segment={"segment_id": "s1", "duration": 2},
             concept="concept",
             scene_details={},
@@ -421,7 +409,12 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
             mode="t2v",
         )
 
-        self.assertNotIn("<Subject 2>", requests[1]["notes"])
+        self.assertEqual(1, len(requests))
+        self.assertNotIn("<Subject 2>", requests[0]["notes"])
+        self.assertEqual(
+            "<Subject 2> replacement prose", result["prompt_judge"]["suggested_prompt"]
+        )
+        self.assertNotIn("<Subject 2> replacement prose", result["prompt"])
 
     def test_r2v_deterministic_contract_does_not_retry_for_creative_length(self):
         from types import SimpleNamespace
@@ -481,7 +474,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertEqual(1, len(judged_prompts))
         self.assertEqual(judged_prompts[0], result["prompt"])
 
-    def test_judge_field_issues_repair_only_addressed_creative_fields(self):
+    def test_judge_field_issues_stay_advisory_without_repair(self):
         from types import SimpleNamespace
 
         from feverslop.prompting.dspy_h3_models import (
@@ -513,8 +506,6 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         repair_calls = []
 
         class Generator:
-            judge_attempts = 2
-
             def __call__(self, request):
                 requests.append(request)
                 return SimpleNamespace(plan=plan)
@@ -528,18 +519,16 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
 
             def judge_compiled_prompt(self, **_kwargs):
                 judge_calls.append(1)
-                if len(judge_calls) == 1:
-                    return PromptJudgeResult(
-                        verdict="bad",
-                        repair_instruction="Repair only the affected shot field.",
-                        field_issues=[{
-                            "shot_id": "shot-0001",
-                            "field": "camera_behavior",
-                            "issue_code": "camera.missing_speed",
-                            "repair_instruction": "Specify camera speed.",
-                        }],
-                    )
-                return PromptJudgeResult(verdict="good")
+                return PromptJudgeResult(
+                    verdict="bad",
+                    repair_instruction="Repair only the affected shot field.",
+                    field_issues=[{
+                        "shot_id": "shot-0001",
+                        "field": "camera_behavior",
+                        "issue_code": "camera.missing_speed",
+                        "repair_instruction": "Specify camera speed.",
+                    }],
+                )
 
         result = DspyH3PromptBuilder(Generator(), allow_fallback=False).build_h3_prompt(
             segment={"segment_id": "s1", "duration": 5},
@@ -550,10 +539,13 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         )
 
         self.assertEqual(1, len(requests))
-        self.assertEqual(1, len(repair_calls))
-        self.assertEqual("camera_behavior", repair_calls[0]["field_issues"][0].field)
-        self.assertIn("pushes in at slow speed", result["prompt"])
-        self.assertEqual("good", result["prompt_judge"]["verdict"])
+        self.assertEqual(1, len(judge_calls))
+        self.assertEqual(0, len(repair_calls))
+        self.assertEqual("bad", result["prompt_judge"]["verdict"])
+        self.assertEqual(
+            "camera_behavior", result["prompt_judge"]["field_issues"][0]["field"]
+        )
+        self.assertNotIn("pushes in at slow speed", result["prompt"])
 
     def test_production_builder_compiles_explicit_vocal_binding_from_relay(self):
         from types import SimpleNamespace

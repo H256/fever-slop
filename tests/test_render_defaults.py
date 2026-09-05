@@ -45,7 +45,7 @@ class RenderDefaultsTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "config.json").write_text(json.dumps({
-                "input_audio": "", "video_pipeline": "ltx_msr",
+                "input_audio": "song.mp3", "video_pipeline": "ltx_msr",
                 "render_profile": {"quality": "draft", "pass_strategy": "two_pass", "postprocess": "none"},
             }), encoding="utf-8")
             self.assertEqual("ltx25-msr-draft", ProjectConfig.load(root / "config.json").render_profile)
@@ -55,7 +55,7 @@ class RenderDefaultsTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "config.json").write_text(json.dumps({
-                "input_audio": "", "video_pipeline": "ltx_i2v",
+                "input_audio": "song.mp3", "video_pipeline": "ltx_i2v",
                 "render_profile": "ltx25-i2v-draft",
             }), encoding="utf-8")
             resolved = resolve_project_render_settings(root, video_pipeline="ltx_i2v")
