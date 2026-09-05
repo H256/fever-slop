@@ -510,7 +510,3 @@ class ComfyUIVideoRenderBackend:
     @classmethod
     def _normalize_prompt_relay_segments(cls, segments: list[dict]) -> list[dict]:
         return LTXWorkflowPatcher.normalize_prompt_relay_segments(segments)
-
-
-class ComfyUIVideoBackend(ComfyUIVideoRenderBackend):
-    """Compatibility alias for older imports."""
