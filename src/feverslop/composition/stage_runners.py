@@ -623,6 +623,10 @@ def _preserve_enriched_reference_paths(
 def _run_relay_compact_stage(state: PipelineRunState) -> None:
     if state.args.render_mode == "single_prompt":
         raise ValueError("relay_compact requires render_mode relay or auto")
+    resolved_context = json.loads(state.context.resolved_context.read_text(encoding="utf-8-sig"))
+    subject_anchor = str(resolved_context.get("subject", "")).strip()
+    if not subject_anchor:
+        raise ValueError(f"No subject anchor found in {state.context.resolved_context}")
     app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
@@ -635,7 +639,10 @@ def _run_relay_compact_stage(state: PipelineRunState) -> None:
         max_concurrent_requests=app_config.llm.max_concurrent_requests,
         chat_template_kwargs=app_config.llm.chat_template_kwargs,
     )
-    state.plan_for_next_step = RelayDirectionBuilder(llm=llm).compact_render_plan_file(
+    state.plan_for_next_step = RelayDirectionBuilder(
+        llm=llm,
+        subject_anchor=subject_anchor,
+    ).compact_render_plan_file(
         input_render_plan=state.plan_for_next_step,
         output_render_plan=state.context.compact_plan,
     )
