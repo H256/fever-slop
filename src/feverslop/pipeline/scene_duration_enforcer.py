@@ -20,25 +20,6 @@ def parse_srt_scenes(path: str | Path) -> list[_SrtScene]:
     return [_to_srt_scene(block) for block in blocks]
 
 
-def parse_scene_srt(path: str | Path) -> list[_SrtScene]:
-    """Parse SRT file to SrtScene objects.
-
-    .. deprecated::
-        Use :func:`parse_srt_scenes` instead to disambiguate from
-        ``prompt_relay_builder.parse_scene_srt`` which returns ``list[dict]``.
-    """
-    import warnings
-
-    warnings.warn(
-        "parse_scene_srt is deprecated, use parse_srt_scenes instead. "
-        "This function returns list[SrtScene] and is distinct from "
-        "prompt_relay_builder.parse_scene_dicts which returns list[dict].",
-        FutureWarning,
-        stacklevel=2,
-    )
-    return parse_srt_scenes(path)
-
-
 def write_scene_srt(
     path: str | Path,
     scenes: list[_SrtScene],
