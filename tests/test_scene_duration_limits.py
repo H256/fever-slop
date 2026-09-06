@@ -15,7 +15,6 @@ from feverslop.domain.srt import SrtScene
 from feverslop.errors import FeverSlopValidationError
 from feverslop.pipeline.scene_duration_enforcer import (
     enforce_scene_srt_file,
-    parse_scene_srt,
     parse_srt_scenes,
     validate_scene_durations,
     write_scene_srt,
@@ -382,16 +381,6 @@ class SceneDurationLimitTests(unittest.TestCase):
         self.assertEqual(result[0].scene, 1)
         self.assertEqual(result[0].start, 0.0)
         self.assertEqual(result[0].end, 2.0)
-
-    def test_parse_scene_srt_alias_emits_deprecation_warning(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            srt_path = Path(temp_dir) / "scene.srt"
-            srt_path.write_text(TWO_SCENE_SRT)
-            with self.assertWarns(FutureWarning) as cm:
-                aliased = parse_scene_srt(srt_path)
-            self.assertIs(type(cm.warning), FutureWarning)
-            self.assertIn("parse_srt_scenes", str(cm.warning))
-            self.assertEqual(aliased, parse_srt_scenes(srt_path))
 
 
 if __name__ == "__main__":
