@@ -1769,7 +1769,7 @@ non_diegetic_music: N/A"""},
 
         with self.assertRaisesRegex(
             Exception,
-            r"Scene 2 H3 reference contract mismatch.*undefined_subjects=.*<Subject 3>.*unbound_pictures=.*<Picture 2>",
+            r"Scene 2 cannot be sent to MiniMax.*clear the override.*undefined_subjects=.*<Subject 3>.*unbound_pictures=.*<Picture 2>",
         ):
             backend._validate_scene(scene)
 

@@ -142,7 +142,6 @@ UNIT_MODULES = (
     "prompt_relay_builder",
     "prompt_revision_application",
     "prompt_revisions",
-    "prompt_seed_manager",
     "prompting_guide_loader",
     "prompting_packaging",
     "prop_interactions",
