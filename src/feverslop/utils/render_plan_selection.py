@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from feverslop.path_utils import coerce_local_path
+from feverslop.utils.io import read_json
 
 
 def parse_scene_list(value: str | None) -> set[int] | None:
@@ -32,7 +32,7 @@ def load_render_plan_subset(
     scene_numbers: set[int] | None,
     limit: int | None,
 ) -> list[dict]:
-    render_plan = json.loads(coerce_local_path(render_plan_path).read_text(encoding="utf-8"))
+    render_plan = read_json(coerce_local_path(render_plan_path))
     if scene_numbers is not None:
         render_plan = [scene for scene in render_plan if int(scene["scene"]) in scene_numbers]
     if limit is not None:

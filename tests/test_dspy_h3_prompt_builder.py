@@ -41,6 +41,7 @@ from feverslop.prompting.dspy_h3_prompt_builder import (
     _format_relay_shots,
     _normalize_resolved_scene_references,
     _normalize_relay_segments,
+    _relay_vocal_binding,
     _scene_references,
     _speaker_bindings_for_compile,
     _stamp_relay_speaker_binding,
@@ -268,7 +269,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
-        self.assertEqual(39, revision["compiler_version"])
+        self.assertEqual(41, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
@@ -973,6 +974,25 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual("<Subject 2>", shots[0]["subject_label"])
         self.assertEqual("S2", shots[0]["speaker_id"])
 
+    def test_relay_vocal_binding_counts_singing_states_and_reads_subject(self):
+        self.assertEqual(
+            (2, "<Subject 1>"),
+            _relay_vocal_binding(
+                [
+                    {"state": "singing"},
+                    {"state": " VOCALS "},
+                    {"state": "dialogue"},
+                ],
+                {"vocals": {"subject_label": " <Subject 1> "}},
+            ),
+        )
+
+    def test_relay_vocal_binding_returns_no_subject_without_vocal_binding(self):
+        self.assertEqual(
+            (1, None),
+            _relay_vocal_binding([{"state": "vocal"}], {}),
+        )
+
     def test_passes_relay_segments_to_generator_without_appending_non_guide_sections(self):
         generator = FakeGenerator()
         builder = DspyH3PromptBuilder(generator)
@@ -1517,6 +1537,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
     def test_reference_renderer_keeps_single_unknown_subject_attempt_advisory(self):
         generator = object.__new__(CoreVideoPromptGenerator)
         calls = []
+        warnings = []
 
         def renderer(**kwargs):
             calls.append(kwargs)
@@ -1533,6 +1554,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         generator.reference_renderer = renderer
         generator.reference_guide_path = "minimax-h3-references.md"
+        generator.warning_callback = lambda message, **_kwargs: warnings.append(message)
         plan = ResolvedPromptPlan(
             creative_intent="Performance",
             subjects=[SubjectDefinition(
@@ -1552,6 +1574,9 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual(1, len(calls))
         self.assertEqual("<Subject 3> performs.", output.summary)
+        self.assertIn("automatically repairing", warnings[0])
+        self.assertIn("No action is needed", warnings[0])
+        self.assertIn("undefined_subjects", warnings[0])
 
     def test_reference_renderer_keeps_single_instrumental_contract_attempt_advisory(self):
         generator = object.__new__(CoreVideoPromptGenerator)

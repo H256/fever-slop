@@ -9,7 +9,7 @@ performance; one attractive render is not evidence that a default is safe.
 Run the complete CPU-test contract from a clean checkout:
 
 ```bash
-uv run python -m unittest discover -s tests
+uv run python -m tests.suites.unit
 ```
 
 The result must be successful, and the checked-in example project plus its

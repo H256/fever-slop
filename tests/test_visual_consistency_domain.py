@@ -1,3 +1,5 @@
+import hashlib
+import json
 import unittest
 from dataclasses import replace
 
@@ -150,6 +152,32 @@ class SceneConsistencyContractTests(unittest.TestCase):
         restored = SceneConsistencyContract.from_dict(reordered)
 
         self.assertEqual(original.fingerprint, restored.fingerprint)
+
+    def test_fingerprint_preserves_default_ascii_escaping_for_non_ascii_payload(self):
+        original = contract(
+            actors=(
+                ReferenceAnchor(
+                    id="hero",
+                    kind="actor",
+                    look_id="hero-look",
+                    asset_role="identity-reference",
+                    asset_sha256=ACTOR_HASH,
+                    prompt_anchor="女性 wears a red leather jacket",
+                ),
+            ),
+            location_anchor=location(),
+        )
+        payload = original.to_dict()
+        payload.pop("fingerprint")
+        expected = hashlib.sha256(
+            json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8"),
+        ).hexdigest()
+
+        self.assertEqual(expected, original.fingerprint)
 
     def test_rejects_duplicate_actor_ids_with_exact_error(self):
         with self.assertRaisesRegex(

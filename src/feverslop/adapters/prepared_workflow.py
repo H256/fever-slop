@@ -8,6 +8,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
+from feverslop.domain.artifact_hash import is_sha256_hex
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.domain.effective_render_plan import CanonicalSceneDependencies
 from feverslop.domain.prepared_workflow import (
@@ -160,13 +161,7 @@ class WorkflowMaterializer:
                 and consistency.transition_from_previous == "continuous"
                 and consistency.mode in {"msr", "i2v"}
             )
-            if requires_source_clip_claim and (
-                len(claimed_source_clip_sha) != 64
-                or any(
-                    character not in "0123456789abcdef"
-                    for character in claimed_source_clip_sha
-                )
-            ):
+            if requires_source_clip_claim and not is_sha256_hex(claimed_source_clip_sha):
                 provenance_mismatches.append(
                     "consistency: continuous handoff requires a valid "
                     "startframe source clip SHA-256 claim",

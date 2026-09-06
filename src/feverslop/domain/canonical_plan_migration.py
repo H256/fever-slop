@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass, field
 from typing import Any, Literal
+
+from feverslop.domain.artifact_hash import fingerprint_json
 
 FindingKind = Literal["importable", "unresolved", "no_op"]
 
@@ -98,5 +98,4 @@ def value_hash(value: Any) -> str:
 
 
 def _value_hash(value: Any) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-    return hashlib.sha256(encoded).hexdigest()
+    return fingerprint_json(value, ensure_ascii=False)

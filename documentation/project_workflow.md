@@ -1266,7 +1266,7 @@ overlapping clips and editor-specific logo/title objects are not yet exported.
 Run tests:
 
 ```powershell
-uv run python -m unittest discover -s tests
+uv run python -m tests.suites.unit
 ```
 
 Check tracked files:

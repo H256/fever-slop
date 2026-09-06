@@ -1,5 +1,8 @@
-import unittest
+import os
 from pathlib import Path
+import subprocess
+import sys
+import unittest
 
 from feverslop.domain.timeline import TimelineSegment
 from feverslop.domain.timeline_transform import (
@@ -9,17 +12,26 @@ from feverslop.domain.timeline_transform import (
 
 
 class TimelineSegmentImmutabilityTests(unittest.TestCase):
-    def test_whisper_model_load_is_deferred_until_transcription(self):
-        from unittest.mock import patch
+    def test_cli_import_does_not_require_whisper_runtime(self):
+        environment = os.environ | {"PYTHONPATH": str(Path.cwd() / "src")}
+        result = subprocess.run(
+            [sys.executable, "-c", "import feverslop.cli.run_cli"],
+            capture_output=True,
+            text=True,
+            env=environment,
+            check=False,
+        )
 
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_whisper_model_load_is_deferred_until_transcription(self):
         from feverslop.adapters.audio.vocal_timeline_analyzer import (
             VocalTimelineAnalyzer,
         )
 
-        with patch("feverslop.adapters.audio.vocal_timeline_analyzer.whisper.load_model") as load_model:
-            analyzer = VocalTimelineAnalyzer()
-            load_model.assert_not_called()
-            self.assertIsNone(analyzer.model)
+        analyzer = VocalTimelineAnalyzer()
+
+        self.assertIsNone(analyzer.model)
 
     def test_whisper_transcription_requests_word_timestamps(self):
         from feverslop.adapters.audio.vocal_timeline_analyzer import (

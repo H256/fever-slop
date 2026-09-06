@@ -21,6 +21,18 @@ WORKFLOW_PATH_ALIASES = {
 }
 
 
+def normalize_workflow_path(value: str | PathLike[str]) -> str:
+    """Normalize workflow paths for platform-independent matching."""
+    return os.fspath(value).replace("\\", "/").casefold()
+
+
+def workflow_path_matches(candidate: str | PathLike[str], path: str | PathLike[str]) -> bool:
+    """Return whether *path* exactly matches or contains *candidate* as a suffix."""
+    normalized_candidate = normalize_workflow_path(candidate)
+    normalized_path = normalize_workflow_path(path)
+    return normalized_path == normalized_candidate or normalized_path.endswith(f"/{normalized_candidate}")
+
+
 def resolve_workflow_reference(value: str | PathLike[str]) -> str:
     """Normalize a workflow reference and resolve only explicitly known aliases."""
     raw = os.fspath(value)

@@ -142,11 +142,7 @@ def __getattr__(name: str):
 
 def __dir__():
     """Return all public API symbols."""
-    return list(_LAZY_MAP.keys()) + [
-        "__version__",
-        "__all__",
-        "__doc__",
-    ] + [k for k in globals() if not k.startswith("_") or k == "__version__"]
+    return sorted(set(_LAZY_MAP) | {"__version__", "__all__", "__doc__"})
 
 
 # ---------------------------------------------------------------------------
