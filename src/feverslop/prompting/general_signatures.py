@@ -40,7 +40,7 @@ class StoryboardPromptResult(PromptResult):
 
 def parse_prompt_result(value: Any) -> PromptResult:
     """Validate an LLM prompt result without treating optional performer hints as fatal."""
-    value = _unwrap_prompt_result(value)
+    value = _normalize_prompt_result(_unwrap_prompt_result(value))
     try:
         return PromptResult.model_validate(value)
     except ValidationError as error:
@@ -57,6 +57,33 @@ def _unwrap_prompt_result(value: Any) -> Any:
         return value
     nested = value.get("result")
     return nested if isinstance(nested, Mapping) else value
+
+
+def _normalize_prompt_result(value: Any) -> Any:
+    """Normalize supported DSPy prompt aliases into the public prompt contract."""
+    if not isinstance(value, Mapping):
+        return value
+    normalized = dict(value)
+    if "prompt" not in normalized and isinstance(normalized.get("video_prompt"), str):
+        normalized["prompt"] = normalized["video_prompt"]
+    performers = normalized.get("vocal_performers")
+    if isinstance(performers, list):
+        normalized["vocal_performers"] = _normalize_subject_performers(performers)
+    return normalized
+
+
+def _normalize_subject_performers(performers: list[Any]) -> list[Any]:
+    """Give subject-only performer selections deterministic scene-local speaker IDs."""
+    normalized = []
+    for performer in performers:
+        if isinstance(performer, str) and performer.strip():
+            normalized.append({
+                "subject_id": performer.strip(),
+                "speaker_id": f"S{len(normalized) + 1}",
+            })
+        else:
+            normalized.append(performer)
+    return normalized
 
 
 def _only_vocal_performer_errors(error: ValidationError) -> bool:
