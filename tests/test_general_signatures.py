@@ -29,6 +29,18 @@ class PromptResultParsingTests(unittest.TestCase):
             [performer.model_dump() for performer in result.vocal_performers],
         )
 
+    def test_normalizes_single_text_field_and_subject_mapping_without_speaker(self):
+        result = parse_prompt_result({
+            "generated_motion": "The lead subject slowly turns toward the camera.",
+            "vocal_performers": [{"subject_id": "lead_subject_01"}],
+        })
+
+        self.assertEqual("The lead subject slowly turns toward the camera.", result.prompt)
+        self.assertEqual(
+            [{"subject_id": "lead_subject_01", "speaker_id": "S1"}],
+            [performer.model_dump() for performer in result.vocal_performers],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
