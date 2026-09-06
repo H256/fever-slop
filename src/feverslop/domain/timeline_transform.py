@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from feverslop.domain.timeline import TimelineSegment
+from feverslop.domain.vocal_evidence import merge_evidence
 
 
 def normalize_empty_vocals(
@@ -9,7 +10,7 @@ def normalize_empty_vocals(
 ) -> list[TimelineSegment]:
     result = []
     for seg in timeline:
-        if seg.kind == "vocals" and len(seg.text.strip()) < min_text_chars:
+        if seg.kind == "vocals" and seg.evidence is None and len(seg.text.strip()) < min_text_chars:
             result.append(
                 TimelineSegment(
                     start=seg.start,
@@ -53,6 +54,7 @@ def merge_same_kind_segments(
                 kind=current.kind,
                 text=new_text,
                 word_timestamps=new_word_timestamps,
+                evidence=merge_evidence(current.evidence, seg.evidence),
             )
         else:
             merged.append(current)

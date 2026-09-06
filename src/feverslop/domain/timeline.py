@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from feverslop.domain.vocal_evidence import VocalEvidence
+
 
 @dataclass(frozen=True)
 class TimelineSegment:
@@ -13,6 +15,8 @@ class TimelineSegment:
     kind: str  # "vocals" or "instrumental"
     text: str = ""
     word_timestamps: tuple[dict[str, object], ...] = ()
+
+    evidence: VocalEvidence | None = None
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.start) or not math.isfinite(self.end):
