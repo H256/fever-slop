@@ -12,6 +12,9 @@ import numpy as np
 import torch
 
 from feverslop.domain.timeline import TimelineSegment
+from feverslop.domain.vocal_evidence import VocalEvidence, decide_transcript, merge_evidence
+from feverslop.ports.reporting import Reporter
+from feverslop.utils.sub_step_progress import SubStepProgress
 from feverslop.errors import FeverSlopAdaptationError
 
 __all__ = ["VocalTimelineAnalyzer"]
@@ -69,7 +72,9 @@ class VocalTimelineAnalyzer:
         rms_high_percentile: float = 85.0,
         rms_ratio: float = 0.35,
         smooth_frames: int = 10,
+        reporter: Reporter | None = None,
     ):
+        self.reporter = reporter
         self.whisper_model = whisper_model
         self.model = None
         self.raw_whisper_segments: list[dict] = []
@@ -83,6 +88,14 @@ class VocalTimelineAnalyzer:
         self.rms_high_percentile = rms_high_percentile
         self.rms_ratio = rms_ratio
         self.smooth_frames = smooth_frames
+
+    def set_reporter(self, reporter: Reporter) -> None:
+        self.reporter = reporter
+
+    def _message(self, message: str) -> None:
+        reporter = getattr(self, "reporter", None)
+        if reporter is not None:
+            reporter.message(message)
 
     def close(self) -> None:
         model = getattr(self, "model", None)
@@ -112,6 +125,7 @@ class VocalTimelineAnalyzer:
         )
 
     def _transcribe(self, vocals_file: Path) -> list[dict]:
+        self._message("Transcribing vocal evidence...")
         if self.model is None:
             self.model = _load_whisper().load_model(self.whisper_model)
         result = self.model.transcribe(
@@ -131,20 +145,16 @@ class VocalTimelineAnalyzer:
         self.raw_whisper_segments = raw_segments
         segments = []
 
-        for s in raw_segments:
-            text = s["text"].strip()
-            lower = text.lower()
-
-            if not text:
-                continue
-
-            if "untertitelung des zdf" in lower:
-                continue
-
-            if s.get("no_speech_prob", 0) > 0.85:
-                continue
-
-            segments.append(s)
+        counts = dict(accepted=0, uncertain=0, rejected=0)
+        progress = SubStepProgress(getattr(self, "reporter", None), "Transcript evidence", len(raw_segments))
+        progress.update(0, force=True)
+        for index, segment in enumerate(raw_segments, 1):
+            decision = decide_transcript(segment)
+            counts[decision.status] += 1
+            if decision.status != "rejected":
+                segments.append(segment)
+            progress.update(index)
+        self._message("Transcript evidence complete: " + ", ".join(f"{key}={value}" for key, value in counts.items()))
 
         return segments
 
@@ -152,6 +162,7 @@ class VocalTimelineAnalyzer:
         self,
         vocals_file: Path,
     ) -> tuple[list[tuple[float, float]], float]:
+        self._message("Detecting RMS vocal activity...")
         y, sr = librosa.load(str(vocals_file), sr=None, mono=True)
 
         duration = float(len(y) / sr)
@@ -163,6 +174,7 @@ class VocalTimelineAnalyzer:
         )[0]
 
         if rms.size == 0:
+            self._message("RMS activity complete: candidates=0")
             return [], duration
 
         if self.smooth_frames > 1:
@@ -185,7 +197,10 @@ class VocalTimelineAnalyzer:
         ranges = []
         active_start = None
 
+        progress = SubStepProgress(getattr(self, "reporter", None), "RMS frames", len(active), interval=1000)
+        progress.update(0, force=True)
         for i, is_active in enumerate(active):
+            progress.update(i + 1)
             t = float(times[i])
 
             if is_active and active_start is None:
@@ -204,6 +219,7 @@ class VocalTimelineAnalyzer:
 
         ranges = self._merge_ranges(ranges, self.merge_gap)
 
+        self._message(f"RMS activity complete: candidates={len(ranges)}")
         return ranges, duration
 
     @staticmethod
@@ -231,73 +247,69 @@ class VocalTimelineAnalyzer:
         whisper_segments: list[dict],
         vocal_ranges: list[tuple[float, float]],
     ) -> list[TimelineSegment]:
-        assigned_words: list[list[dict]] = [[] for _ in vocal_ranges]
-        fallback_texts: list[list[str]] = [[] for _ in vocal_ranges]
-
-        for ws in whisper_segments:
-            ws_start = float(ws["start"])
-            ws_end = float(ws["end"])
-            words = ws.get("words") or []
-
-            if not words:
-                for index, (start, end) in enumerate(vocal_ranges):
-                    if ws_start < end and ws_end > start:
-                        fallback_texts[index].append(str(ws.get("text", "")).strip())
+        self._message("Combining transcript and RMS evidence...")
+        assigned: list[list[dict]] = [[] for _ in vocal_ranges]
+        texts: list[list[str]] = [[] for _ in vocal_ranges]
+        evidence: list[VocalEvidence | None] = [None for _ in vocal_ranges]
+        outside = []
+        progress = SubStepProgress(getattr(self, "reporter", None), "Vocal evidence anchors", len(whisper_segments))
+        progress.update(0, force=True)
+        for number, ws in enumerate(whisper_segments, 1):
+            decision = decide_transcript(ws)
+            if decision.status == "rejected":
+                progress.update(number)
                 continue
-
-            for word in words:
-                text = str(word.get("word", "")).strip()
-                if not text:
+            words = ws.get("words") or []
+            anchors = words or [{"word": ws["text"], "start": ws["start"], "end": ws["end"]}]
+            for word in anchors:
+                text = str(word.get("word") or "").strip()
+                if decide_transcript(dict(start=word.get("start"), end=word.get("end"), text=text)).status == "rejected":
                     continue
-
-                word_start = float(word.get("start", 0))
-                word_end = float(word.get("end", 0))
-                overlaps = [
-                    max(0.0, min(word_end, end) - max(word_start, start))
-                    for start, end in vocal_ranges
-                ]
-                best_overlap = max(overlaps, default=0.0)
-                if best_overlap <= 0:
+                start, end = float(word["start"]), float(word["end"])
+                overlaps = [max(0.0, min(end, stop) - max(start, begin)) for begin, stop in vocal_ranges]
+                best = max(overlaps, default=0.0)
+                anchor = {"word": text, "start": start, "end": end}
+                if best <= 0:
+                    outside.append(TimelineSegment(
+                        start, end, "vocals", text, (anchor,) if words else (),
+                        VocalEvidence("conflict", decision.status, decision.reason_codes + ("transcript_outside_rms",)),
+                    ))
                     continue
-
-                best_index = min(
-                    (
-                        index
-                        for index, overlap in enumerate(overlaps)
-                        if overlap == best_overlap
-                    ),
-                    key=lambda index: abs(
-                        (word_start + word_end) / 2
-                        - (vocal_ranges[index][0] + vocal_ranges[index][1]) / 2,
+                index = min(
+                    (i for i, overlap in enumerate(overlaps) if overlap == best),
+                    key=lambda i: abs((start + end) / 2 - sum(vocal_ranges[i]) / 2),
+                )
+                if words:
+                    assigned[index].append(anchor)
+                else:
+                    texts[index].append(text)
+                partial = start < vocal_ranges[index][0] or end > vocal_ranges[index][1]
+                activity = "confirmed" if decision.status == "accepted" else "uncertain"
+                anchor_evidence = VocalEvidence(
+                    "conflict" if partial else activity,
+                    decision.status, decision.reason_codes + (
+                        "transcript_crosses_rms_boundary" if partial else "rms_activity",
                     ),
                 )
-                assigned_words[best_index].append(
-                    {
-                        "word": text,
-                        "start": round(word_start, 3),
-                        "end": round(word_end, 3),
-                    },
+                evidence[index] = (
+                    merge_evidence(evidence[index], anchor_evidence)
+                    if evidence[index] is not None else anchor_evidence
                 )
+            progress.update(number)
 
-        result = []
+        result = outside
         for index, (start, end) in enumerate(vocal_ranges):
-            words = sorted(
-                assigned_words[index], key=lambda word: (word["start"], word["end"]),
-            )
-            text = " ".join(word["word"] for word in words)
-            if not words:
-                text = " ".join(fallback_texts[index]).strip()
-
-            result.append(
-                TimelineSegment(
-                    start=round(float(start), 2),
-                    end=round(float(end), 2),
-                    kind="vocals",
-                    text=text,
-                    word_timestamps=tuple(words),
-                ),
-            )
-
+            words = sorted(assigned[index], key=lambda word: (word["start"], word["end"]))
+            text = " ".join([*(word["word"] for word in words), *texts[index]]).strip()
+            result.append(TimelineSegment(
+                start=float(start), end=float(end), kind="vocals", text=text,
+                word_timestamps=tuple(words),
+                evidence=evidence[index] or VocalEvidence("uncertain", "missing", ("rms_without_transcript",)),
+            ))
+        result.sort(key=lambda segment: (segment.start, segment.end))
+        conflicts = sum(segment.evidence.activity_status == "conflict" for segment in result)
+        uncertain = sum(segment.evidence.activity_status == "uncertain" for segment in result)
+        self._message(f"Vocal evidence complete: candidates={len(result)}, uncertain={uncertain}, conflicts={conflicts}")
         return result
 
     def _insert_instrumental_segments(

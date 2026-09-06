@@ -48,6 +48,7 @@ class LyricTimelineAligner:
                 end=segment.end,
                 kind=segment.kind,
                 text=aligned_text,
+                evidence=segment.evidence,
                 word_timestamps=self._complete_word_timestamps(
                     aligned_text,
                     segment,
