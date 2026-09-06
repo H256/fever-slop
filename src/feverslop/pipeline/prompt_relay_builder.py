@@ -11,7 +11,7 @@ def parse_scene_dicts(srt_file: str | Path) -> list[dict]:
     """Parse an SRT file into a list of plain dicts.
 
     Returns dicts with keys: scene, start, end, label.
-    Use ``scene_duration_enforcer.parse_scene_srt`` (returns ``list[SrtScene]``)
+    Use ``scene_duration_enforcer.parse_srt_scenes`` (returns ``list[SrtScene]``)
     when you need the typed dataclass with ``.duration`` property.
     """
     blocks = parse_srt_blocks(srt_file)
@@ -24,26 +24,6 @@ def parse_scene_dicts(srt_file: str | Path) -> list[dict]:
         }
         for block in blocks
     ]
-
-
-def parse_scene_srt(srt_file: str | Path) -> list[dict]:
-    """Parse SRT file to scene dicts.
-
-    .. deprecated::
-        Use :func:`parse_scene_dicts` instead to disambiguate from
-        ``scene_duration_enforcer.parse_scene_srt`` which returns
-        ``list[SrtScene]``.
-    """
-    import warnings
-
-    warnings.warn(
-        "parse_scene_srt is deprecated, use parse_scene_dicts instead. "
-        "This function returns list[dict] and is distinct from "
-        "scene_duration_enforcer.parse_scene_srt which returns list[SrtScene].",
-        FutureWarning,
-        stacklevel=2,
-    )
-    return parse_scene_dicts(srt_file)
 
 
 def overlap(
