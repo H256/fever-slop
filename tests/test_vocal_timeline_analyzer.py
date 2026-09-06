@@ -370,6 +370,33 @@ class VocalEvidenceTests(unittest.TestCase):
             self.assertEqual([{"index": 0, "status": "rejected", "reason_codes": ["subtitle_hallucination"]}], diagnostics)
             self.assertEqual(raw, json.loads(path.with_name("timeline_whisper_raw.json").read_text()))
 
+    def test_rms_candidates_survive_but_real_gap_remains_instrumental(self):
+        from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+
+        analyzer = VocalTimelineAnalyzer()
+        candidates = analyzer._combine_whisper_and_energy(
+            [
+                dict(start=214.62, end=220, text=""),
+                dict(start=230, end=238.18, text="Untertitelung des ZDF"),
+            ],
+            [(214.62, 220), (230, 238.18)],
+        )
+        timeline = merge_same_kind_segments(normalize_empty_vocals(
+            analyzer._insert_instrumental_segments(candidates, 238.18),
+        ))
+
+        self.assertEqual(
+            [(0, 214.62, "instrumental"), (214.62, 220, "vocals"),
+             (220, 230, "instrumental"), (230, 238.18, "vocals")],
+            [(segment.start, segment.end, segment.kind) for segment in timeline],
+        )
+        for segment in (timeline[1], timeline[3]):
+            self.assertEqual("", segment.text)
+            self.assertEqual("uncertain", segment.evidence.activity_status)
+            self.assertEqual("missing", segment.evidence.transcript_status)
+            self.assertIn("rms_without_transcript", segment.evidence.reason_codes)
+        self.assertIsNone(timeline[2].evidence)
+
 
 if __name__ == "__main__":
     unittest.main()
