@@ -66,6 +66,13 @@ def _normalize_prompt_result(value: Any) -> Any:
     normalized = dict(value)
     if "prompt" not in normalized and isinstance(normalized.get("video_prompt"), str):
         normalized["prompt"] = normalized["video_prompt"]
+    if "prompt" not in normalized:
+        text_values = [
+            item for key, item in normalized.items()
+            if key != "vocal_performers" and isinstance(item, str) and item.strip()
+        ]
+        if len(text_values) == 1:
+            normalized["prompt"] = text_values[0]
     performers = normalized.get("vocal_performers")
     if isinstance(performers, list):
         normalized["vocal_performers"] = _normalize_subject_performers(performers)
@@ -79,6 +86,15 @@ def _normalize_subject_performers(performers: list[Any]) -> list[Any]:
         if isinstance(performer, str) and performer.strip():
             normalized.append({
                 "subject_id": performer.strip(),
+                "speaker_id": f"S{len(normalized) + 1}",
+            })
+        elif (
+            isinstance(performer, Mapping)
+            and str(performer.get("subject_id") or "").strip()
+            and not str(performer.get("speaker_id") or "").strip()
+        ):
+            normalized.append({
+                **performer,
                 "speaker_id": f"S{len(normalized) + 1}",
             })
         else:

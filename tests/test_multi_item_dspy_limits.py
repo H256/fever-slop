@@ -43,7 +43,7 @@ class MultiItemDspyLimitTests(unittest.TestCase):
 
         self.assertEqual(dict[str, Any], signature.fields["result"].annotation)
 
-    def test_i2v_prompt_discards_invalid_optional_vocal_performer_metadata(self):
+    def test_i2v_prompt_normalizes_single_text_field_and_missing_speaker_id(self):
         calls = []
 
         class LLM:
@@ -54,10 +54,9 @@ class MultiItemDspyLimitTests(unittest.TestCase):
             LLM(),
             dspy_runtime=self._runtime(calls, {
                 "result": {
-                    "prompt": "Mara sings into the rain.",
+                    "generated_motion": "Mara sings into the rain.",
                     "vocal_performers": [
-                        {"subject_id": "mara", "speaker_id": "s1"},
-                        {"subject_id": "jon", "speaker_id": "lead vocalist"},
+                        {"subject_id": "mara"},
                     ],
                 },
             }),
