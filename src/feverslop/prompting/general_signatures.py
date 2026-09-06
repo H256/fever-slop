@@ -40,6 +40,7 @@ class StoryboardPromptResult(PromptResult):
 
 def parse_prompt_result(value: Any) -> PromptResult:
     """Validate an LLM prompt result without treating optional performer hints as fatal."""
+    value = _unwrap_prompt_result(value)
     try:
         return PromptResult.model_validate(value)
     except ValidationError as error:
@@ -48,6 +49,14 @@ def parse_prompt_result(value: Any) -> PromptResult:
         sanitized = dict(value)
         sanitized["vocal_performers"] = _valid_vocal_performers(value.get("vocal_performers"))
         return PromptResult.model_validate(sanitized)
+
+
+def _unwrap_prompt_result(value: Any) -> Any:
+    """Accept the result envelope emitted by some DSPy-compatible backends."""
+    if not isinstance(value, Mapping) or "prompt" in value:
+        return value
+    nested = value.get("result")
+    return nested if isinstance(nested, Mapping) else value
 
 
 def _only_vocal_performer_errors(error: ValidationError) -> bool:

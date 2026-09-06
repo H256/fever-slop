@@ -23,6 +23,7 @@ from feverslop.domain.artifact_hash import sha256_file
 from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.errors import FeverSlopValidationError
 from feverslop.path_utils import coerce_local_path
+from feverslop.prompting.h3_user_messages import render_reference_contract_message
 from feverslop.ports.rendering import VideoRenderRequest
 from feverslop.ports.reporting import Reporter
 
@@ -1000,15 +1001,17 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             missing_audio,
             unknown_audio,
         )):
-            raise FeverSlopValidationError(
-                f"Scene {scene_number} H3 reference contract mismatch: "
+            technical_details = (
                 f"undefined_subjects={sorted(undefined_subjects)!r}; "
                 f"unbound_pictures={sorted(unbound_pictures)!r}; "
                 f"unknown_pictures={sorted(unknown_pictures)!r}; "
                 f"missing_videos={sorted(missing_videos)!r}; "
                 f"unknown_videos={sorted(unknown_videos)!r}; "
                 f"missing_audio={sorted(missing_audio)!r}; "
-                f"unknown_audio={sorted(unknown_audio)!r}",
+                f"unknown_audio={sorted(unknown_audio)!r}"
+            )
+            raise FeverSlopValidationError(
+                render_reference_contract_message(scene_number, technical_details),
             )
 
     # -----------------------------------------------------------------------

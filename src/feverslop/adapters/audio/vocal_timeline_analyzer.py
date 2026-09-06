@@ -1,16 +1,58 @@
 from __future__ import annotations
 
 import gc
+import importlib
+import sys
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 import librosa
 import numpy as np
 import torch
-import whisper
 
 from feverslop.domain.timeline import TimelineSegment
+from feverslop.errors import FeverSlopAdaptationError
 
 __all__ = ["VocalTimelineAnalyzer"]
+
+
+@contextmanager
+def _without_incompatible_coverage() -> Iterator[None]:
+    """Keep Numba importable when a newer coverage package removed its types API."""
+    try:
+        coverage = importlib.import_module("coverage")
+    except ImportError:
+        yield
+        return
+    if hasattr(coverage, "types"):
+        yield
+        return
+
+    missing = object()
+    original = sys.modules.get("coverage", missing)
+    sys.modules["coverage"] = None
+    try:
+        yield
+    finally:
+        if original is missing:
+            sys.modules.pop("coverage", None)
+        else:
+            sys.modules["coverage"] = original
+
+
+def _load_whisper():
+    """Import Whisper only when transcription is actually requested."""
+    try:
+        with _without_incompatible_coverage():
+            return importlib.import_module("whisper")
+    except (AttributeError, ImportError) as exc:
+        raise FeverSlopAdaptationError(
+            "Whisper voice analysis could not start. Run `uv sync` to restore the project's "
+            "Python environment, then resume. If this project already has a valid vocal timeline, "
+            "you can resume with `--skip-whisper`. Technical details: "
+            f"{exc}",
+        ) from exc
 
 
 class VocalTimelineAnalyzer:
@@ -71,7 +113,7 @@ class VocalTimelineAnalyzer:
 
     def _transcribe(self, vocals_file: Path) -> list[dict]:
         if self.model is None:
-            self.model = whisper.load_model(self.whisper_model)
+            self.model = _load_whisper().load_model(self.whisper_model)
         result = self.model.transcribe(
             str(vocals_file),
             language=self.language,

@@ -10,7 +10,7 @@ from feverslop.domain.vocal_assignments import infer_vocal_performers
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
 from feverslop.prompting.general_modules import GeneralPromptModules
-from feverslop.prompting.general_signatures import PromptResult
+from feverslop.prompting.general_signatures import PromptResult, parse_prompt_result
 from feverslop.prompting.music_video_prompt_style import (
     build_i2v_system_prompt,
     build_video_payload,
@@ -269,7 +269,7 @@ class ScenePromptBuilder:
         if isinstance(result, PromptResult):
             return result
         if isinstance(result, dict):
-            return PromptResult.model_validate(result)
+            return parse_prompt_result(result)
         return PromptResult(prompt=str(result))
 
     def build_scene_prompts(

@@ -35,6 +35,7 @@ from feverslop.prompting.dspy_h3_models import (
 )
 from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.h3_user_messages import renderer_recovery_message
 
 logger = logging.getLogger(__name__)
 
@@ -558,10 +559,7 @@ class VideoPromptGenerator:
                 f"active_vocal_language={active_vocal_language!r}",
             ))
             if attempt == 1:
-                self._warning(
-                    "H3 renderer contract warning; continuing with deterministic recovery: "
-                    f"{error}",
-                )
+                self._warning(renderer_recovery_message(error))
                 return output
         raise AssertionError("unreachable")
 

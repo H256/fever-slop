@@ -353,6 +353,27 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         self.assertIn("reused", combined)
         self.assertNotIn("SECRET PROMPT BODY", combined)
 
+    def test_reporting_explains_unjudged_audio_contract_recovery(self):
+        messages = []
+
+        class Reporter:
+            def message(self, message):
+                messages.append(message)
+
+        store = H3PromptCheckpointStore(self.project, reporter=Reporter())
+        store.save(self.request(), {
+            "prompt": "compiled fallback prompt",
+            "dspy_error": "prompt contract validation failed: h3.audio.missing",
+            "prompt_contract": {"valid": True, "compiler_version": 8, "prompt_sha256": "sha256:wrong"},
+            "prompt_provenance": {"compiler_version": 8},
+        })
+
+        combined = "\n".join(messages)
+        self.assertIn("quality check did not run", combined)
+        self.assertIn("No action is needed", combined)
+        self.assertIn("<Audio N>", combined)
+        self.assertIn("h3.audio.missing", combined)
+
     def test_canonical_sync_rejects_duplicate_scene_identity(self):
         base = self.project / "output/render/plans/base.json"
         base.parent.mkdir(parents=True)
