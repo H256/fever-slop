@@ -10,8 +10,8 @@ def save_timeline_json(timeline, output_file: str | Path, *, whisper_raw=None):
 
     data = [
         {
-            "start": round(seg.start, 2),
-            "end": round(seg.end, 2),
+            "start": seg.start,
+            "end": seg.end,
             "type": seg.kind,
             **({"evidence": asdict(seg.evidence)} if seg.evidence is not None else {}),
             **({"lyrics": seg.text} if seg.text else {}),

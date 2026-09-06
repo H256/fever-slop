@@ -397,6 +397,32 @@ class VocalEvidenceTests(unittest.TestCase):
             self.assertIn("rms_without_transcript", segment.evidence.reason_codes)
         self.assertIsNone(timeline[2].evidence)
 
+    def test_resume_preserves_merge_decisions_at_precise_gap_boundary(self):
+        import json
+        import tempfile
+        from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
+        from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
+        from feverslop.pipeline.utils import save_timeline_json
+
+        analyzer = VocalTimelineAnalyzer()
+        candidates = analyzer._combine_whisper_and_energy([], [(0, 1.002), (1.504, 3)])
+        original = merge_same_kind_segments(normalize_empty_vocals(
+            analyzer._insert_instrumental_segments(candidates, 3),
+        ), merge_gap=.5)
+        self.assertEqual(2, len(original))
+
+        class Store:
+            def read_json(self, path):
+                return json.loads(path.read_text())
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "timeline.json"
+            save_timeline_json(original, path)
+            resumed = AudioTimelinePipeline._load_existing_timeline(path, Store())
+            self.assertEqual(original, merge_same_kind_segments(
+                normalize_empty_vocals(resumed), merge_gap=.5,
+            ))
+
 
 if __name__ == "__main__":
     unittest.main()
