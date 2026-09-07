@@ -131,6 +131,8 @@ class AudioTimelinePipeline:
         reference_lyrics = str(getattr(config, "lyrics", "") or "").strip()
         if reference_lyrics and self.lyric_aligner_factory is not None:
             aligner = self.lyric_aligner_factory(context)
+            if callable(getattr(aligner, "set_reporter", None)):
+                aligner.set_reporter(reporter)
             vocal_segments = sum(1 for seg in timeline if seg.kind == "vocals")
             reporter.message(
                 f"[cyan]LLM lyric alignment: correcting "
@@ -224,6 +226,7 @@ class AudioTimelinePipeline:
                 text=str(item.get("lyrics") or item.get("text") or ""),
                 word_timestamps=tuple(item.get("word_timestamps") or ()),
                 evidence=VocalEvidence.from_dict(item.get("evidence")),
+                alignment=item.get("alignment"),
             )
             for item in artifact_store.read_json(path)
         ]

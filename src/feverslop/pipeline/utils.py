@@ -16,6 +16,7 @@ def save_timeline_json(timeline, output_file: str | Path, *, whisper_raw=None):
             **({"evidence": asdict(seg.evidence)} if seg.evidence is not None else {}),
             **({"lyrics": seg.text} if seg.text else {}),
             **({"word_timestamps": list(seg.word_timestamps)} if seg.word_timestamps else {}),
+            **({"alignment": seg.alignment} if seg.alignment is not None else {}),
         }
         for seg in timeline
     ]

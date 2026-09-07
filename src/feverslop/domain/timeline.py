@@ -17,6 +17,7 @@ class TimelineSegment:
     word_timestamps: tuple[dict[str, object], ...] = ()
 
     evidence: VocalEvidence | None = None
+    alignment: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.start) or not math.isfinite(self.end):
