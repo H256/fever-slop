@@ -261,15 +261,19 @@ class VocalTimelineAnalyzer:
                 continue
             words = ws.get("words") or []
             anchors = words or [{"word": ws["text"], "start": ws["start"], "end": ws["end"]}]
-            for word in anchors:
+            for word_index, word in enumerate(anchors):
                 text = str(word.get("word") or "").strip()
                 if decide_transcript(dict(start=word.get("start"), end=word.get("end"), text=text)).status == "rejected":
                     continue
                 start, end = float(word["start"]), float(word["end"])
                 overlaps = [max(0.0, min(end, stop) - max(start, begin)) for begin, stop in vocal_ranges]
                 best = max(overlaps, default=0.0)
-                anchor = {"word": text, "start": start, "end": end}
+                anchor = {"word": text, "start": start, "end": end,
+                          "source": "whisper", "source_index": word_index,
+                          "raw_segment_index": number - 1,
+                          "word_id": f"whisper:{number - 1}:{word_index}"}
                 if best <= 0:
+                    anchor.update(segment_start=start, segment_end=end)
                     outside.append(TimelineSegment(
                         start, end, "vocals", text, (anchor,) if words else (),
                         VocalEvidence("conflict", decision.status, decision.reason_codes + ("transcript_outside_rms",)),
@@ -280,6 +284,7 @@ class VocalTimelineAnalyzer:
                     key=lambda i: abs((start + end) / 2 - sum(vocal_ranges[i]) / 2),
                 )
                 if words:
+                    anchor.update(segment_start=vocal_ranges[index][0], segment_end=vocal_ranges[index][1])
                     assigned[index].append(anchor)
                 else:
                     texts[index].append(text)

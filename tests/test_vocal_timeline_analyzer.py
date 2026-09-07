@@ -99,6 +99,8 @@ class TimelineSegmentImmutabilityTests(unittest.TestCase):
         )
 
         self.assertEqual(("first",), tuple(item["word"] for item in result[0].word_timestamps))
+        self.assertEqual("whisper", result[0].word_timestamps[0]["source"])
+        self.assertEqual("whisper:0:0", result[0].word_timestamps[0]["word_id"])
         self.assertEqual(("second",), tuple(item["word"] for item in result[1].word_timestamps))
         self.assertEqual("first", result[0].text)
         self.assertEqual("second", result[1].text)
