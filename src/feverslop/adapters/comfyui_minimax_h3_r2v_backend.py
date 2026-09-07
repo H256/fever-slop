@@ -17,6 +17,10 @@ from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.audio_timing_contract import AudioTimingWindow
+from feverslop.domain.h3_audio_delivery import (
+    H3AudioContractError, apply_h3_audio_sources, h3_audio_timing_window,
+    load_h3_audio_delivery, resolve_h3_audio_sources, validate_h3_audio_sources,
+)
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.domain.h3_two_pass import H3TwoPassSpec, apply_h3_two_pass_patch
 from feverslop.domain.artifact_hash import sha256_file
@@ -198,8 +202,26 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # -- reference videos -------------------------------------------------
         self._patch_reference_videos(patcher, ref_video_paths or [])
 
+        # Resolve before mutation so unsupported guide chains cannot be hidden by patching.
+        self._progress("h3_audio_resolving")
+        audio_window = self._audio_timing_window(scene, duration_seconds)
+        prepared_sources = scene.get("h3_audio_sources")
+        prepared_by_path = {str(item["source_path"]): item for item in prepared_sources or []}
+        stem_paths = ((scene.get("stem_audio") or {}).get("paths") or self._fallback_stem_paths())
+        stem_names = {str(self._resolve_project_path(path)): name for name, path in stem_paths.items()}
+        audio_references = [
+            {"source": str(path), "name": prepared_by_path.get(str(path), {}).get("name") or stem_names.get(str(path), ""),
+             "label": prepared_by_path.get(str(path), {}).get("label", "")}
+            for path in ref_audio_paths or []
+        ]
+        audio_delivery = load_h3_audio_delivery(self.workflow_label)
+        audio_sources = resolve_h3_audio_sources(audio_delivery, audio_references, audio_window, workflow=patcher.get())
+        if prepared_sources is not None:
+            self._validate_prepared_audio_sources(prepared_sources, audio_sources, scene)
+        self._progress("h3_audio_resolved")
+
         # -- reference audios -------------------------------------------------
-        self._patch_reference_audios(
+        uploaded_audio_names = self._patch_reference_audios(
             patcher,
             ref_audio_paths or [],
             duration_seconds=duration_seconds,
@@ -233,6 +255,10 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         # ComfyUI does not validate stale paths from the original workflow.
         patcher.prune_unreachable_nodes(root_titles=("#SAVE_VIDEO",))
 
+        self._progress("h3_audio_validating")
+        apply_h3_audio_sources(patcher.get(), audio_sources)
+        validate_h3_audio_sources(patcher.get(), audio_sources, uploaded_audio_names, delivery=audio_delivery)
+        self._progress("h3_audio_ready")
         return patcher.get()
 
     @staticmethod
@@ -495,7 +521,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         duration_seconds: float | None = None,
         abs_start_seconds: float | None = None,
         audio_timing_window: AudioTimingWindow | None = None,
-    ) -> None:
+    ) -> dict[str, str]:
         """Map reference audio paths through LoadAudio → [TrimAudioDuration] → R2V slots.
 
         When *duration_seconds* is given, each audio path is trimmed to the scene
@@ -503,8 +529,9 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         the main (comfy_audio) reference.
         """
         self._clear_reference_group(patcher, "ref_audios")
+        uploaded_names: dict[str, str] = {}
         if not ref_audio_paths:
-            return
+            return uploaded_names
         if len(ref_audio_paths) > self.MAX_REF_AUDIOS:
             raise FeverSlopValidationError(
                 f"At most {self.MAX_REF_AUDIOS} reference audio clips allowed, "
@@ -514,6 +541,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             title = f"#AUDIO_{slot_index + 1}"
             trim_title = f"#TRIM_AUDIO_{slot_index + 1}"
             audio_name = self.asset_uploader.resolve_reference_audio_name(path)
+            uploaded_names[str(path)] = audio_name
 
             # Step 1: Update or create LoadAudio anchor
             try:
@@ -565,6 +593,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 self._wire_ref_audio_slot(patcher, trim_id, slot_index)
             else:
                 self._wire_ref_audio_slot(patcher, loader_id, slot_index)
+        return uploaded_names
 
     @staticmethod
     def _remove_legacy_main_audio_chain(patcher: WorkflowPatcher) -> None:
@@ -831,14 +860,21 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         *,
         fps: int = FPS,
     ) -> AudioTimingWindow | None:
-        """Derive one absolute, frame-aligned audio window for a segment."""
-        if duration_seconds is None:
-            return None
-        start = float(scene.get("abs_start_seconds", 0.0) or 0.0)
-        end = float(scene.get("abs_end_seconds", start + float(duration_seconds)))
-        start_frame = round(start * fps) - int(scene.get("anchor_frames") or 0)
-        end_frame = round(end * fps)
-        return AudioTimingWindow(start_frame / fps, end_frame / fps)
+        return h3_audio_timing_window(scene, duration_seconds, fps=fps)
+
+    @staticmethod
+    def _validate_prepared_audio_sources(prepared: list[dict], resolved: list[dict], scene: dict) -> None:
+        if len(prepared) != len(resolved):
+            raise H3AudioContractError("h3_audio_source_mismatch", "Selected audio sources changed after preparation.")
+        for old, current in zip(prepared, resolved):
+            for key in ("source_path", "source_hash", "roles", "bindings", "reference_index"):
+                if old.get(key) != current.get(key):
+                    raise H3AudioContractError("h3_audio_source_mismatch", "Prepared audio declaration differs from the selected workflow or sources.")
+            before, after = old.get("audio_timing_window"), current.get("audio_timing_window")
+            if before != after:
+                allowance = int(scene.get("anchor_frames") or 0) / 24
+                if not before or not after or after["start_seconds"] < before["start_seconds"] - allowance or after["end_seconds"] > before["end_seconds"]:
+                    raise H3AudioContractError("h3_audio_timing_mismatch", "Render audio interval exceeds its prepared source window.")
 
     @classmethod
     def _filter_audio_paths_for_window(
@@ -1102,3 +1138,4 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             return True
         except KeyError:
             return False
+
