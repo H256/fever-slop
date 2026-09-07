@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+from copy import deepcopy
 import random
 import re
 from collections.abc import Callable, Mapping
@@ -531,13 +532,15 @@ def build_render_plan(
                 )
 
             relay_entry = {
+                **deepcopy(relay),
                 "frame_start": frame_start,
                 "frame_end": frame_end,
                 "state": state,
                 "prompt": f"{ltx_base_prompt} {state_prompt}",
             }
-            if state == "singing":
-                relay_entry.update(_vocal_relay_binding(scene))
+            if state == "singing" and len(relay.get("vocal_events") or []) <= 1:
+                for key, value in _vocal_relay_binding(scene).items():
+                    relay_entry.setdefault(key, value)
             prompt_relay.append(relay_entry)
 
         if not prompt_relay:
@@ -594,6 +597,16 @@ def build_render_plan(
                 "spatial_relations": scene.get("spatial_relations", ""),
             },
         }
+        if "performance_intervals" in relay_scene:
+            intervals = deepcopy(relay_scene["performance_intervals"])
+            for interval in intervals:
+                interval["state"] = _effective_relay_state(interval["state"], scene)
+                if interval["state"] == "singing":
+                    events = interval.get("vocal_events") or [interval]
+                    if len(events) == 1 and not events[0].get("offscreen"):
+                        for key, value in _vocal_relay_binding(scene).items():
+                            events[0].setdefault(key, value)
+            render_scene["performance_intervals"] = intervals
         if scene.get("subject_directives") is not None:
             try:
                 directive_plan = SubjectDirectivePlan.from_dict(scene["subject_directives"])

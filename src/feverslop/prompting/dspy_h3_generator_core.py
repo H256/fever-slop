@@ -74,7 +74,7 @@ def _authoritative_shot_windows(
     if shot_count == 0:
         return []
     relay = list(request.relay_segments)
-    if relay:
+    if relay and not any(item.get("performance_phase") for item in relay):
         if len(relay) != shot_count:
             raise ValueError(
                 "creative plan must contain exactly one shot per authoritative relay segment",
@@ -443,7 +443,10 @@ class VideoPromptGenerator:
         ]
         subject_names = [subject.name for subject in subjects]
         authored_shots = list(creative.shots)
-        authoritative_count = len(request.relay_segments) or 1
+        authoritative_count = (
+            1 if any(item.get("performance_phase") for item in request.relay_segments)
+            else len(request.relay_segments) or 1
+        )
         if len(authored_shots) != authoritative_count:
             raise ValueError(
                 "creative plan shot count does not match authoritative scene structure",

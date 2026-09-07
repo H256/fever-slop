@@ -108,6 +108,7 @@ class SceneTimelinePipeline:
             vocal_timeline_json=timeline_json,
             output_json_file=stage1_segments_json,
             artifact_store=artifact_store,
+            reporter=context["reporter"],
         )
         log_file("Stage 1 Segments JSON", stage1_segments_json)
         stage1_segments = artifact_store.read_json(stage1_segments_json)
@@ -126,6 +127,7 @@ class SceneTimelinePipeline:
             output_json_file=ltx_prompt_relay_json,
             video_settings=video_settings,
             artifact_store=artifact_store,
+            reporter=context["reporter"],
         )
         log_file("LTX Prompt Relay JSON", ltx_prompt_relay_json)
 

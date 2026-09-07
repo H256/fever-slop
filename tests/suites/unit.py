@@ -140,6 +140,7 @@ UNIT_MODULES = (
     "prompt_pipeline",
     "prompt_contract_validation",
     "prompt_relay_builder",
+    "performance_timeline",
     "prompt_revision_application",
     "prompt_revisions",
     "prompting_guide_loader",

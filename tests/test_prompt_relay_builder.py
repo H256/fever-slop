@@ -34,10 +34,8 @@ class TestParseSceneDicts(unittest.TestCase):
 
 
 class TestLyricsForTimeRangeFallback(unittest.TestCase):
-    def test_falls_back_to_proportional_split_when_no_word_falls_in_window(self):
-        # A vocal line spans [0, 4) but its Whisper word midpoints cluster at the
-        # start and end, leaving a sub-window with no words. The proportional
-        # split must keep the window's share instead of returning "".
+    def test_returns_empty_when_no_word_falls_in_window(self):
+        # A measured gap must never acquire interpolated lyrics.
         result = lyrics_for_time_range(
             "Ich trug mein Name wie ein Messer",
             0.0,
@@ -52,7 +50,7 @@ class TestLyricsForTimeRangeFallback(unittest.TestCase):
             ),
         )
 
-        self.assertEqual("Name", result)
+        self.assertEqual("", result)
 
     def test_prefers_timestamped_words_when_any_fall_in_window(self):
         result = lyrics_for_time_range(
