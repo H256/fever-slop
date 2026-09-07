@@ -597,6 +597,16 @@ def build_render_plan(
                 "spatial_relations": scene.get("spatial_relations", ""),
             },
         }
+        if "performance_intervals" in relay_scene:
+            intervals = deepcopy(relay_scene["performance_intervals"])
+            for interval in intervals:
+                interval["state"] = _effective_relay_state(interval["state"], scene)
+                if interval["state"] == "singing":
+                    events = interval.get("vocal_events") or [interval]
+                    if len(events) == 1 and not events[0].get("offscreen"):
+                        for key, value in _vocal_relay_binding(scene).items():
+                            events[0].setdefault(key, value)
+            render_scene["performance_intervals"] = intervals
         if scene.get("subject_directives") is not None:
             try:
                 directive_plan = SubjectDirectivePlan.from_dict(scene["subject_directives"])

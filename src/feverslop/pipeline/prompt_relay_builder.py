@@ -111,12 +111,14 @@ def build_scene_prompt_relay(
         scene_duration = scene_end - scene_start
 
         prompt_relay = []
+        performance_intervals = []
         # Real pauses remain explicit regardless of the legacy duration hint.
         for phase in project_performance(timeline, scene_start, scene_end):
             rel_start = phase["start"] - scene_start
             rel_end = phase["end"] - scene_start
             frame_start = video_settings.seconds_to_frame(rel_start)
             frame_end = video_settings.seconds_to_frame(rel_end)
+            performance_intervals.append({**phase, "start_seconds": rel_start, "end_seconds": rel_end})
             if frame_end <= frame_start:
                 continue
             if phase["state"] == "singing":
@@ -144,6 +146,7 @@ def build_scene_prompt_relay(
             "width": video_settings.width,
             "height": video_settings.height,
             "prompt_relay": prompt_relay,
+            "performance_intervals": performance_intervals,
         }
 
         result.append(scene_data)

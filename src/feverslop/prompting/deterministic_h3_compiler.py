@@ -9,11 +9,79 @@ from feverslop.domain.locked_scene_facts import LockedSceneFacts
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload
 from feverslop.prompting.dspy_h3_models import MusicIntent, PromptMode
 from feverslop.prompting.dspy_h3_models import ResolvedPromptPlan
-from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_prompt_contract
+from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_prompt_contract, validate_performance_phases
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 41
+H3_COMPILER_VERSION = 42
+
+
+def _performance_phases_for_shot(shot, phases):
+    start = float(shot.start_seconds or 0)
+    end = float(shot.end_seconds or max(float(p["end_seconds"]) for p in phases))
+    result = []
+    for phase in phases:
+        begin, stop = float(phase["start_seconds"]), float(phase["end_seconds"])
+        if begin >= end or stop <= start:
+            continue
+        clipped = dict(phase, start_seconds=max(start, begin), end_seconds=min(end, stop))
+        words = phase.get("word_timestamps") or []
+        if words:
+            origin = float(phase.get("word_time_origin") or 0)
+            selected = []
+            for word in words:
+                left, right = float(word["start"]), float(word["end"])
+                if left >= end + origin or right <= start + origin:
+                    continue
+                source_start = float(word.get("source_start", left))
+                source_end = float(word.get("source_end", right))
+                row = dict(word, start=max(left, start + origin), end=min(right, end + origin))
+                row["text_assigned"] = bool(word.get("text_assigned", True)) and start + origin <= (source_start + source_end) / 2 < end + origin
+                if row["start"] > source_start or row["end"] < source_end:
+                    row["continuation_of_word"] = word.get("word_id")
+                selected.append(row)
+            clipped["word_timestamps"] = selected
+            clipped.update(lyrics=" ".join(str(w["word"]).strip() for w in selected if w["text_assigned"]), dialogue="", text="", prompt="")
+        elif not start <= (begin + stop) / 2 < end:
+            clipped.update(lyrics="", dialogue="", text="", prompt="")
+        result.append(clipped)
+    return result
+
+
+def _render_performance_phases(text, phases, speaker_ids):
+    text = text.split(" Within this continuous camera shot, ", 1)[0]
+    # Remove authored claims before inserting any events, so later phases cannot
+    # remove the compiler-owned dialogue from an earlier phase.
+    for phase in phases:
+        content = _relay_vocal_content(phase)
+        if content:
+            text = re.sub(r"(?<!\w)" + re.escape(content) + r"(?!\w)", "", text, flags=re.IGNORECASE)
+        text = _remove_authored_vocal_claims(text, phase)
+    events = []
+    for phase in phases:
+        window = f"From {float(phase['start_seconds']):.3f}-{float(phase['end_seconds']):.3f} seconds"
+        state = str(phase.get("state") or "").casefold()
+        subject = str(phase.get("subject_label") or "").strip()
+        if state in {"singing", "vocals", "vocal", "spoken", "speech", "dialogue"}:
+            event = _insert_authoritative_vocal_event("", phase, bound_speaker_ids=speaker_ids).strip()
+            if not event:
+                source = subject or "The audible vocal performance"
+                if phase.get("offscreen"):
+                    source = "The offscreen voice"
+                speaker_id = str(phase.get("speaker_id") or speaker_ids.get(subject) or "").strip()
+                if speaker_id:
+                    source += f" ({speaker_id})"
+                event = (
+                    f"{source} continues only the clipped vocal interval "
+                    "in the synchronized audio; do not restart or add words."
+                )
+        else:
+            event = (
+                f"{subject + ' remains silent with no singing mouth movement' if subject else 'No sung vocal performance occurs'}; "
+                "continue the established camera movement."
+            )
+        events.append(f"{window}, {event}")
+    return (text.strip() + " Within this continuous camera shot, " + " ".join(events)).strip() if events else text
 
 
 def plan_with_authoritative_relay(
@@ -27,6 +95,22 @@ def plan_with_authoritative_relay(
     if not relay_segments:
         return plan
     speaker_ids = _validated_speaker_ids(speaker_bindings)
+    if any(phase.get("performance_phase") for phase in relay_segments):
+        speaker_ids = _validated_speaker_ids([*speaker_bindings, *(p for p in relay_segments if not p.get("offscreen"))])
+        shots = []
+        for shot in plan.shots:
+            phases = _performance_phases_for_shot(shot, relay_segments)
+            values = {}
+            for field in ("description", "visible_action", "performance", "camera_behavior", "environmental_motion", "transition_intent"):
+                value = getattr(shot, field)
+                if value is not None:
+                    value = _replace_subject_names(_strip_authored_dialogue_markup(value), plan)
+                    for phase in phases:
+                        value = _remove_authored_vocal_claims(value, phase)
+                    values[field] = value or None
+            values["description"] = _render_performance_phases(values.get("description") or "The scene continues.", phases, speaker_ids)
+            shots.append(shot.model_copy(update=values))
+        return plan.model_copy(update={"shots": shots})
     shots = []
     fields = (
         "description", "visible_action", "performance", "camera_behavior",
@@ -101,6 +185,9 @@ class DeterministicH3Compiler:
         speaker_bindings: Sequence[Mapping[str, Any]] | None = None,
     ) -> str:
         normalized_mode = str(mode).strip().lower()
+        performance_issues = validate_performance_phases(relay_segments or ())
+        if performance_issues:
+            raise PromptContractError(performance_issues)
         if normalized_mode not in {"base", "reference", "ref", *(item.value for item in PromptMode)}:
             raise ValueError("mode must be base, reference, or a PromptMode value")
         if plan is not None:
@@ -318,7 +405,8 @@ class DeterministicH3Compiler:
             rendered_shots = [
                 _render_shot_with_references(
                     index,
-                    shot,
+                    shot.model_copy(update={"description": (shot.description or "").split(" Within this continuous camera shot, ", 1)[0]})
+                    if any(p.get("performance_phase") for p in relay_segments or ()) else shot,
                     plan,
                     reference_metadata=metadata_by_label,
                     final_shot=index == len(plan.shots),
@@ -335,7 +423,13 @@ class DeterministicH3Compiler:
                     )
                     for shot_text in rendered_shots
                 ]
-            for index, relay in enumerate(relay_segments or ()):
+            performance_phases = any(p.get("performance_phase") for p in relay_segments or ())
+            if performance_phases:
+                rendered_shots = [
+                    _render_performance_phases(text, _performance_phases_for_shot(shot, relay_segments), speaker_ids)
+                    for text, shot in zip(rendered_shots, plan.shots, strict=True)
+                ]
+            for index, relay in enumerate(() if performance_phases else relay_segments or ()):
                 if index >= len(rendered_shots):
                     break
                 content = _relay_vocal_content(relay)
@@ -458,6 +552,9 @@ class DeterministicH3Compiler:
             if instruction:
                 sections.insert(0, instruction)
         result = "\n\n".join(section.strip() for section in sections)
+        performance_issues = validate_performance_phases(relay_segments or (), result)
+        if performance_issues:
+            raise PromptContractError(performance_issues)
         if self.max_words is not None and len(result.split()) > self.max_words:
             raise ValueError(f"compiled prompt exceeds word budget ({self.max_words})")
         return result
@@ -994,12 +1091,15 @@ def _insert_authoritative_vocal_event(
     if speaker and not speaker_id:
         speaker_id = str((bound_speaker_ids or {}).get(speaker) or "").strip()
     verb = (
-        "sings with visible mouth movements precisely synchronized to the vocal"
+        ("sings offscreen in synchronization with the vocal audio" if relay.get("offscreen") else
+         "sings with visible mouth movements precisely synchronized to the vocal")
         if state in {"singing", "vocals", "vocal"}
         else "says"
     )
     source = f"{speaker} ({speaker_id})" if speaker and speaker_id else speaker
     source = source or "The audible voice"
+    if relay.get("offscreen") and speaker_id:
+        source = f"The offscreen voice ({speaker_id})"
     return f"{normalized.rstrip()} {source} {verb}, {tagged}"
 
 
@@ -1016,7 +1116,17 @@ def _remove_authored_vocal_claims(
     marker = marker_match.group(1) if marker_match else ""
     body = marker_match.group(2) if marker_match else shot_text.strip()
     parts = re.split(r"(?<=[.!?])\s+", body)
-    kept = [cleaned for part in parts if (cleaned := _remove_vocal_clause(part))]
+    singing = str(relay.get("state") or "").casefold() in {"singing", "vocals", "vocal"}
+    subject = str(relay.get("subject_label") or "").strip()
+    kept = []
+    for part in parts:
+        labels = set(re.findall(r"<Subject\s+\d+>", part))
+        closed = re.search(r"(?i)\b(?:mouth|lips)\b.{0,24}\b(?:closed|still|shut)\b|\b(?:not|never)\s+sing", part)
+        if singing and subject and labels == {subject} and closed:
+            continue
+        cleaned = _remove_vocal_clause(part)
+        if cleaned:
+            kept.append(cleaned)
     retained = " ".join(kept).strip()
     return " ".join(part for part in (marker, retained) if part).strip()
 
@@ -1099,6 +1209,11 @@ def _remove_authored_dialogue_blocks(text: str) -> str:
 
 
 def _relay_vocal_content(relay: Mapping[str, Any]) -> str:
+    if relay.get("performance_phase"):
+        if str(relay.get("state") or "").casefold() == "instrumental":
+            return ""
+        if "lyrics" in relay:
+            return str(relay.get("lyrics") or "").strip()
     for key in ("lyrics", "dialogue", "text"):
         value = str(relay.get(key) or "").strip()
         if value:
@@ -1121,6 +1236,8 @@ def _relay_speaker_label(
     *,
     bound_subject_labels: set[str],
 ) -> str:
+    if relay.get("offscreen"):
+        return ""
     subject_label = str(relay.get("subject_label") or "").strip()
     return subject_label if subject_label in bound_subject_labels else ""
 

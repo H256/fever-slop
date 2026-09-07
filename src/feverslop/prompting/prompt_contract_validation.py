@@ -29,6 +29,31 @@ class PromptContractError(ValueError):
         super().__init__("prompt contract validation failed: " + "; ".join(issue.code for issue in self.issues))
 
 
+def validate_performance_phases(phases: Sequence[Mapping[str, object]], prompt: str = "") -> list[PromptContractIssue]:
+    """Validate measured performance independently of creative shot count."""
+    issues = []
+    for index, phase in enumerate(phases):
+        if not phase.get("performance_phase"):
+            continue
+        reasons = {str(item.get("reason_code") or "unverified") for item in phase.get("performance_conflicts") or ()}
+        if phase.get("acoustically_verified") is False and not reasons:
+            reasons.add("unverified")
+        try:
+            start, end = float(phase["start_seconds"]), float(phase["end_seconds"])
+            if not math.isfinite(start) or not math.isfinite(end) or start < 0 or end <= start:
+                reasons.add("invalid_interval")
+        except (KeyError, TypeError, ValueError):
+            reasons.add("invalid_interval")
+        subject = str(phase.get("subject_label") or "")
+        if subject and not phase.get("offscreen") and phase.get("state") == "singing":
+            for sentence in re.split(r"(?<=[.!?])\s+", prompt):
+                if subject in sentence and re.search(r"(?i)\b(?:mouth|lips)\b.{0,24}\b(?:closed|still|shut)\b", sentence):
+                    reasons.add("mouth_state_conflict")
+        issues.extend(PromptContractIssue("h3.performance." + reason, f"performance[{index}]",
+            "Performance evidence requires correction before rendering") for reason in sorted(reasons))
+    return issues
+
+
 def validate_prompt_contract(
     prompt: str,
     *,

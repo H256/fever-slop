@@ -36,6 +36,61 @@ class FakeArtifactStore:
 
 
 class ArtifactStorePipelineIoTests(unittest.TestCase):
+    def test_full_performance_path_preserves_intro_pause_cut_and_offscreen_voice(self):
+        from feverslop.domain.locked_scene_facts import LockedSceneFacts
+        from feverslop.prompting.dspy_h3_prompt_builder import _normalize_relay_segments
+        from feverslop.prompting.deterministic_h3_compiler import (
+            DeterministicH3Compiler, creative_shots_from_plan, plan_with_authoritative_relay,
+        )
+        from feverslop.prompting.dspy_h3_models import MusicIntent, PlannedShot, ResolvedPromptPlan
+
+        with tempfile.TemporaryDirectory() as directory:
+            srt = Path(directory) / "scenes.srt"
+            write_scene_srt(srt, [SrtScene(scene=i, start=a, end=b, text="Orbit")
+                                 for i, a, b in ((1, 0, 2), (2, 2, 5), (3, 5, 8))],
+                            artifact_store=JsonArtifactStore())
+            store = FakeArtifactStore()
+            store.json_reads["timeline"] = [
+                dict(type="instrumental", start=0, end=2),
+                dict(type="vocals", start=2, end=8, word_timestamps=[
+                    dict(word="I", start=2.98, end=3.02, source="whisper", word_id="tiny", speaker_id="S3"),
+                    dict(word="First", start=2.5, end=3, source="whisper", word_id="w1", speaker_id="S1"),
+                    dict(word="Hold", start=4, end=6, source="whisper", word_id="w2", speaker_id="S1"),
+                    dict(word="Echo", start=6.5, end=7, source="whisper", word_id="w3", speaker_id="S2", offscreen=True),
+                ]),
+            ]
+            build_stage1_segment_json(srt, "timeline", "stage1", artifact_store=store)
+            store.json_reads["scenes"] = [dict(s, zimage_prompt="A slow camera orbit")
+                                          for s in store.json_writes["stage1"]]
+            for fps in (24, 25, 30):
+                settings = VideoSettings(fps=fps, width=1280, height=704)
+                build_scene_prompt_relay(srt, "timeline", "relay", settings, artifact_store=store)
+                store.json_reads["relay"] = store.json_writes["relay"]
+                build_render_plan("scenes", "relay", "render", settings, artifact_store=store)
+                prompts = []
+                for scene in store.json_writes["render"]:
+                    phases = _normalize_relay_segments(scene)
+                    duration = scene["duration_seconds"]
+                    plan = ResolvedPromptPlan(creative_intent="Orbit", subjects=[], reference_usage=[],
+                        shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=duration,
+                                          description="The camera circles slowly.")],
+                        overall_soundscape="Air", music_intent=MusicIntent.NONE)
+                    plan = plan_with_authoritative_relay(plan, phases)
+                    prompt = DeterministicH3Compiler().compile(mode="r2v", plan=plan,
+                        facts=LockedSceneFacts.create(scene_id=str(scene["scene"]), facts=[]),
+                        shots=creative_shots_from_plan(plan), shot_windows={"shot-01": (0, duration)},
+                        relay_segments=phases, duration_seconds=duration)
+                    prompts.append(prompt.split("detailed_description:", 1)[1].split("non_diegetic_music:", 1)[0])
+                self.assertNotIn("<d>", prompts[0])
+                self.assertNotIn("Hold", prompts[1])
+                self.assertIn("Hold", prompts[2])
+                self.assertIn("(S2)", prompts[2])
+                self.assertIn("sings offscreen", prompts[2])
+                self.assertEqual(4, " ".join(prompts).count("<d>"), prompts)
+                self.assertTrue(all("[Shot 2]" not in p for p in prompts))
+                self.assertTrue(all("camera circles slowly" in p for p in prompts))
+                self.assertIn("No sung vocal performance occurs", prompts[1])
+
     def test_prompt_relay_uses_only_available_timestamped_words(self):
         result = lyrics_for_time_range(
             "Ich trug mein Name wie ein Messer",

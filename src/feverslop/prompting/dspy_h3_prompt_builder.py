@@ -33,6 +33,7 @@ from feverslop.prompting.prompt_contract_validation import (
     PromptContractError,
     validate_h3_prompt_contract,
     validate_h3_prompt_shape,
+    validate_performance_phases,
 )
 from feverslop.prompting.subject_directive_planning import (
     project_directives_to_prompt,
@@ -158,11 +159,15 @@ def _speaker_bindings_for_compile(
         for stem, binding in raw.items()
         if stem in audio_references and binding.get("speaker_id")
     ]
-    relay = (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    relay = segment.get("performance_intervals") or (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    relay = [event for phase in relay for event in phase.get("vocal_events") or [phase]]
+    labels = {actor: f"<Subject {i}>" for i, actor in enumerate((segment.get("references") or {}).get("actor_ids") or [], 1)}
     for item in relay:
         if not isinstance(item, dict):
             continue
-        subject_label = str(item.get("subject_label") or "").strip()
+        if item.get("offscreen"):
+            continue
+        subject_label = str(item.get("subject_label") or labels.get(item.get("subject_id")) or "").strip()
         speaker_id = str(item.get("speaker_id") or "").strip()
         if subject_label and speaker_id and not any(
             binding["subject_label"] == subject_label
@@ -326,7 +331,7 @@ def _scene_references(
         if audio_paths
         else {}
     )
-    relay = (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    relay = segment.get("performance_intervals") or (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
     fully_instrumental = bool(relay) and all(
         str(item.get("state") or "").strip().lower() == "instrumental"
         for item in relay
@@ -526,7 +531,7 @@ def _safe_error_message(error: BaseException) -> str:
 
 def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
     """Convert LTX frame relays into bounded, model-neutral timed shots."""
-    relay = (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    relay = segment.get("performance_intervals") or (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
     if not relay:
         return []
     fps = float(segment.get("fps") or 24)
@@ -534,8 +539,11 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
     duration = float(duration_value) if duration_value is not None else None
     shots = []
     for index, item in enumerate(relay, start=1):
-        start = float(item["frame_start"]) / fps
-        end = float(item["frame_end"]) / fps
+        if item.get("performance_phase") and "start_seconds" in item and "end_seconds" in item:
+            start, end = float(item["start_seconds"]), float(item["end_seconds"])
+        else:
+            start = float(item["frame_start"]) / fps
+            end = float(item["frame_end"]) / fps
         if duration is not None:
             start = min(start, duration)
             end = min(end, duration)
@@ -548,6 +556,11 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
             "state": str(item.get("state") or "").strip(),
             "prompt": str(item.get("prompt") or "").strip(),
         }
+        for key in ("performance_phase", "performance_intervals_version", "word_timestamps", "vocal_sources", "acoustically_verified", "reason_codes", "performance_conflicts"):
+            if key in item:
+                shot[key] = item[key]
+        if item.get("performance_phase"):
+            shot["word_time_origin"] = float(segment.get("abs_start_seconds", segment.get("start")) or 0)
         source_prompt = str(item.get("source_prompt") or "").strip()
         if source_prompt:
             shot["source_prompt"] = source_prompt
@@ -558,7 +571,22 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
             value = str(item.get(key) or "").strip()
             if value:
                 shot[key] = value
-        shots.append(shot)
+        events = item.get("vocal_events") or []
+        if events:
+            labels = {actor: f"<Subject {i}>" for i, actor in enumerate((segment.get("references") or {}).get("actor_ids") or [], 1)}
+            for event in events:
+                resolved = dict(shot)
+                for key in ("lyrics", "word_timestamps", "subject_id", "subject_label", "speaker_id", "offscreen"):
+                    resolved.pop(key, None)
+                    if key in event:
+                        resolved[key] = event[key]
+                if resolved.get("subject_id") in labels:
+                    resolved.setdefault("subject_label", labels[resolved["subject_id"]])
+                shots.append(resolved)
+        else:
+            if "offscreen" in item:
+                shot["offscreen"] = item["offscreen"]
+            shots.append(shot)
     return shots
 
 
@@ -589,6 +617,8 @@ def _stamp_relay_speaker_binding(
     if not subject_label or not speaker_id:
         return
     for shot in relay_segments:
+        if shot.get("offscreen"):
+            continue
         if str(shot.get("state") or "").strip().casefold() not in _SING_RELAY_STATES:
             continue
         if not str(shot.get("subject_label") or "").strip():
@@ -606,21 +636,25 @@ def _relay_vocal_binding(
         1
         for shot in relay_segments
         if str(shot.get("state") or "").strip().casefold() in _SING_RELAY_STATES
+        and (not shot.get("performance_phase") or str(shot.get("lyrics") or "").strip())
     )
     bound_vocal_subject = (
         str((raw_bindings.get("vocals") or {}).get("subject_label") or "").strip() or None
     )
+    if any(shot.get("offscreen") for shot in relay_segments) or len({shot.get("subject_label") for shot in relay_segments if shot.get("subject_label")}) > 1:
+        bound_vocal_subject = None
     return relay_vocal_events, bound_vocal_subject
 
 
 def _format_relay_shots(shots: list[dict[str, Any]]) -> str:
     if not shots:
         return ""
-    lines = ["Temporal shot directions:"]
+    performance = any(shot.get("performance_phase") for shot in shots)
+    lines = ["Performance timing within one continuous camera shot:" if performance else "Temporal shot directions:"]
     for shot in shots:
         state = f" ({shot['state']})" if shot.get("state") else ""
         lines.append(
-            f"[Shot {shot['shot']}, {shot['start_seconds']:.2f}-{shot['end_seconds']:.2f}sec]"
+            f"[{'Performance phase' if performance else 'Shot'} {shot['shot']}, {shot['start_seconds']:.2f}-{shot['end_seconds']:.2f}sec]"
             f"{state} {shot['prompt']}",
         )
         source_prompt = shot.get("source_prompt")
@@ -706,6 +740,9 @@ class DspyH3PromptBuilder:
         ]
         relay_segments = _normalize_relay_segments(segment)
         _stamp_relay_speaker_binding(relay_segments, raw_bindings)
+        performance_issues = validate_performance_phases(relay_segments)
+        if performance_issues:
+            raise PromptContractError(performance_issues)
         directive_plan = subject_directives_from_scene(segment)
         generator_references = [dict(reference) for reference in references]
         directing_lines = [
@@ -985,7 +1022,7 @@ class DspyH3PromptBuilder:
             for index, reference in enumerate(picture_references, start=1)
         ]
         reference_labels = [str(reference["label"]) for reference in references]
-        count = max(1, len(relay_segments))
+        count = 1 if any(p.get("performance_phase") for p in relay_segments) else max(1, len(relay_segments))
         shots = [
             PlannedShot(
                 shot_number=index,

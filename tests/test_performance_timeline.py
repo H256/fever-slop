@@ -4,6 +4,16 @@ from feverslop.domain.performance_timeline import project_performance
 
 
 class PerformanceTimelineTests(unittest.TestCase):
+    def test_overlapping_word_level_voices_keep_individual_onsets_and_offsets(self):
+        phases = project_performance([dict(type="vocals", start=0, end=3, word_timestamps=[
+            dict(word="one", start=0, end=2, source="whisper", word_id="w1", speaker_id="S1"),
+            dict(word="two", start=1, end=3, source="whisper", word_id="w2", speaker_id="S2", offscreen=True),
+        ])], 0, 3)
+        self.assertEqual([(0, 1), (1, 2), (2, 3)], [(p["start"], p["end"]) for p in phases])
+        self.assertEqual([["S1"], ["S1", "S2"], ["S2"]],
+                         [[e["speaker_id"] for e in p["vocal_events"]] for p in phases])
+        self.assertEqual("one two", " ".join(p["lyrics"] for p in phases if p["lyrics"]))
+
     def vocal(self, words):
         return {"start": 50.55, "end": 58.6, "type": "vocals", "lyrics": "hold me",
                 "word_timestamps": words}

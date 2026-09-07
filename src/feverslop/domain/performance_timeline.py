@@ -66,6 +66,26 @@ def project_performance(timeline: list[dict], start: float, end: float) -> list[
         evidence = segment.get("evidence")
         if evidence and evidence.get("activity_status") != "confirmed":
             reasons.append("uncertain_vocal_evidence")
+        # Distinct voices can start and stop inside a shared vocal envelope.
+        voice_intervals = {}
+        for word in valid:
+            identity = tuple(word.get(key, segment.get(key)) for key in
+                             ("subject_id", "subject_label", "speaker_id", "offscreen"))
+            voice_intervals.setdefault(identity, []).append((
+                max(start, bounds[0], float(word["start"])),
+                min(end, bounds[1], float(word["end"])),
+            ))
+        for intervals_for_voice in voice_intervals.values():
+            merged_voice = []
+            for left, right in sorted(intervals_for_voice):
+                if right <= left:
+                    continue
+                if merged_voice and left <= merged_voice[-1][1]:
+                    merged_voice[-1] = (merged_voice[-1][0], max(right, merged_voice[-1][1]))
+                else:
+                    merged_voice.append((left, right))
+            for left, right in merged_voice:
+                cuts.update((left, right))
         coverage.append((covered_start, covered_end, reasons))
         intervals = [(max(bounds[0], float(w["start"])), min(bounds[1], float(w["end"]))) for w in valid]
         if not valid:
