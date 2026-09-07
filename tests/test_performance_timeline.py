@@ -73,3 +73,31 @@ class PerformanceTimelineTests(unittest.TestCase):
         self.assertEqual(["voice1", "voice2"], [event["speaker_id"] for event in phase["vocal_events"]])
         self.assertEqual(["hold", "me"], [event["lyrics"] for event in phase["vocal_events"]])
         self.assertTrue(phase["vocal_events"][1]["offscreen"])
+
+    def test_explicit_instrumental_entry_verifies_covered_silence(self):
+        for key in ("type", "kind"):
+            phase = project_performance([{key: "instrumental", "start": 0, "end": 4}], 0, 2)[0]
+            self.assertEqual("instrumental", phase["state"])
+            self.assertTrue(phase["acoustically_verified"])
+            self.assertEqual([], phase["performance_conflicts"])
+
+    def test_gap_between_instrumental_entries_is_not_verified(self):
+        phases = project_performance([
+            {"type": "instrumental", "start": 0, "end": 1},
+            {"type": "instrumental", "start": 2, "end": 3},
+        ], 0, 3)
+        self.assertEqual([(0, 1), (1, 2), (2, 3)], [(p["start"], p["end"]) for p in phases])
+        self.assertEqual([True, False, True], [p["acoustically_verified"] for p in phases])
+        self.assertIn("missing_performance_evidence", phases[1]["reason_codes"])
+
+    def test_outside_vocal_envelope_is_not_verified(self):
+        phases = project_performance([self.vocal([
+            {"word": "hold", "start": 52, "end": 56, "source": "whisper", "word_id": "w1"},
+        ])], 49, 60)
+        self.assertFalse(phases[0]["acoustically_verified"])
+        self.assertFalse(phases[-1]["acoustically_verified"])
+
+    def test_uncertain_instrumental_evidence_does_not_certify_silence(self):
+        phase = project_performance([{"type": "instrumental", "start": 0, "end": 2,
+            "evidence": {"activity_status": "uncertain"}}], 0, 2)[0]
+        self.assertFalse(phase["acoustically_verified"])

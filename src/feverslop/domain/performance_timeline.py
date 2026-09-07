@@ -22,16 +22,28 @@ def project_performance(timeline: list[dict], start: float, end: float) -> list[
 
     Word occupancy determines performance; midpoint ownership determines text only.
     Legacy envelopes remain readable but explicitly lack acoustic verification.
+    Explicit instrumental entries and vocal envelopes cover only their own bounds;
+    uncovered timeline gaps never count as evidence of silence.
     """
     if end <= start:
         return []
     sources = []
+    coverage = []
     cuts = {start, end}
     for index, segment in enumerate(timeline):
         bounds = _bounds(segment)
         if bounds is None or bounds[1] <= start or bounds[0] >= end:
             continue
-        if (segment.get("type") or segment.get("kind")) != "vocals":
+        kind = segment.get("type") or segment.get("kind")
+        if kind not in {"vocals", "instrumental"}:
+            continue
+        covered_start, covered_end = max(start, bounds[0]), min(end, bounds[1])
+        cuts.update((covered_start, covered_end))
+        if kind == "instrumental":
+            evidence = segment.get("evidence")
+            reasons = (["uncertain_vocal_evidence"]
+                       if evidence and evidence.get("activity_status") != "confirmed" else [])
+            coverage.append((covered_start, covered_end, reasons))
             continue
         alignment = segment.get("alignment") or {}
         words = alignment.get("timed_words", segment.get("word_timestamps") or [])
@@ -54,6 +66,7 @@ def project_performance(timeline: list[dict], start: float, end: float) -> list[
         evidence = segment.get("evidence")
         if evidence and evidence.get("activity_status") != "confirmed":
             reasons.append("uncertain_vocal_evidence")
+        coverage.append((covered_start, covered_end, reasons))
         intervals = [(max(bounds[0], float(w["start"])), min(bounds[1], float(w["end"]))) for w in valid]
         if not valid:
             intervals = [bounds]
@@ -70,9 +83,6 @@ def project_performance(timeline: list[dict], start: float, end: float) -> list[
         sources.append((index, segment, valid, intervals, reasons))
     phases = []
     ordered = sorted(cuts)
-    all_reasons = list(dict.fromkeys(reason for _, _, _, _, reasons in sources for reason in reasons))
-    if not sources:
-        all_reasons.append("missing_performance_evidence")
     for a, b in zip(ordered, ordered[1:]):
         active = [(i, s, words, reasons) for i, s, words, intervals, reasons in sources
                   if any(left < b and right > a for left, right in intervals)]
@@ -122,7 +132,10 @@ def project_performance(timeline: list[dict], start: float, end: float) -> list[
                          "word_timestamps": selected_words}
                 event.update({key: value for key, value in zip(identities, identity) if value is not None})
                 events.append(event)
-        reasons = all_reasons.copy()
+        covering = [reasons for left, right, reasons in coverage if left <= a and right >= b]
+        reasons = list(dict.fromkeys(reason for source_reasons in covering for reason in source_reasons))
+        if not covering:
+            reasons.append("missing_performance_evidence")
         phases.append({"start": a, "end": b, "state": "singing" if active else "instrumental",
                        "lyrics": " ".join(lyrics), "word_timestamps": clipped,
                        "vocal_sources": vocal_sources, "vocal_events": events, "performance_phase": True,
