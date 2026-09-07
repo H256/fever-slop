@@ -6,7 +6,6 @@ from pathlib import Path
 from feverslop.pipeline.prompt_relay_builder import (
     lyrics_for_time_range,
     parse_scene_dicts,
-    parse_scene_srt,
 )
 
 FAKE_SRT = textwrap.dedent("""\
@@ -32,14 +31,6 @@ class TestParseSceneDicts(unittest.TestCase):
             self.assertEqual(result[0]["start"], 0.0)
             self.assertEqual(result[0]["end"], 2.0)
             self.assertEqual(result[0]["label"], "Scene 1 text")
-
-    def test_parse_scene_srt_alias_emits_deprecation_warning(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            srt_path = Path(temp_dir) / "test.srt"
-            srt_path.write_text(FAKE_SRT)
-            with self.assertWarns(FutureWarning) as cm:
-                parse_scene_srt(srt_path)
-            self.assertIn("parse_scene_dicts", str(cm.warning))
 
 
 class TestLyricsForTimeRangeFallback(unittest.TestCase):
