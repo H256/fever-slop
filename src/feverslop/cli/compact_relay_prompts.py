@@ -28,6 +28,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--app-config", default="./app_config.json")
     parser.add_argument("--input-render-plan", required=True)
     parser.add_argument("--output-render-plan", required=True)
+    parser.add_argument("--subject-anchor", required=True)
     parser.add_argument("--max-words", type=int, default=28)
     return parser
 
@@ -64,6 +65,7 @@ def main():
     builder = RelayDirectionBuilder(
         llm=llm,
         max_words=args.max_words,
+        subject_anchor=args.subject_anchor,
     )
 
     with Progress(

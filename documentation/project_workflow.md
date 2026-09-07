@@ -792,6 +792,7 @@ uv run python compact_relay_prompts.py `
   --app-config ./app_config.json `
   --input-render-plan ./projects/my_song/output/render/plans/base.json `
   --output-render-plan ./projects/my_song/output/render/plans/compact.json `
+  --subject-anchor "a young woman with red hair and a blue coat" `
   --max-words 28
 ```
 
@@ -802,6 +803,7 @@ Options:
 | `--app-config` | `./app_config.json` | LLM config. |
 | `--input-render-plan` | required | Source render plan. |
 | `--output-render-plan` | required | Compacted render plan. |
+| `--subject-anchor` | required | Stable subject phrase relay prompts are anchored to. |
 | `--max-words` | `28` | Target max words per compacted relay prompt. |
 
 ### 3. Prompt Anchor Fix
