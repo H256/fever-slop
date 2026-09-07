@@ -163,6 +163,48 @@ class ArtifactStorePipelineIoTests(unittest.TestCase):
             self.assertIn("four five", relay[1]["prompt_relay"][0]["prompt"])
             self.assertNotIn("one two three", relay[1]["prompt_relay"][0]["prompt"])
 
+    def test_measured_performance_metadata_reaches_relay_and_render_plan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            temp = Path(directory)
+            srt = self._write_scene_srt(temp)
+            store = FakeArtifactStore()
+            store.json_reads["timeline"] = [{"type": "vocals", "start": 0, "end": 2,
+                "lyrics": "hold", "speaker_id": "voice1", "subject_id": "singer1", "offscreen": True,
+                "word_timestamps": [{"word": "hold", "word_id": "w1", "source": "whisper",
+                                     "start": 0.7, "end": 1.4}]}]
+            build_stage1_segment_json(srt, "timeline", "stage1", artifact_store=store)
+            self.assertEqual(0.7, store.json_writes["stage1"][0]["performance_intervals"][1]["start"])
+            for fps in (24, 25, 30):
+                settings = VideoSettings(fps=fps, width=1280, height=704)
+                build_scene_prompt_relay(srt, "timeline", "relay", settings,
+                                        artifact_store=store, min_segment_duration=1)
+                relay = store.json_writes["relay"][0]["prompt_relay"]
+                self.assertEqual(["instrumental", "singing", "instrumental"], [r["state"] for r in relay])
+                self.assertLessEqual(abs(relay[1]["frame_start"] / fps - 0.7), 1 / fps)
+                store.json_reads["relay"] = store.json_writes["relay"]
+                store.json_reads["scenes"] = [{"scene": 1, "segment_id": "segment_001", "start": 0, "end": 2, "duration": 2, "type": "mixed", "zimage_prompt": "A singer waits", "vocal_performers": [{"subject_id": "singer2", "speaker_id": "voice2"}]}]
+                build_render_plan("scenes", "relay", "plan", settings, artifact_store=store)
+                rendered = store.json_writes["plan"][0]["ltx"]["prompt_relay"][1]
+                self.assertEqual("w1", rendered["word_timestamps"][0]["word_id"])
+                self.assertTrue(rendered["performance_phase"])
+                self.assertEqual("voice1", rendered["speaker_id"])
+                self.assertTrue(rendered["offscreen"])
+
+    def test_projection_reports_initial_and_completed_progress_without_lyrics(self):
+        from types import SimpleNamespace
+        messages = []
+        reporter = SimpleNamespace(message=messages.append)
+        with tempfile.TemporaryDirectory() as directory:
+            store = FakeArtifactStore()
+            store.json_reads["timeline"] = []
+            srt = self._write_scene_srt(Path(directory))
+            build_stage1_segment_json(srt, "timeline", "stage1", artifact_store=store, reporter=reporter)
+            build_scene_prompt_relay(srt, "timeline", "relay", VideoSettings(fps=24, width=1280, height=704),
+                                     artifact_store=store, reporter=reporter)
+        self.assertEqual(4, len(messages))
+        self.assertIn("0/1", messages[0])
+        self.assertIn("1/1", messages[-1])
+
     def test_scene_srt_writer_uses_artifact_store_for_text(self):
         store = FakeArtifactStore()
 

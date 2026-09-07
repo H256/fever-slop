@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+from copy import deepcopy
 import random
 import re
 from collections.abc import Callable, Mapping
@@ -531,13 +532,15 @@ def build_render_plan(
                 )
 
             relay_entry = {
+                **deepcopy(relay),
                 "frame_start": frame_start,
                 "frame_end": frame_end,
                 "state": state,
                 "prompt": f"{ltx_base_prompt} {state_prompt}",
             }
-            if state == "singing":
-                relay_entry.update(_vocal_relay_binding(scene))
+            if state == "singing" and len(relay.get("vocal_events") or []) <= 1:
+                for key, value in _vocal_relay_binding(scene).items():
+                    relay_entry.setdefault(key, value)
             prompt_relay.append(relay_entry)
 
         if not prompt_relay:
