@@ -20,6 +20,7 @@ from feverslop.composition.stage_runners import (
     _run_msr_references_stage,
     _run_msr_reference_sheets_stage,
     _run_mux_original_audio_stage,
+    _run_relay_compact_stage,
     _run_render_plan_stage,
     _seed_reference_bindings,
     _selected_video_workflows,
@@ -1005,6 +1006,52 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
         fixer_class.assert_called_once_with(subject_anchor="Singer")
         fixer.fix_file.assert_called_once()
         self.assertEqual(anchored_plan, result.render_plan_path)
+
+    def test_relay_compact_stage_fails_loud_without_subject_anchor(self):
+        with TemporaryDirectory() as temp_dir:
+            prompts_dir = Path(temp_dir) / "output" / "prompts"
+            prompts_dir.mkdir(parents=True)
+            resolved_context = prompts_dir / "resolved_context_song.json"
+            resolved_context.write_text(json.dumps({"subject": ""}), encoding="utf-8")
+            state = SimpleNamespace(
+                args=SimpleNamespace(render_mode="relay"),
+                context=SimpleNamespace(
+                    resolved_context=resolved_context,
+                    compact_plan=Path(temp_dir) / "compact.json",
+                ),
+                app_config_path=Path(temp_dir) / "app.json",
+                plan_for_next_step=Path(temp_dir) / "plan.json",
+            )
+
+            with self.assertRaises(ValueError) as ctx:
+                _run_relay_compact_stage(state)
+
+            self.assertIn("No subject anchor found in", str(ctx.exception))
+
+    def test_relay_compact_stage_resolves_subject_from_context(self):
+        with TemporaryDirectory() as temp_dir:
+            prompts_dir = Path(temp_dir) / "output" / "prompts"
+            prompts_dir.mkdir(parents=True)
+            resolved_context = prompts_dir / "resolved_context_song.json"
+            resolved_context.write_text(json.dumps({"subject": "Singer"}), encoding="utf-8")
+            state = SimpleNamespace(
+                args=SimpleNamespace(render_mode="relay"),
+                context=SimpleNamespace(
+                    resolved_context=resolved_context,
+                    compact_plan=Path(temp_dir) / "compact.json",
+                ),
+                app_config_path=Path(temp_dir) / "app.json",
+                plan_for_next_step=Path(temp_dir) / "plan.json",
+            )
+
+            with patch("feverslop.composition.stage_runners.AppConfig"), \
+                    patch("feverslop.composition.stage_runners.OpenAICompatibleLLMClient"), \
+                    patch("feverslop.composition.stage_runners.RelayDirectionBuilder") as builder_class:
+                builder_class.return_value.compact_render_plan_file.return_value = Path(temp_dir) / "compact.json"
+                _run_relay_compact_stage(state)
+
+            _, kwargs = builder_class.call_args
+            self.assertEqual("Singer", kwargs["subject_anchor"])
 
     def test_pipeline_stage_error_names_failed_stage(self):
         with TemporaryDirectory() as tmp:

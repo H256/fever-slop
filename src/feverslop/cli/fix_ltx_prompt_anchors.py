@@ -20,13 +20,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--input-render-plan", required=True)
     parser.add_argument("--output-render-plan", required=True)
-    parser.add_argument(
-        "--subject-anchor",
-        default=(
-            "the old weary warrior man with a weathered scarred face, salt-and-pepper beard, "
-            "tattered leather armor, and a heavy frayed cloak"
-        ),
-    )
+    parser.add_argument("--subject-anchor", required=True)
     parser.add_argument("--max-base-prompt-chars", type=int, default=1200)
     parser.add_argument("--max-relay-chars", type=int, default=260)
     return parser
