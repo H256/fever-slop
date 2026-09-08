@@ -331,7 +331,7 @@ def _validate_r2v_contract(
             str(audio_metadata.get("name") or ""),
             str(audio_metadata.get("description") or ""),
         )).casefold()
-        if "full_mix" in audio_identity and re.search(r"\b(?:original song|beat|rhythm)\b", audio_identity):
+        if "delivery_roles" not in audio_metadata and "full_mix" in audio_identity and re.search(r"\b(?:original song|beat|rhythm)\b", audio_identity):
             copy_mode = "reference"
         if label not in summary:
             issues.append(PromptContractIssue(

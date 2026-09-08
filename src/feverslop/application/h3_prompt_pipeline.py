@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import deepcopy
 from typing import Any
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
@@ -33,6 +34,8 @@ def _attach_relay_segments(stage1_segments: list[dict], relay_scenes: list[dict]
         if relay_scene:
             result.setdefault("fps", relay_scene.get("fps"))
             result.setdefault("duration_seconds", relay_scene.get("duration_seconds"))
+            if "performance_intervals" in relay_scene:
+                result["performance_intervals"] = deepcopy(relay_scene["performance_intervals"])
             relay = relay_scene.get("prompt_relay") or (relay_scene.get("ltx") or {}).get("prompt_relay")
             if relay:
                 ltx = dict(result.get("ltx") or {})
@@ -100,6 +103,23 @@ def _attach_subject_directives(
         relay = (result.get("ltx") or {}).get("prompt_relay") or []
         actor_ids = list((result.get("references") or {}).get("actor_ids") or [])
         labels = {actor_id: f"<Subject {index}>" for index, actor_id in enumerate(actor_ids, start=1)}
+        if result.get("performance_intervals"):
+            intervals = deepcopy(result["performance_intervals"])
+            for phase in intervals:
+                events = phase.get("vocal_events") or [phase]
+                if len(events) != 1 or len(performers) != 1 or phase.get("state") not in {"singing", "vocals", "vocal"}:
+                    continue
+                event = events[0]
+                if event.get("offscreen"):
+                    continue
+                performer = performers[0]
+                subject_id = str(event.get("subject_id") or performer.get("subject_id") or "")
+                if subject_id in labels:
+                    event.setdefault("subject_id", subject_id)
+                    event.setdefault("subject_label", labels[subject_id])
+                    if subject_id == performer.get("subject_id"):
+                        event.setdefault("speaker_id", performer.get("speaker_id"))
+            result["performance_intervals"] = intervals
         if isinstance(performers, list) and relay:
             stamped_relay = []
             for item in relay:
@@ -376,6 +396,9 @@ class H3PromptPipeline:
                     audio_paths["full_mix"] = config.input_audio
 
         progress = SubStepProgress(reporter, "H3 prompts", len(stage1_segments))
+        set_reporter = getattr(builder, "set_reporter", None)
+        if callable(set_reporter):
+            set_reporter(reporter)
         video_type = str(
             global_context.get("video_type")
             or getattr(config, "video_type", "")
