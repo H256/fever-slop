@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from typing import Any
 
 from feverslop.domain.render_plan import RenderScene
 from feverslop.prompting.minimax_h3_prompt_style import (
@@ -21,6 +22,19 @@ class FakeArtifactStore:
 
     def read_json(self, path):
         return self.writes.get(str(path), self.reads.get(str(path), []))
+
+
+def _collect_keys(value: Any) -> set[str]:
+    keys: set[str] = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str):
+                keys.add(key)
+            keys.update(_collect_keys(item))
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            keys.update(_collect_keys(item))
+    return keys
 
 
 # ─── System Prompt Builder ───────────────────────────────────────────────────
@@ -240,6 +254,146 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertEqual("good", generator.judge_compiled_prompt(
             request=request, plan=plan, references=[], final_prompt="prompt",
         ).verdict)
+
+    def test_h3_llm_inputs_receive_compact_relay_segments(self):
+        import json
+        from contextlib import contextmanager
+        from copy import deepcopy
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
+        from feverslop.prompting.dspy_h3_models import (
+            BaseVideoPrompt,
+            CreativeFieldIssue,
+            MusicIntent,
+            ReferenceLimits,
+            VideoPromptRequest,
+        )
+        from feverslop.prompting.planning_payload import _EVIDENCE_FIELDS
+
+        marker = "x" * 100000
+        planner_calls = []
+        reference_calls = []
+        base_calls = []
+
+        creative_plan = SimpleNamespace(
+            creative_intent="A performer waits for the downpour.",
+            style_opening="Cinematic rain-soaked imagery.",
+            shots=[SimpleNamespace(
+                description="A performer folds a letter.",
+                prose_owner="description",
+                visible_action="folds a letter",
+                performance="sings a rainy verse",
+                camera_behavior="slow dolly left",
+                environmental_motion=None,
+                transition_intent=None,
+            )],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+            non_diegetic_music=None,
+        )
+
+        def planner(**kwargs):
+            planner_calls.append(kwargs)
+            return SimpleNamespace(plan=creative_plan)
+
+        def reference_renderer(**kwargs):
+            reference_calls.append(kwargs)
+            return SimpleNamespace(
+                summary="A scene.",
+                detailed_description="A performer folds a letter.",
+                overall_soundscape="Quiet room tone.",
+                non_diegetic_music=None,
+                retention_analysis=[],
+            )
+
+        def base_renderer(**kwargs):
+            base_calls.append(kwargs)
+            return SimpleNamespace(result=BaseVideoPrompt(
+                integrated_multimodal_description="A performer waits.",
+                overall_soundscape="Quiet room tone.",
+            ))
+
+        generator = VideoPromptGenerator.__new__(VideoPromptGenerator)
+        generator.planner = planner
+        generator.reference_renderer = reference_renderer
+        generator.base_renderer = base_renderer
+        generator.limits = ReferenceLimits()
+        generator.judge = None
+        generator.judge_attempts = 1
+        generator.warning_callback = None
+        generator.lm = object()
+        generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
+        generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
+
+        @contextmanager
+        def lm_context(*, lm):
+            yield
+
+        generator.dspy_runtime = SimpleNamespace(context=lm_context)
+
+        request = VideoPromptRequest.model_validate({
+            "mode": "r2v",
+            "user_prompt": "A singer performs.",
+            "duration_seconds": 4.0,
+            "notes": "compact notes",
+            "relay_segments": [{
+                "shot": 1,
+                "state": "singing",
+                "lyrics": "Mara sings into the rain",
+                "performance_phase": "singing",
+                "start_seconds": 0.0,
+                "end_seconds": 4.0,
+                "hard_cut_after": False,
+                "word_timestamps": [
+                    {"word": "Mara", "start": 0.0, "end": 0.4},
+                    {"word": "sings", "start": 0.4, "end": 0.9},
+                ],
+                "vocal_sources": [
+                    {"subject_id": "mara", "alignment": {"raw_text": marker}},
+                ],
+                "performance_conflicts": ["unresolved phase overlap"],
+            }],
+        })
+        original = deepcopy(request.relay_segments)
+
+        plan = generator._plan(request, [])
+        generator._render_reference(request, plan, [])
+        generator._repair_creative_plan(request, plan, [], [
+            CreativeFieldIssue(
+                shot_id="shot-0001",
+                field="visible_action",
+                issue_code="shot.missing",
+                repair_instruction="restore the action",
+            ),
+        ])
+        generator({**request.model_dump(), "mode": "t2v"})
+
+        def assert_compact(kwargs):
+            relay = kwargs["relay_segments"]
+            self.assertFalse(_collect_keys(relay) & _EVIDENCE_FIELDS)
+            self.assertNotIn(marker, json.dumps(relay))
+            item = relay[0]
+            self.assertEqual("singing", item["state"])
+            self.assertEqual("Mara sings into the rain", item["lyrics"])
+            self.assertEqual("singing", item["performance_phase"])
+            self.assertEqual(0.0, item["start_seconds"])
+            self.assertEqual(4.0, item["end_seconds"])
+            self.assertFalse(item["hard_cut_after"])
+
+        # planner: _plan, _repair_creative_plan, and the planner call made by
+        # the production __call__ path; plus reference and base renderers.
+        assert_compact(planner_calls[0])
+        assert_compact(planner_calls[1])
+        assert_compact(planner_calls[2])
+        assert_compact(reference_calls[0])
+        assert_compact(base_calls[0])
+        self.assertEqual(3, len(planner_calls))
+        self.assertEqual(1, len(reference_calls))
+        self.assertEqual(1, len(base_calls))
+        # Non-LLM consumers (shot windows, continuation intents, instrumental
+        # checks) keep reading the full, unmodified relay from the request.
+        self.assertEqual(original, request.relay_segments)
 
     def test_typed_plan_is_compiled_then_judged_with_exact_final_prompt(self):
         from types import SimpleNamespace

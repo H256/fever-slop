@@ -25,6 +25,7 @@ from feverslop.prompting.deterministic_h3_compiler import (
     creative_shots_from_plan,
 )
 from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.planning_payload import compact_planning_payload
 from feverslop.prompting.prompt_contract_validation import (
     PromptContractError,
     PromptContractIssue,
@@ -890,7 +891,7 @@ class DspyH3PromptBuilder:
             "duration_seconds": segment.get("duration") or segment.get("duration_seconds"),
             "user_prompt": user_prompt,
             "source_language": str(global_context.get("language") or "").strip(),
-            "notes": json.dumps({
+            "notes": json.dumps(compact_planning_payload({
                 "scene": segment,
                 "scene_details": scene_details,
                 "global_context": global_context,
@@ -900,7 +901,7 @@ class DspyH3PromptBuilder:
                     "Preserve lyric text verbatim and do not infer language from proper names, "
                     "fantasy names, or isolated tokens."
                 ),
-            }, ensure_ascii=False),
+            }), ensure_ascii=False),
             "references": generator_references,
             "images": images,
             "relay_segments": relay_segments,
