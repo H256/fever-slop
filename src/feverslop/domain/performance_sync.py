@@ -24,7 +24,7 @@ def _performance_text(segment: Mapping[str, Any]) -> str:
 
 
 def is_fully_instrumental(segment: Mapping[str, Any]) -> bool:
-    relay = (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    relay = segment.get("performance_intervals") or (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
     if relay:
         return all(
             str(item.get("state") or "").strip().lower() == "instrumental"
