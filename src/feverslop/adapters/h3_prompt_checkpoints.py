@@ -216,8 +216,6 @@ class H3PromptCheckpointStore:
         self.reporter.message(message)
 
     def _sync_canonical(self, checkpoint: H3PromptCheckpoint) -> None:
-        if checkpoint.status == "blocked":
-            return
         store = CanonicalPlanStore(self.project_dir)
         snapshot = store.capture_regeneration()
         if not snapshot.exists:
@@ -232,6 +230,14 @@ class H3PromptCheckpointStore:
                 raise FeverSlopDataError(
                     "H3 checkpoint canonical identity conflict: matching scene_id has a different segment_id",
                 )
+            readiness = checkpoint.generated.get("readiness")
+            readiness_changed = isinstance(readiness, Mapping) and scene.get("readiness") != readiness
+            if isinstance(readiness, Mapping):
+                scene["readiness"] = deepcopy(dict(readiness))
+            if checkpoint.status == "blocked":
+                if readiness_changed:
+                    store.commit_regeneration(snapshot, scenes)
+                return
             roles = canonical.get("roles")
             if not isinstance(roles, dict):
                 raise FeverSlopDataError("H3 checkpoint canonical roles must be an object")
@@ -250,6 +256,8 @@ class H3PromptCheckpointStore:
             if role.get("generated") == generated:
                 current_effective = resolve_effective_role(scene, PromptRole.H3_VIDEO)
                 if current_prompt == current_effective:
+                    if readiness_changed:
+                        store.commit_regeneration(snapshot, scenes)
                     return
             role["generated"] = generated
             h3 = scene.setdefault("h3", {})

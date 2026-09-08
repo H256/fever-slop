@@ -307,8 +307,13 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
             "prompt": "invalid", "readiness": {"status": "blocked"},
             "prompt_judge": {"verdict": "good"},
         })
-        self.assertEqual(before, base.read_bytes())
+        updated = json.loads(base.read_text(encoding="utf-8"))[0]
+        self.assertEqual(json.loads(before)[0]["canonical"], updated["canonical"])
+        self.assertEqual({"status": "blocked"}, updated["readiness"])
         self.assertEqual("blocked", self.store.load_for_resume(self.request()).status)
+        self.store.save(self.request(), {"prompt": "valid", "readiness": {"status": "ready"}})
+        updated = json.loads(base.read_text(encoding="utf-8"))[0]
+        self.assertEqual({"status": "ready"}, updated["readiness"])
 
     def test_save_populates_previously_empty_canonical_h3_role(self):
         base = self.project / "output/render/plans/base.json"
