@@ -20,6 +20,24 @@ from feverslop.prompting.dspy_h3_models import (
 
 
 class DeterministicH3CompilerTests(unittest.TestCase):
+    def test_copied_instruments_remain_audible_without_an_audience_score(self):
+        from feverslop.prompting.prompt_contract_validation import validate_h3_prompt_contract
+        plan = ResolvedPromptPlan(creative_intent="A drummer performs", subjects=[], reference_usage=[],
+            shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=4,
+                               description="A drummer plays. The camera dollies left.")],
+            overall_soundscape="Quiet room tone.", music_intent=MusicIntent.NONE)
+        references = [dict(label="<Audio 1>", kind="audio", name="drums",
+                           description="isolated drums", copy_mode="partially_copy")]
+        prompt = DeterministicH3Compiler().compile(mode="r2v", plan=plan, facts=self.facts,
+            shots=creative_shots_from_plan(plan), shot_windows={"shot-01": (0, 4)},
+            prepared_reference_labels=["<Audio 1>"], reference_metadata=references)
+        issues = validate_h3_prompt_contract(prompt, mode="r2v", plan=plan, reference_metadata=references)
+        self.assertNotIn("h3.audio.missing", [i.code for i in issues])
+        self.assertIn("non_diegetic_music: N/A", prompt)
+        self.assertIn("camera dollies left", prompt)
+        soundscape = prompt.split("overall_soundscape:", 1)[1].split("non_diegetic_music:", 1)[0]
+        self.assertIn("<Audio 1>", soundscape)
+
     def test_creative_cut_assigns_individual_words_and_clips_intervals(self):
         from feverslop.prompting.deterministic_h3_compiler import _performance_phases_for_shot
         phase = dict(performance_phase=True, start_seconds=0, end_seconds=4,

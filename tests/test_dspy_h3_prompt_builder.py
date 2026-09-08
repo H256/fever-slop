@@ -269,7 +269,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
-        self.assertEqual(42, revision["compiler_version"])
+        self.assertEqual(43, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
@@ -2152,6 +2152,66 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual(2, generator.calls)
         self.assertTrue(result["prompt_contract"]["valid"])
         self.assertEqual("dspy_contract_repair", result["prompt_provenance"]["source"])
+
+    def test_instrumental_audio_with_no_score_keeps_creative_plan_without_repair(self):
+        from types import SimpleNamespace
+        plan = ResolvedPromptPlan(creative_intent="A drummer performs.",
+            style_opening="Live-action cinematic imagery uses cool practical lighting.",
+            shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=2,
+                               description="The drummer performs.", camera_behavior="slow dolly left")],
+            overall_soundscape="Room tone.", music_intent=MusicIntent.NONE)
+        generator = FakeGenerator(SimpleNamespace(plan=plan))
+        result = DspyH3PromptBuilder(generator, allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "seg-1", "duration": 2, "type": "instrumental",
+                     "metadata": {"base_concept": "A drummer performs."}},
+            concept="A drummer performs.", scene_details={}, global_context={}, mode="r2v",
+            audio_paths={"drums": Path("drums.wav"), "full_mix": Path("song.wav")})
+        self.assertEqual(1, len(generator.requests))
+        self.assertEqual("dspy_section_plan", result["prompt_provenance"]["source"])
+        self.assertIn("non_diegetic_music: N/A", result["prompt"])
+        self.assertIn("dolly left", result["prompt"])
+        self.assertTrue(result["prompt_contract"]["valid"])
+
+    def test_graph_audio_roles_reach_compiler_and_resume_without_swapping_sources(self):
+        from types import SimpleNamespace
+        from feverslop.domain.h3_audio_delivery import load_h3_audio_delivery
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            graph = {
+                "1": dict(class_type="LoadAudio", _meta={"title": "#AUDIO_1"}, inputs={"audio": "old.wav"}),
+                "2": dict(class_type="TrimAudioDuration", _meta={"title": "#TRIM_AUDIO_1"}, inputs={"audio": ["1", 0]}),
+                "3": dict(class_type="LoadAudio", _meta={"title": "#AUDIO_2"}, inputs={"audio": "old.wav"}),
+                "4": dict(class_type="TrimAudioDuration", _meta={"title": "#TRIM_AUDIO_2"}, inputs={"audio": ["3", 0]}),
+                "5": dict(class_type="MiniMaxH3AddGuide", inputs={"audio": ["2", 0]}),
+                "6": dict(class_type="MiniMaxH3ReferenceToVideo", inputs={}),
+                "7": dict(class_type="CreateVideo", inputs={"audio": ["2", 0]}),
+            }
+            workflow = root / "workflow.json"
+            workflow.write_text(json.dumps(graph))
+            workflow.with_suffix(".profile.json").write_text(json.dumps({"conditioning_source": "full_mix"}))
+            for name in ("drums", "full_mix"):
+                (root / f"{name}.wav").write_bytes(name.encode())
+            plan = ResolvedPromptPlan(creative_intent="A drummer performs.",
+                style_opening="Live-action cinematic imagery uses cool practical lighting.",
+                shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=2, description="A drummer performs.")],
+                overall_soundscape="Air.", music_intent=MusicIntent.NONE)
+            generator = FakeGenerator(SimpleNamespace(plan=plan))
+            builder = DspyH3PromptBuilder(generator, reference_root=root, allow_fallback=False)
+            segment = dict(segment_id="s1", start=10, end=12, duration=2, type="instrumental", metadata={"base_concept": "A drummer performs"})
+            context = {"h3_audio_delivery": load_h3_audio_delivery(workflow).to_context()}
+            result = builder.build_h3_prompt(segment=segment, concept="A drummer performs", scene_details={},
+                global_context=context, mode="r2v", audio_paths={n: root / f"{n}.wav" for n in ("drums", "full_mix")})
+            sources = {source["name"]: source for source in result["h3_audio_sources"]}
+            self.assertIn("conditioning", sources["full_mix"]["roles"])
+            self.assertNotIn("conditioning", sources["drums"]["roles"])
+            self.assertIn("output_copy", sources["drums"]["roles"])
+            self.assertEqual({"start_seconds": 10, "end_seconds": 12}, sources["full_mix"]["audio_timing_window"])
+            self.assertIn("<Audio 2> conditions generation", result["prompt"])
+            self.assertIn("non_diegetic_music: N/A", result["prompt"])
+            resumed = builder.build_h3_prompt(segment=segment, concept="A drummer performs", scene_details={},
+                global_context=context, mode="r2v", structured_sections={**result["sections"], "resolved_references": result["references"]})
+            self.assertEqual(result["h3_audio_sources"], resumed["h3_audio_sources"])
+            self.assertEqual(1, len(generator.requests))
 
     def test_sanitizes_embedded_image_data_in_fallback_error(self):
         payload = "data:image/png;base64," + ("A" * 400)

@@ -13,7 +13,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 42
+H3_COMPILER_VERSION = 43
 
 
 def _performance_phases_for_shot(shot, phases):
@@ -501,11 +501,13 @@ class DeterministicH3Compiler:
                 if (
                     str(metadata.get("kind") or "").casefold() == "audio"
                     and copy_mode in {"fully_copy", "partially_copy"}
-                    and _audio_layer_kind(metadata) == "ambience"
+                    and (_audio_layer_kind(metadata) == "ambience" or
+                         (_audio_layer_kind(metadata) == "music" and not _is_audience_score(metadata, plan)))
                     and label not in soundscape
                 ):
                     soundscape += " " + _copied_audio_layer_sentence(
-                        label, copy_mode, "ambience and sound-effects layer",
+                        label, copy_mode, ("ambience and sound-effects layer" if _audio_layer_kind(metadata) == "ambience"
+                                           else "synchronized instrumental audio layer"),
                     )
             if not soundscape.strip():
                 soundscape = "No additional diegetic ambience or physical sound effects are specified."
@@ -712,6 +714,12 @@ def _reference_phrase_pattern(phrase: str) -> str:
 
 def _audio_relationship_phrase(label: str, metadata: Mapping[str, Any]) -> str:
     copy_mode = _effective_audio_copy_mode(metadata)
+    if "conditioning" in metadata.get("delivery_roles", ()):
+        relationship = f"{label} conditions generation through the synchronized audio guide"
+        return relationship + (
+            " and its signal is copied into the target audio" if copy_mode in {"fully_copy", "partially_copy"}
+            else "; it is referenced without copying its signal into the output"
+        )
     if copy_mode == "fully_copy":
         return f"{label} is fully copied as the complete soundtrack and timing reference"
     if copy_mode == "partially_copy":
@@ -729,7 +737,7 @@ def _effective_audio_copy_mode(metadata: Mapping[str, Any]) -> str:
         str(metadata.get("name") or ""),
         str(metadata.get("description") or ""),
     )).casefold()
-    if "full_mix" in identity and re.search(r"\b(?:original song|beat|rhythm)\b", identity):
+    if "delivery_roles" not in metadata and "full_mix" in identity and re.search(r"\b(?:original song|beat|rhythm)\b", identity):
         return "reference"
     return raw if raw in {"fully_copy", "partially_copy", "reference", "weak_reference"} else "reference"
 
@@ -744,6 +752,12 @@ def _audio_layer_kind(metadata: Mapping[str, Any]) -> str:
     if re.search(r"\b(?:ambience|ambient|sound effect|sfx|foley|room tone)\b", identity):
         return "ambience"
     return "music"
+
+
+def _is_audience_score(metadata: Mapping[str, Any], plan: ResolvedPromptPlan) -> bool:
+    if "delivery_roles" in metadata:
+        return "audience_score" in metadata["delivery_roles"]
+    return plan.music_intent is not MusicIntent.NONE
 
 
 def _copied_audio_layer_sentence(label: str, copy_mode: str, layer: str) -> str:
@@ -841,6 +855,8 @@ def _render_non_diegetic_music(
         if str(metadata.get("kind") or "").casefold() != "audio":
             continue
         if _audio_layer_kind(metadata) != "music":
+            continue
+        if not _is_audience_score(metadata, plan):
             continue
         copy_mode = _effective_audio_copy_mode(metadata)
         if copy_mode in {"reference", "weak_reference"} and plan.music_intent.value == "none":

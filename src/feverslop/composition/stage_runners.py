@@ -517,6 +517,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             build_dspy_generator(llm),
             reference_root=paths.project_dir,
             allow_fallback=True,
+            reporter=reporter,
         ),
         checkpoint_store_factory=lambda _context: H3PromptCheckpointStore(
             paths.project_dir,

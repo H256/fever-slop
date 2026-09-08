@@ -541,6 +541,9 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
     for index, item in enumerate(relay, start=1):
         if item.get("performance_phase") and "start_seconds" in item and "end_seconds" in item:
             start, end = float(item["start_seconds"]), float(item["end_seconds"])
+        elif item.get("performance_phase") and "start" in item and "end" in item:
+            origin = float(segment.get("abs_start_seconds", segment.get("start")) or 0)
+            start, end = float(item["start"]) - origin, float(item["end"]) - origin
         else:
             start = float(item["frame_start"]) / fps
             end = float(item["frame_end"]) / fps
@@ -674,10 +677,49 @@ class DspyH3PromptBuilder:
         # Compatibility callers may retain concept-only fallback; production
         # construction must pass False so DSPy failures are surfaced.
         allow_fallback: bool = True,
+        reporter: Any = None,
     ):
         self.generator = generator
         self.reference_root = reference_root
         self.allow_fallback = allow_fallback
+        self.reporter = reporter
+
+    def set_reporter(self, reporter: Any) -> None:
+        self.reporter = reporter
+
+    def _resolve_audio_delivery(self, references, delivery, segment, reference_root=None):
+        if not delivery.workflow_path:
+            return references
+        from feverslop.domain.h3_audio_delivery import resolve_h3_audio_sources, h3_audio_timing_window
+        audio = []
+        for reference in references:
+            if reference.get("kind") == "audio":
+                source = Path(reference["source"])
+                if not source.is_absolute() and (reference_root or self.reference_root):
+                    source = Path(reference_root or self.reference_root) / source
+                audio.append({**reference, "source": str(source)})
+        timing_scene = {**segment, "abs_start_seconds": segment.get("abs_start_seconds", segment.get("start", 0))}
+        if "abs_end_seconds" not in timing_scene and "end" in segment:
+            timing_scene["abs_end_seconds"] = segment["end"]
+        duration = segment.get("duration_seconds", segment.get("duration"))
+        if self.reporter is not None:
+            self.reporter.message("Resolving H3 audio source roles before prompt compilation")
+        sources = resolve_h3_audio_sources(delivery, audio, h3_audio_timing_window(timing_scene, duration))
+        by_label = {source["label"]: source for source in sources}
+        result = []
+        for reference in references:
+            item = dict(reference)
+            if item.get("kind") == "audio":
+                source = by_label[item["label"]]
+                item["audio_delivery"] = source
+                item["delivery_roles"] = source["roles"]
+                item["copy_mode"] = (
+                    "fully_copy" if source["name"] == "full_mix" else "partially_copy"
+                ) if "output_copy" in source["roles"] else "reference"
+            result.append(item)
+        if self.reporter is not None:
+            self.reporter.message(f"Validated H3 audio roles for {len(sources)} sources")
+        return result
 
     def checkpoint_revision(self) -> dict[str, Any]:
         revision: dict[str, Any] = {
@@ -725,6 +767,7 @@ class DspyH3PromptBuilder:
             mode=mode,
             audio_delivery=audio_delivery,
         )
+        references = self._resolve_audio_delivery(references, audio_delivery, segment, reference_root)
         raw_bindings = _audio_subject_bindings(
             segment.get("references") or {},
             available_stems={str(reference["name"]) for reference in references if reference["kind"] == "audio"},
@@ -902,6 +945,7 @@ class DspyH3PromptBuilder:
                     result = {
                         "prompt": prompt,
                         "references": references,
+                        "h3_audio_sources": [ref["audio_delivery"] for ref in references if "audio_delivery" in ref],
                         "prompt_contract": _valid_prompt_contract(prompt),
                         "sections": {
                             "h3_sections": sections.model_dump(),
@@ -965,6 +1009,7 @@ class DspyH3PromptBuilder:
         result = {
             "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,
+            "h3_audio_sources": [ref["audio_delivery"] for ref in references if "audio_delivery" in ref],
         }
         if directive_plan is not None:
             result["subject_directives"] = directive_plan.to_dict()
@@ -1113,6 +1158,7 @@ class DspyH3PromptBuilder:
                 list(sections.get("resolved_references") or []),
                 audio_delivery=audio_delivery,
             )
+            resolved_references = self._resolve_audio_delivery(resolved_references, audio_delivery, segment)
             plan = _normalize_plan_audio_usage(
                 plan,
                 resolved_references,
@@ -1199,6 +1245,7 @@ class DspyH3PromptBuilder:
             result = {
                 "prompt": prompt,
                 "references": resolved_references,
+                "h3_audio_sources": [ref["audio_delivery"] for ref in resolved_references if "audio_delivery" in ref],
                 "prompt_contract": _valid_prompt_contract(prompt),
                 "segment_id": segment.get("segment_id"),
                 "sections": sections,
