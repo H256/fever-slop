@@ -8,6 +8,7 @@ from feverslop.domain.llm_parsing import extract_json_object
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.llm import LLMPort
 from feverslop.prompting.music_video_modules import MusicVideoPromptModules
+from feverslop.prompting.planning_payload import compact_planning_payload
 
 
 def chunked(items: list[Any], size: int):
@@ -145,7 +146,7 @@ class ConceptPromptBatcher:
             "NOTES": notes,
             "PREVIOUS_PROGRESS_SUMMARY": previous_summary,
             "PREVIOUS_CONCEPTS": previous_concepts,
-            "CURRENT_BATCH_SEGMENTS": batch,
+            "CURRENT_BATCH_SEGMENTS": compact_planning_payload(batch),
         }
 
         response = self.prompt_modules.concepts(
@@ -204,7 +205,7 @@ class ConceptPromptBatcher:
             "NOTES": notes,
             "PREVIOUS_PROGRESS_SUMMARY": previous_summary,
             "PREVIOUS_CONCEPTS": previous_concepts,
-            "MISSING_SEGMENTS": missing_segments,
+            "MISSING_SEGMENTS": compact_planning_payload(missing_segments),
             "INVALID_SEGMENTS": invalid,
             "EXPECTED_KEYS": repair_ids,
         }

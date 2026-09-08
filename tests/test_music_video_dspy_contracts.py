@@ -9,6 +9,33 @@ from feverslop.prompting.music_video_signatures import (
 
 
 class MusicVideoDspyContractTests(unittest.TestCase):
+    def test_all_creative_predictors_receive_compact_non_mutating_scene_inputs(self):
+        import json
+        from copy import deepcopy
+        calls = []
+        modules = object.__new__(MusicVideoPromptModules)
+        def predict(**kwargs):
+            calls.append(kwargs)
+            return {"concepts": {}, "detail": "detail"}
+        modules._predictors = {name: predict for name in ("concept_map", "repair_concepts", "detail")}
+        modules._context = lambda **kwargs: nullcontext()
+        modules._lm = object()
+        scene = dict(segment_id="s1", lyrics="Keep all lyrics", start=10, end=12,
+                     performance_intervals=[{"vocal_events": [{"alignment": "x" * 800000}]}],
+                     word_timestamps=[{"word": "Keep"}], actors=[{"id": "lead", "role": "singer"}])
+        original = deepcopy(scene)
+        modules.concepts({"CURRENT_BATCH_SEGMENTS": [scene]}, batch=True)
+        modules.concepts({"SEGMENT_TIMELINE_JSON": [scene]})
+        modules.repair_concepts({"MISSING_SEGMENTS": [scene]})
+        modules.detail("camera", {"scene": scene}, "Preserve composition")
+        for call in calls:
+            payload = json.dumps(call["payload"])
+            self.assertLess(len(payload), 300)
+            self.assertIn("Keep all lyrics", payload)
+            self.assertIn("singer", payload)
+            self.assertNotIn("performance_intervals", payload)
+        self.assertEqual(original, scene)
+
     def test_signature_bundle_covers_each_classic_request_shape(self):
         bundle = build_music_video_signature_bundle()
 
