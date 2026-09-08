@@ -13,7 +13,7 @@ from feverslop.prompting.prompt_contract_validation import PromptContractError, 
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 43
+H3_COMPILER_VERSION = 44
 
 
 def _performance_phases_for_shot(shot, phases):

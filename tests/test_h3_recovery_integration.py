@@ -145,6 +145,46 @@ class H3RecoveryIntegrationTests(unittest.TestCase):
         self.assertEqual(3, len(self.planner.requests))
         self.assertEqual(0, fallbacks)
 
+    def test_override_refreshes_changed_cast_and_location_evidence(self):
+        original, _ = self.run_batch()
+        self.segments[1]["references"] = {"actor_ids": ["new-actor"], "location_id": "new-location"}
+        self.segments[1]["h3_prompt_override"] = original[1]["prompt"]
+        results, _ = self.run_batch()
+        self.assertEqual(4, len(self.planner.requests))
+        facts = results[1]["sections"]["facts"]["facts"]
+        self.assertTrue(any(f["category"] == "cast" and f["value"] == "new-actor" for f in facts))
+        self.assertTrue(any(f["category"] == "location" and f["value"] == "new-location" for f in facts))
+        self.assertEqual(original[0], results[0])
+
+    def test_valid_legacy_checkpoint_is_validated_without_model_calls(self):
+        original, _ = self.run_batch()
+        path = self.root / "output/render/scenes/scene_0002/h3_prompt.json"
+        checkpoint = json.loads(path.read_text(encoding="utf-8"))
+        checkpoint["generated"].pop("readiness")
+        path.write_text(json.dumps(checkpoint), encoding="utf-8")
+        resumed, fallbacks = self.run_batch()
+        self.assertEqual(3, len(self.planner.requests))
+        self.assertEqual(0, fallbacks)
+        self.assertEqual(original[1]["prompt"], resumed[1]["prompt"])
+        self.assertEqual("ready", resumed[1]["readiness"]["status"])
+
+    def test_compiler_contract_error_gets_one_corrective_attempt(self):
+        from feverslop.prompting.deterministic_h3_compiler import DeterministicH3Compiler
+        from feverslop.prompting.prompt_contract_validation import PromptContractError, PromptContractIssue
+        original_compile = DeterministicH3Compiler.compile
+        calls = []
+        def compile_once_invalid(compiler, **kwargs):
+            calls.append(1)
+            if len(calls) == 1:
+                raise PromptContractError([PromptContractIssue("h3.test.invalid", "plan", "Repair plan")])
+            return original_compile(compiler, **kwargs)
+        with patch.object(DeterministicH3Compiler, "compile", compile_once_invalid):
+            results, fallbacks = self.run_batch(segments=[self.segments[1]])
+        self.assertEqual(2, len(self.planner.requests))
+        self.assertEqual(0, fallbacks)
+        self.assertEqual("ready", results[0]["readiness"]["status"])
+        self.assertEqual(["generate", "repair"], [a["stage"] for a in results[0]["readiness"]["attempts"]])
+
     def test_blocked_checkpoint_reaches_render_and_finalization_gates(self):
         from feverslop.adapters.comfyui_minimax_h3_r2v_backend import ComfyUIMiniMaxH3R2VBackend
         from feverslop.adapters.comfyui_minimax_h3_t2v_backend import ComfyUIMiniMaxH3T2VBackend

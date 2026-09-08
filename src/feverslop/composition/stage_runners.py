@@ -490,6 +490,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         scene_details=scene_details,
         scene_prompts_json=state.context.scene_prompts,
         h3_prompts_json=h3_prompts_json,
+        render_plan_json=state.context.render_plan,
         stem_files=_discover_stem_files(paths.stems_dir, config.input_audio),
         ltx_prompt_relay_json=paths.prompts_dir / f"ltx_prompt_relay_{config.song_id}.json",
         beat_json=paths.timeline_dir / f"beat_data_{config.song_id}.json",
@@ -1979,6 +1980,7 @@ def _assemble_declared_cutless_groups(
 
 
 def _run_concat_video_only_stage(state: PipelineRunState) -> None:
+    from feverslop.domain.scene_recovery import require_ready_scenes
     from .config_loader import (
         collect_render_plan_scene_clips,
         collect_render_plan_scene_raw_clips,
@@ -1994,6 +1996,7 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
     render_plan = RenderPlan.from_dicts(render_plan).select(
         scene_numbers=selected_scenes,
     ).to_dicts()
+    require_ready_scenes(render_plan)
     scene_numbers = [int(entry["scene"]) for entry in render_plan]
     canonical_clips = [layout.scene_final_video(scene_number) for scene_number in scene_numbers]
     canonical_available = [clip for clip in canonical_clips if clip.is_file()]
@@ -2082,6 +2085,9 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
 
 
 def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
+    from feverslop.domain.scene_recovery import require_ready_scenes
+    if getattr(state, "plan_for_next_step", None):
+        require_ready_scenes(json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig")))
     layout = getattr(state.context, "artifact_layout", None)
     variants = getattr(state, "video_only_variants", None)
     if layout is not None and not variants:

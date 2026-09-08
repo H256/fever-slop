@@ -14,6 +14,7 @@ from feverslop.domain.effective_render_plan import CanonicalSceneDependencies
 from feverslop.domain.execution_plan import ExecutionPlan, ExecutionPlanItem, PlanAction
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
 from feverslop.domain.project_render_settings import ProjectRenderSettings
+from feverslop.domain.scene_recovery import RECOVERY_POLICY_VERSION
 from feverslop.errors import FeverSlopDataError
 from feverslop.prompting.deterministic_h3_compiler import H3_COMPILER_VERSION
 from feverslop.scene_artifacts import SceneArtifactLayout
@@ -444,25 +445,28 @@ def _h3_state(
 ) -> tuple[PlanAction, str]:
     role = (((scene.get("canonical") or {}).get("roles") or {}).get(str(PromptRole.H3_VIDEO)) or {})
     override = role.get("override")
-    if isinstance(override, Mapping):
-        return PlanAction.REUSE, "human H3 override is authoritative"
     checkpoint = layout.scene_h3_prompt(number)
     if not checkpoint.is_file():
         return PlanAction.RUN, "judged H3 checkpoint missing"
     payload = json.loads(checkpoint.read_text(encoding="utf-8-sig"))
     checkpoint_compiler_version = (payload.get("provenance") or {}).get("compiler_version")
-    if (
-        checkpoint_compiler_version is not None
-        and checkpoint_compiler_version != H3_COMPILER_VERSION
-    ):
+    if checkpoint_compiler_version != H3_COMPILER_VERSION:
         return PlanAction.RUN, "H3 compiler version changed"
+    generated = payload.get("generated") or {}
+    readiness = generated.get("readiness") or {}
+    if readiness.get("status") != "ready" or readiness.get("policy_version") != RECOVERY_POLICY_VERSION:
+        return PlanAction.RUN, "H3 semantic readiness requires validation"
+    if isinstance(override, Mapping):
+        if override.get("value") != generated.get("prompt"):
+            return PlanAction.RUN, "human H3 override changed; semantic validation required"
+        return PlanAction.REUSE, "human H3 override has current semantic validation"
     expected = ((role.get("generated") or {}).get("provenance") or {}).get("input_fingerprint")
     if expected and expected != payload.get("input_fingerprint"):
         return PlanAction.RUN, "H3 input fingerprint changed"
     status = str(payload.get("status") or "").lower()
-    if status in {"advisory_bad", "bad_exhausted"} and not judge_blocking:
+    if status in {"advisory_bad", "bad_exhausted"}:
         return PlanAction.REUSE, "advisory BAD H3 checkpoint is renderable"
-    if status != "good":
+    if status not in {"good", "unjudged"}:
         return PlanAction.RUN, "H3 checkpoint is not renderable"
     return PlanAction.REUSE, "judged H3 checkpoint matches"
 
