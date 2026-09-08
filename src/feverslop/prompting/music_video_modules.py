@@ -61,7 +61,8 @@ class MusicVideoPromptModules:
         timeout=None,
         max_tokens: int | None = None,
     ):
-        predictor_kwargs = {"guide": guide, **payload}
+        from feverslop.prompting.planning_payload import compact_planning_payload
+        predictor_kwargs = {"guide": guide, **compact_planning_payload(payload)}
         config = {"max_tokens": max_tokens or policy_for(name).max_tokens}
         if timeout is not None:
             config["timeout"] = timeout

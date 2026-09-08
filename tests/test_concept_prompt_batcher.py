@@ -23,6 +23,25 @@ class FakeConceptModules:
 
 
 class ConceptPromptBatcherTests(unittest.TestCase):
+    def test_planning_omits_replicated_evidence_in_batches_and_repairs(self):
+        from copy import deepcopy
+        segment = dict(segment_id="s1", start=1, end=3, duration=2, type="vocals", lyrics="Keep these words",
+                       performance_intervals=[{"vocal_sources": [{"alignment": "x" * 800000}]}],
+                       word_timestamps=[{"word": "Keep", "start": 1, "end": 2}],
+                       reason_codes=["uncertain_vocal_evidence"])
+        original = deepcopy(segment)
+        modules = FakeConceptModules([{}, {"s1": "A scene"}, "summary"])
+        result = ConceptPromptBatcher(object(), prompt_modules=modules).create_concept_prompts_batched(
+            stage1_segments=[segment], story_idea="Story", global_context={})
+        self.assertEqual({"s1": "A scene"}, result)
+        for _, payload, _ in modules.calls:
+            self.assertLess(len(json.dumps(payload)), 1000)
+            self.assertNotIn("performance_intervals", json.dumps(payload))
+        sent = modules.calls[0][1]["CURRENT_BATCH_SEGMENTS"][0]
+        self.assertEqual("Keep these words", sent["lyrics"])
+        self.assertEqual((1, 3), (sent["start"], sent["end"]))
+        self.assertEqual(segment, original)
+
     def test_reports_batch_progress(self):
         modules = FakeConceptModules([
             json.dumps({"seg_1": "concept 1"}),
