@@ -6,6 +6,7 @@ from typing import Any
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.domain.vocal_assignments import infer_vocal_performers
+from feverslop.domain.scene_recovery import require_ready_scenes
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
 from feverslop.prompting.dspy_h3_models import PromptMode
 from feverslop.prompting.model_types import resolve_model_type
@@ -377,11 +378,6 @@ class H3PromptPipeline:
             if "selected_scene_numbers" in context.keys()
             else None
         )
-        selected_scene_selection_complete = bool(
-            context["selected_scene_selection_complete"]
-            if "selected_scene_selection_complete" in context.keys()
-            else False
-        )
         request = context["request"] if "request" in context.keys() else None
         resume_requested = bool(getattr(request, "resume", False))
 
@@ -438,12 +434,12 @@ class H3PromptPipeline:
             preserve_existing_aggregate=selected_scene_numbers is not None,
             reuse_checkpoints=(
                 selected_scene_numbers is None
-                or selected_scene_selection_complete
                 or resume_requested
             ),
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
+        require_ready_scenes(context["h3_prompts"])
         # H3 quality diagnostics are advisory. A valid scene must keep moving
         # to rendering even when the creative planner, compiler diagnostics, or
         # judge report an imperfect prompt. The builder records whether it used
@@ -468,7 +464,7 @@ class H3PromptPipeline:
                     + "[/yellow]",
                 )
             else:
-                reporter.message("[green]H3 prompt judge summary: all generated prompts marked GOOD.[/green]")
+                reporter.message("[green]H3 prompt preparation complete; no advisory BAD verdicts recorded.[/green]")
         return context
 
 
@@ -511,7 +507,7 @@ def _h3_prompt_status_message(
         version_suffix = f"; using v{compiler_version}" if compiler_version is not None else ""
         label = f"recompiled (compiler checkpoint invalidated{version_suffix})"
     elif status == "override":
-        label = "user override (compiler, DSPy, and judge skipped)"
+        label = "user override (semantic contract validated)"
     elif status == "regenerating":
         label = "regenerating (saved structured plan fails current guide contract)"
     elif status == "completed":

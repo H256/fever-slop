@@ -974,6 +974,8 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
     def _validate_scene(self, scene: dict) -> None:
         """Validate that the scene has an actor or location reference."""
+        from feverslop.domain.scene_recovery import require_ready_scenes
+        require_ready_scenes([scene])
         references = scene.get("references") or {}
         actor_paths = (
             references.get("actor_sheet_paths", [])

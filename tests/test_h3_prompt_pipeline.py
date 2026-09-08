@@ -324,7 +324,7 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
 
         self.assertEqual("short_film", captured["video_type"])
 
-    def test_run_reuses_checkpoints_for_a_complete_scene_selection(self):
+    def test_explicit_complete_scene_selection_can_replan_single_scene_project(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 
         captured = {}
@@ -368,7 +368,7 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
 
         pipeline.run(context)
 
-        self.assertTrue(captured["reuse_checkpoints"])
+        self.assertFalse(captured["reuse_checkpoints"])
 
     def test_minimax_reports_compiler_revision_and_recompile_status(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline

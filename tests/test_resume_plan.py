@@ -18,6 +18,14 @@ from feverslop.domain.project_render_settings import (
 )
 from feverslop.domain.resource_phase import StageResource, select_first_resource_phase
 from feverslop.scene_artifacts import SceneArtifactLayout
+from feverslop.domain.scene_recovery import RECOVERY_POLICY_VERSION
+from feverslop.prompting.deterministic_h3_compiler import H3_COMPILER_VERSION
+
+
+def ready_h3_checkpoint(**fields):
+    return {"status": "good", "provenance": {"compiler_version": H3_COMPILER_VERSION},
+            "generated": {"prompt": "validated", "readiness": {
+                "status": "ready", "policy_version": RECOVERY_POLICY_VERSION}}, **fields}
 
 
 class ExecutionPlanTests(unittest.TestCase):
@@ -52,7 +60,7 @@ class ExecutionPlanTests(unittest.TestCase):
             checkpoint = layout.scene_h3_prompt(1)
             checkpoint.parent.mkdir(parents=True)
             checkpoint.write_text(
-                json.dumps({"status": "advisory_bad", "input_fingerprint": "fp"}),
+                json.dumps(ready_h3_checkpoint(status="advisory_bad", input_fingerprint="fp")),
                 encoding="utf-8",
             )
             scene = {
@@ -65,10 +73,30 @@ class ExecutionPlanTests(unittest.TestCase):
                 },
             }
 
-            action, reason = _h3_state(layout, scene, 1, judge_blocking=False)
+            action, reason = _h3_state(layout, scene, 1, judge_blocking=True)
 
         self.assertIs(PlanAction.REUSE, action)
         self.assertIn("advisory", reason)
+
+    def test_h3_readiness_and_override_changes_schedule_validation(self):
+        cases = [(None, None, PlanAction.RUN),
+                 ({"status": "ready", "policy_version": 0}, None, PlanAction.RUN),
+                 ({"status": "blocked", "policy_version": RECOVERY_POLICY_VERSION}, None, PlanAction.RUN),
+                 ({"status": "ready", "policy_version": RECOVERY_POLICY_VERSION}, None, PlanAction.REUSE),
+                 ({"status": "ready", "policy_version": RECOVERY_POLICY_VERSION}, "changed", PlanAction.RUN),
+                 ({"status": "ready", "policy_version": RECOVERY_POLICY_VERSION}, "validated", PlanAction.REUSE)]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            layout = SceneArtifactLayout(Path(temp_dir))
+            checkpoint = layout.scene_h3_prompt(1)
+            checkpoint.parent.mkdir(parents=True)
+            for readiness, override, expected in cases:
+                with self.subTest(readiness=readiness, override=override):
+                    payload = ready_h3_checkpoint()
+                    payload["generated"]["readiness"] = readiness
+                    checkpoint.write_text(json.dumps(payload), encoding="utf-8")
+                    role = {"override": {"value": override}} if override is not None else {}
+                    scene = {"canonical": {"roles": {str(PromptRole.H3_VIDEO): role}}}
+                    self.assertIs(expected, _h3_state(layout, scene, 1)[0])
 
     def test_plan_exposes_stable_runnable_stages_and_scene_union(self):
         plan = ExecutionPlan(
@@ -387,7 +415,7 @@ class ResumePlanTests(unittest.TestCase):
         manifest = json.loads(self.layout.scene_manifest(1).read_text(encoding="utf-8"))
         manifest["canonical_dependencies"] = None
         self.layout.scene_manifest(1).write_text(json.dumps(manifest), encoding="utf-8")
-        self.layout.scene_h3_prompt(1).write_text(json.dumps({"status": "good"}), encoding="utf-8")
+        self.layout.scene_h3_prompt(1).write_text(json.dumps(ready_h3_checkpoint()), encoding="utf-8")
         self.layout.scene_final_video(1).write_bytes(b"rendered clip")
         self.layout.final_dir.mkdir(parents=True, exist_ok=True)
         self.layout.movie.write_bytes(b"final movie")
@@ -596,7 +624,7 @@ class ResumePlanTests(unittest.TestCase):
         for number in (1, 2):
             checkpoint = self.layout.scene_h3_prompt(number)
             checkpoint.parent.mkdir(parents=True, exist_ok=True)
-            checkpoint.write_text(json.dumps({"status": "good", "input_fingerprint": f"fp-{number}"}), encoding="utf-8")
+            checkpoint.write_text(json.dumps(ready_h3_checkpoint(input_fingerprint=f"fp-{number}")), encoding="utf-8")
             self.layout.scene_final_video(number).write_bytes(b"clip")
         self._prepare(base[0], pipeline="minimax-h3-r2v")
         self.layout.scene_h3_prompt(2).unlink()
@@ -622,7 +650,7 @@ class ResumePlanTests(unittest.TestCase):
         self.assertIn("msr_references", plan.runnable_stages)
         self.assertIn("msr_reference_sheets", plan.runnable_stages)
 
-    def test_human_h3_override_does_not_require_generated_checkpoint(self):
+    def test_human_h3_override_requires_validated_checkpoint(self):
         scene = self._scene(1)
         scene["canonical"]["roles"][str(PromptRole.H3_VIDEO)] = {
             "generated": {"value": "generated", "provenance": {"input_fingerprint": "old"}},
@@ -635,8 +663,8 @@ class ResumePlanTests(unittest.TestCase):
         plan = build_resume_plan(self.project, video_pipeline="minimax-h3-t2v")
 
         h3 = next(item for item in plan.items if item.phase == "h3 prompts")
-        self.assertEqual(PlanAction.REUSE, h3.action)
-        self.assertIn("override", h3.reason)
+        self.assertEqual(PlanAction.RUN, h3.action)
+        self.assertIn("checkpoint", h3.reason)
 
 
 if __name__ == "__main__":

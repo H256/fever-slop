@@ -75,6 +75,8 @@ UNIT_MODULES = (
     "h3_audio_delivery",
     "h3_prompt_builder",
     "h3_prompt_checkpoints",
+    "h3_recovery_integration",
+    "scene_recovery",
     "h3_prompt_pipeline",
     "h3_two_pass",
     "h3_two_pass_workflows",

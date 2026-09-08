@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal, Mapping
 
 H3_CHECKPOINT_SCHEMA = "feverslop.h3-prompt-checkpoint.v1"
-H3CheckpointStatus = Literal["good", "advisory_bad", "unjudged"]
+H3CheckpointStatus = Literal["good", "advisory_bad", "unjudged", "blocked"]
 
 
 @dataclass(frozen=True)
@@ -36,6 +36,9 @@ class H3PromptCheckpoint:
 
 
 def _contract_matches(generated: Mapping[str, Any]) -> bool:
+    readiness = generated.get("readiness")
+    if isinstance(readiness, Mapping) and readiness.get("status") == "blocked":
+        return False
     provenance = generated.get("prompt_provenance")
     contract = generated.get("prompt_contract")
     if not isinstance(provenance, Mapping) or not isinstance(contract, Mapping):
@@ -53,6 +56,9 @@ def _contract_matches(generated: Mapping[str, Any]) -> bool:
 
 
 def checkpoint_status(generated: Mapping[str, Any]) -> H3CheckpointStatus:
+    readiness = generated.get("readiness")
+    if isinstance(readiness, Mapping) and readiness.get("status") == "blocked":
+        return "blocked"
     provenance = generated.get("prompt_provenance")
     compiler_version = (
         int(provenance.get("compiler_version") or 0)

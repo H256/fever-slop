@@ -629,6 +629,8 @@ def build_render_plan(
         h3_entry = h3_by_segment.get(scene.get("segment_id", ""))
         if h3_entry and "h3_audio_sources" in h3_entry:
             render_scene["h3_audio_sources"] = deepcopy(h3_entry["h3_audio_sources"])
+        if h3_entry and "readiness" in h3_entry:
+            render_scene["readiness"] = deepcopy(h3_entry["readiness"])
         canonical_h3_audio_refs = _h3_audio_references(h3_entry)
         if h3_entry and h3_entry.get("prompt"):
             render_scene["h3"] = {"prompt": str(h3_entry["prompt"]).strip()}

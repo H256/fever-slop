@@ -295,6 +295,26 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         self.assertEqual(saved.input_fingerprint, role["generated"]["provenance"]["input_fingerprint"])
         self.assertEqual("human approved", scene["h3"]["prompt"])
 
+    def test_blocked_checkpoint_never_projects_invalid_prompt(self):
+        base = self.project / "output/render/plans/base.json"
+        base.parent.mkdir(parents=True)
+        canonical = build_canonical_scene(
+            segment_id="segment-a", generated_roles={PromptRole.H3_VIDEO: "keep"},
+        )
+        base.write_text(json.dumps([{"scene": 1, "canonical": canonical}]), encoding="utf-8")
+        before = base.read_bytes()
+        self.store.save(self.request(), {
+            "prompt": "invalid", "readiness": {"status": "blocked"},
+            "prompt_judge": {"verdict": "good"},
+        })
+        updated = json.loads(base.read_text(encoding="utf-8"))[0]
+        self.assertEqual(json.loads(before)[0]["canonical"], updated["canonical"])
+        self.assertEqual({"status": "blocked"}, updated["readiness"])
+        self.assertEqual("blocked", self.store.load_for_resume(self.request()).status)
+        self.store.save(self.request(), {"prompt": "valid", "readiness": {"status": "ready"}})
+        updated = json.loads(base.read_text(encoding="utf-8"))[0]
+        self.assertEqual({"status": "ready"}, updated["readiness"])
+
     def test_save_populates_previously_empty_canonical_h3_role(self):
         base = self.project / "output/render/plans/base.json"
         base.parent.mkdir(parents=True)

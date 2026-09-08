@@ -87,6 +87,21 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_fallback_preserves_last_structured_camera_and_timing(self):
+        from types import SimpleNamespace
+        plan = ResolvedPromptPlan(creative_intent="A performer waits.", style_opening="",
+            shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=2,
+                               description="A performer folds a letter.", camera_behavior="slow dolly left")],
+            overall_soundscape="Quiet room tone.", music_intent=MusicIntent.NONE)
+        generator = FakeGenerator(SimpleNamespace(plan=plan))
+        result = DspyH3PromptBuilder(generator).build_h3_prompt(segment={"segment_id": "s1", "duration": 2},
+            concept="A different generic concept", scene_details={}, global_context={}, mode="r2v")
+        self.assertEqual(2, len(generator.requests))
+        self.assertEqual("ready", result["readiness"]["status"])
+        self.assertIn("folds a letter", result["prompt"])
+        self.assertIn("dolly left", result["prompt"])
+        self.assertEqual(2, result["sections"]["h3_sections"]["shots"][0]["end_seconds"])
+
     def test_audio_latent_delivery_marks_full_mix_as_copied_not_score_reference(self):
         references, _ = _scene_references(
             {"segment_id": "seg-1", "references": {}},
@@ -269,7 +284,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
-        self.assertEqual(43, revision["compiler_version"])
+        self.assertEqual(44, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
@@ -311,10 +326,10 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 nonlocal calls
                 calls += 1
                 if calls == 4:
-                    raise RuntimeError("provider interrupted")
+                    raise KeyboardInterrupt("provider interrupted")
                 return FakeGeneratedPrompt()
 
-            with self.assertRaisesRegex(RuntimeError, "provider interrupted"):
+            with self.assertRaisesRegex(KeyboardInterrupt, "provider interrupted"):
                 DspyH3PromptBuilder(generate, allow_fallback=False).build_all_h3_prompts(
                     stage1_segments=[
                         {"scene": number, "segment_id": f"seg-{number}"}
@@ -436,7 +451,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertIsNotNone(generator.warning_callback)
 
-    def test_user_override_skips_checkpoint_generator_and_judge(self):
+    def test_unstructured_user_override_cannot_bypass_validation(self):
         class FailingGenerator:
             def __call__(self, _request):
                 raise AssertionError("override must bypass DSPy")
@@ -454,8 +469,8 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             output_json_path="prompts.json", artifact_store=Store(),
         )
 
-        self.assertEqual("free-form MiniMax debugging prompt", result[0]["prompt"])
-        self.assertEqual("user_override", result[0]["prompt_provenance"]["source"])
+        self.assertEqual("blocked", result[0]["readiness"]["status"])
+        self.assertFalse(result[0]["prompt_contract"]["valid"])
         self.assertNotIn("prompt_judge", result[0])
 
     def test_preserves_valid_prompt_when_judge_marks_it_bad(self):
@@ -1892,7 +1907,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual([(1, 2), (2, 2)], progress)
         self.assertEqual(
-            [(1, 2, "started"), (1, 2, "completed"), (2, 2, "started"), (2, 2, "completed")],
+            [(1, 2, "started"), (1, 2, "blocked"), (2, 2, "started"), (2, 2, "blocked")],
             statuses,
         )
 
@@ -2071,7 +2086,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual(generator.requests[-1]["references"][0]["source"], str(picture))
         self.assertEqual(result["references"][0]["source"], "output/actor.png")
 
-    def test_falls_back_to_guide_shaped_prompt_when_generator_fails(self):
+    def test_blocks_without_a_structured_plan_when_generator_fails(self):
         class BrokenGenerator:
             def __call__(self, request):
                 raise RuntimeError("DSPy unavailable")
@@ -2085,14 +2100,12 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             mode="ref",
         )
 
-        self.assertIn("subject_definitions:", result["prompt"])
-        self.assertIn("detailed_description:", result["prompt"])
-        self.assertIn("fallback scene", result["prompt"])
-        self.assertEqual("deterministic_fallback", result["prompt_provenance"]["source"])
-        self.assertEqual(result["dspy_error"], "DSPy unavailable")
-        self.assertTrue(result["prompt_contract"]["valid"])
+        self.assertEqual("", result["prompt"])
+        self.assertEqual("blocked", result["readiness"]["status"])
+        self.assertEqual(["h3.fallback.plan_missing"], result["readiness"]["reason_codes"])
+        self.assertFalse(result["prompt_contract"]["valid"])
 
-    def test_fallback_binds_each_picture_reference_as_a_defined_subject(self):
+    def test_references_alone_do_not_allow_inventing_a_fallback_plan(self):
         class BrokenGenerator:
             def __call__(self, request):
                 raise RuntimeError("DSPy unavailable")
@@ -2114,9 +2127,8 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             mode="ref",
         )
 
-        definitions = result["prompt"].split("summary:", 1)[0]
-        self.assertIn("<Subject 1>", definitions)
-        self.assertIn("<Picture 1>", definitions)
+        self.assertEqual("blocked", result["readiness"]["status"])
+        self.assertFalse(result["prompt_contract"]["valid"])
 
     def test_retries_dspy_plan_once_after_a_prompt_contract_failure(self):
         from types import SimpleNamespace
@@ -2229,7 +2241,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertNotIn("data:image", result["dspy_error"])
         self.assertNotIn("A" * 100, result["dspy_error"])
-        self.assertIn("embedded image omitted", result["dspy_error"])
+        self.assertEqual("h3.fallback.plan_missing", result["dspy_error"])
 
     def test_production_mode_does_not_hide_dspy_failure(self):
         class BrokenGenerator:
