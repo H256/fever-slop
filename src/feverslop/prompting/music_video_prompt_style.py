@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from feverslop.config.project_config import (
+    SCENE_PROMPT_WORD_COUNT_MAX,
+    SCENE_PROMPT_WORD_COUNT_MIN,
+)
 from feverslop.domain.prompt_constraints import build_location_constraint  # noqa: F401
 from feverslop.prompting.guide_loader import load_markdown_guide
 
@@ -70,10 +74,23 @@ def build_detail_system_prompt(label: str, *, segment_type: str = "", silent_mod
 def build_video_payload(*, segment: dict[str, Any], concept: str, scene_details: dict[str, Any], global_context: dict[str, Any], scene_cast: dict[str, Any] | None = None, t2i_prompt: str = "", custom_instructions: str = "") -> dict[str, Any]:
     segment_type = str(segment.get("type", "")).strip().lower()
     silent_mode = bool(global_context.get("silent_mode", False))
+    guidance = global_context.get("prompt_guidance") or {}
+    try:
+        maximum = int(guidance.get("word_count_max", SCENE_PROMPT_WORD_COUNT_MAX))
+    except (TypeError, ValueError):
+        maximum = SCENE_PROMPT_WORD_COUNT_MAX
+    maximum = max(1, maximum)
+    try:
+        minimum = int(guidance.get("word_count_min", SCENE_PROMPT_WORD_COUNT_MIN))
+    except (TypeError, ValueError):
+        minimum = SCENE_PROMPT_WORD_COUNT_MIN
+    minimum = max(1, min(minimum, maximum))
     return {
         "subject": global_context["subject"], "story_idea": global_context["story_idea"],
         "style": global_context["style"], "locations": global_context["locations"],
         "prompt_guidance": global_context.get("prompt_guidance", {}), "segment": segment,
+        "prompt_word_limits": {"min": minimum, "max": maximum},
+        "prompt_output_max_tokens": max(256, min(2048, maximum * 4)),
         "performance_mode": segment_type, "silent_mode": silent_mode,
         "performance_policy": performance_policy(segment_type, silent_mode=silent_mode),
         "t2i_prompt": t2i_prompt, "scene_concept": concept, "scene_cast": scene_cast or {},

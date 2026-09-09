@@ -4,7 +4,10 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
-from feverslop.config.project_config import SCENE_PROMPT_WORD_COUNT_MAX
+from feverslop.config.project_config import (
+    SCENE_PROMPT_WORD_COUNT_MAX,
+    SCENE_PROMPT_WORD_COUNT_MIN,
+)
 from feverslop.domain.scene_cast import resolve_scene_cast, scene_cast_to_prompt_payload
 from feverslop.domain.vocal_assignments import infer_vocal_performers
 from feverslop.ports.artifacts import ArtifactStore
@@ -78,6 +81,21 @@ def scene_prompt_word_limit(global_context: dict) -> int:
     except (TypeError, ValueError):
         return SCENE_PROMPT_WORD_COUNT_MAX
     return configured if configured > 0 else SCENE_PROMPT_WORD_COUNT_MAX
+
+
+def scene_prompt_word_bounds(global_context: dict) -> tuple[int, int]:
+    guidance = global_context.get("prompt_guidance") or {}
+    try:
+        minimum = int(guidance.get("word_count_min", SCENE_PROMPT_WORD_COUNT_MIN))
+    except (TypeError, ValueError):
+        minimum = SCENE_PROMPT_WORD_COUNT_MIN
+    maximum = scene_prompt_word_limit(global_context)
+    return (max(1, min(minimum, maximum)), maximum)
+
+
+def scene_prompt_max_tokens(max_words: int) -> int:
+    """Budget enough structured output for the configured prompt word bound."""
+    return max(256, min(2048, int(max_words) * 4))
 
 
 def normalize_scene_references(
@@ -212,6 +230,8 @@ class ScenePromptBuilder:
             "locations": global_context["locations"],
             "location_constraint": global_context.get("location_constraint", ""),
             "prompt_guidance": global_context.get("prompt_guidance", {}),
+            "prompt_word_limits": dict(zip(("min", "max"), scene_prompt_word_bounds(global_context))),
+            "prompt_output_max_tokens": scene_prompt_max_tokens(scene_prompt_word_bounds(global_context)[1]),
             "custom_instructions": custom_instructions,
             "trigger_word": trigger_word,
         }

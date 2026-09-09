@@ -57,7 +57,11 @@ class GeneralPromptModules:
         kwargs = {"guide": guide, **payload, **extra}
         if compact:
             kwargs = compact_planning_payload(kwargs)
-        config = {"max_tokens": max_tokens or policy_for(name).max_tokens}
+        nested_payload = payload.get("payload")
+        configured_budget = payload.get("prompt_output_max_tokens")
+        if configured_budget is None and isinstance(nested_payload, dict):
+            configured_budget = nested_payload.get("prompt_output_max_tokens")
+        config = {"max_tokens": max_tokens or configured_budget or policy_for(name).max_tokens}
         if timeout is not None:
             config["timeout"] = timeout
         kwargs["config"] = config
@@ -87,7 +91,7 @@ class GeneralPromptModules:
 
     def i2v_prompt(self, payload: dict[str, Any], *, guide: str, timeout=None) -> PromptResult:
         kwargs = {"guide": guide, "payload": compact_planning_payload(payload)}
-        config = {"max_tokens": policy_for("i2v_prompt").max_tokens}
+        config = {"max_tokens": payload.get("prompt_output_max_tokens") or policy_for("i2v_prompt").max_tokens}
         if timeout is not None:
             config["timeout"] = timeout
         kwargs["config"] = config
