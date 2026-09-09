@@ -14,6 +14,8 @@ _CREATIVE_CONTEXT_FIELDS = (
     "max_scene_actors", "language", "silent_mode", "location_constraint", "steering",
 )
 
+_H3_SCENE_METADATA_FIELDS = ("lyrics", "dialogue", "type")
+
 
 
 def compact_planning_payload(value: Any) -> Any:
@@ -37,5 +39,16 @@ def compact_creative_context(value: Any) -> dict[str, Any]:
     return {
         key: compact_planning_payload(value[key])
         for key in _CREATIVE_CONTEXT_FIELDS
+        if key in value
+    }
+
+
+def compact_h3_scene_metadata(value: Any) -> dict[str, Any]:
+    """Keep only scene metadata not already sent in dedicated planner inputs."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: compact_planning_payload(value[key])
+        for key in _H3_SCENE_METADATA_FIELDS
         if key in value
     }
