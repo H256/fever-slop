@@ -1,0 +1,20 @@
+{
+  "schema": "feverslop.benchmark-project/v1",
+  "project": {
+    "config": "config.json",
+    "input_audio": "input/the-parts-they-left.mp3",
+    "input_audio_sha256": "e2bbfb8cb25ae859421ddbf115c2aaadeb922e7256d103f59c7e3400a574fbda"
+  },
+  "toolchain": {
+    "python": "3.12",
+    "package_manager": "uv",
+    "video_pipeline": "minimax-h3-r2v"
+  },
+  "expected_planning_artifacts": [
+    "../tests/fixtures/canonical_benchmark/benchmark_plan.json"
+  ],
+  "outputs": {
+    "root": "output/",
+    "gitignored": true
+  }
+}

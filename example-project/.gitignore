@@ -1,6 +1,8 @@
 # Generated project state
 .studio/
 output/
+# Benchmark runs never modify tracked fixture inputs or expectations.
+expected-output/
 plans/
 temp/
 *.log
