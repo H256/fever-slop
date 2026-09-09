@@ -17,16 +17,6 @@ def build_movie_planner(config: dict[str, Any] | None = None):
 
     app_config = AppConfig.load(str((config or {}).get("app_config_path") or "app_config.json"))
     return LLMMoviePlanner(
-        OpenAICompatibleLLMClient(
-            base_url=app_config.llm.base_url,
-            api_key=app_config.llm.api_key,
-            model=app_config.llm.model_for("creative"),
-            temperature=app_config.llm.temperature,
-            dspy_temperature=app_config.llm.dspy_temperature,
-            max_tokens=app_config.llm.max_tokens,
-            request_timeout_seconds=app_config.llm.request_timeout_seconds,
-            max_concurrent_requests=app_config.llm.max_concurrent_requests,
-            chat_template_kwargs=app_config.llm.chat_template_kwargs,
-        ),
+        OpenAICompatibleLLMClient.from_config(app_config, task_type="creative"),
         reference_hero_workflow=(config or {}).get("hero_workflow"),
     )
