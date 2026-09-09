@@ -47,6 +47,17 @@ class ComfyUIClient:
     - download generated output assets
     """
 
+    @classmethod
+    def from_app_config(cls, app_config, **overrides):
+        """Construct a client from the shared ComfyUI configuration."""
+        comfyui = app_config.comfyui
+        params = {
+            "base_url": comfyui.base_url,
+            "prompt_timeout_seconds": comfyui.prompt_timeout_seconds,
+        }
+        params.update(overrides)
+        return cls(**params)
+
     def __init__(
         self,
         base_url: str = "http://127.0.0.1:8188",
