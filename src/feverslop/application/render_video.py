@@ -8,7 +8,6 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.application.effective_render_plan import project_effective_plan
 from feverslop.application.continuity_boundary import (
     LAST_FRAME_EXTRACTOR_REVISION,
@@ -24,7 +23,7 @@ from feverslop.ports.rendering import (
     VideoRenderRequest,
     WorkflowAnchorConfig,
 )
-from feverslop.ports.reporting import Reporter
+from feverslop.ports.reporting import ConsoleReporter, Reporter
 from feverslop.utils.sub_step_progress import SubStepProgress
 from feverslop.utils.io import file_is_valid
 from feverslop.utils.io import atomic_write_json, read_json_object
