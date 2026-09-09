@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import tempfile
 from collections.abc import Iterable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -29,21 +28,6 @@ def recommended_sheet_layout(kind: Any) -> tuple[int, tuple[int, int]]:
     if str(value) == "location":
         return 3, (512, 288)
     return 2, (512, 288)
-
-
-@dataclass(frozen=True, slots=True)
-class FrameSelectionConfig:
-    view_count: int = 4
-    sharpness_weight: float = 0.60
-    diversity_weight: float = 0.25
-    coverage_weight: float = 0.15
-
-    def __post_init__(self) -> None:
-        if type(self.view_count) is not int or self.view_count < 1:
-            raise ValueError("view_count must be a positive integer")
-        weights = (self.sharpness_weight, self.diversity_weight, self.coverage_weight)
-        if any(value < 0 for value in weights) or sum(weights) <= 0:
-            raise ValueError("selection weights must be non-negative and not all zero")
 
 
 def generate_sequence_to_sheet(
@@ -119,14 +103,6 @@ def generate_sequence_to_sheet(
     }
 
 
-@dataclass(frozen=True, slots=True)
-class _FrameFeatures:
-    path: Path
-    position: int
-    sharpness: float
-    descriptor: np.ndarray
-
-
 def extract_video_frames(
     video_path: str | Path,
     output_dir: str | Path,
@@ -161,81 +137,6 @@ def extract_video_frames(
         return tuple(outputs)
     finally:
         capture.release()
-
-
-def select_frames(
-    frame_paths: Iterable[str | Path],
-    *,
-    config: FrameSelectionConfig,
-) -> tuple[Path, ...]:
-    """Select sharp, visually diverse, temporally distributed frames."""
-    paths = tuple(Path(path) for path in frame_paths)
-    if not paths:
-        raise ValueError("at least one frame is required")
-    if len(set(paths)) != len(paths):
-        raise ValueError("frame paths must be unique")
-
-    features = tuple(_read_features(path, position) for position, path in enumerate(paths))
-    if len(features) <= config.view_count:
-        return tuple(feature.path for feature in features)
-
-    sharpness = np.asarray([feature.sharpness for feature in features], dtype=np.float64)
-    sharp_min = float(sharpness.min())
-    sharp_span = float(sharpness.max() - sharp_min)
-    sharp_normalized = (
-        np.ones(len(features), dtype=np.float64)
-        if sharp_span <= 1e-12
-        else (sharpness - sharp_min) / sharp_span
-    )
-    selected: list[_FrameFeatures] = []
-    for slot in range(config.view_count):
-        target_position = slot * (len(features) - 1) / max(config.view_count - 1, 1)
-        segment_half_width = max(
-            1.0,
-            (len(features) - 1) / max(config.view_count - 1, 1) / 2.0,
-        )
-        ranked: list[tuple[float, int, _FrameFeatures]] = []
-        for feature_index, feature in enumerate(features):
-            if feature in selected:
-                continue
-            in_temporal_segment = abs(feature.position - target_position) <= segment_half_width
-            if not in_temporal_segment:
-                continue
-            coverage = 1.0 - abs(feature.position - target_position) / max(len(features) - 1, 1)
-            if not selected:
-                diversity = 1.0
-            else:
-                diversity = min(
-                    float(np.linalg.norm(feature.descriptor - other.descriptor))
-                    for other in selected
-                )
-                diversity = min(1.0, diversity / 2.0)
-            score = (
-                config.sharpness_weight * float(sharp_normalized[feature_index])
-                + config.diversity_weight * diversity
-                + config.coverage_weight * coverage
-            )
-            ranked.append((score, -feature.position, feature))
-        if not ranked:
-            # A prior slot may have consumed the only frame in a narrow
-            # segment; retain deterministic behavior without losing a view.
-            for feature_index, feature in enumerate(features):
-                if feature in selected:
-                    continue
-                coverage = 1.0 - abs(feature.position - target_position) / max(len(features) - 1, 1)
-                diversity = 1.0 if not selected else min(
-                    1.0,
-                    min(float(np.linalg.norm(feature.descriptor - other.descriptor)) for other in selected) / 2.0,
-                )
-                score = (
-                    config.sharpness_weight * float(sharp_normalized[feature_index])
-                    + config.diversity_weight * diversity
-                    + config.coverage_weight * coverage
-                )
-                ranked.append((score, -feature.position, feature))
-        selected.append(max(ranked, key=lambda item: (item[0], item[1]))[2])
-
-    return tuple(feature.path for feature in sorted(selected, key=lambda item: item.position))
 
 
 def compose_contact_sheet(
@@ -319,15 +220,3 @@ def compose_sheet_from_contact_sheet(
             panel_size=panel_size,
             include_labels=include_labels,
         )
-
-
-def _read_features(path: Path, position: int) -> _FrameFeatures:
-    if not path.is_file():
-        raise FileNotFoundError(path)
-    image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
-    if image is None:
-        raise ValueError(f"could not read frame image: {path}")
-    resized = cv2.resize(image, (8, 8), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
-    descriptor = resized.reshape(-1)
-    sharpness = float(cv2.Laplacian(image, cv2.CV_64F).var())
-    return _FrameFeatures(path=path, position=position, sharpness=sharpness, descriptor=descriptor)
