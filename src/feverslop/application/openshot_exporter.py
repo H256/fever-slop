@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.application.render_plan_validation import (
-    require_non_empty_render_plan,
+    load_render_plan_entries,
     validate_render_plan_timeline,
 )
 
@@ -29,18 +29,14 @@ def export_render_plan_to_openshot(
     on_progress: ProgressCallback | None = None,
 ) -> Path:
     """Write an OpenShot .osp project whose clips follow the render plan timeline."""
-    plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
-    if isinstance(plan, dict):
-        plan = plan.get("shots") or plan.get("scenes") or []
-    if not isinstance(plan, list):
-        raise ValueError(f"Render plan must be a JSON list: {render_plan_path}")
+    entries = load_render_plan_entries(render_plan_path)
+    plan = [entry[0] for entry in entries]
     if len(plan) != len(clip_paths):
         raise ValueError(
             "OpenShot export requires one rendered clip per render-plan entry "
             f"(got {len(clip_paths)} clips for {len(plan)} entries)",
         )
 
-    require_non_empty_render_plan(plan, render_plan_path=render_plan_path)
     validate_render_plan_timeline(plan, fps=fps, render_plan_path=render_plan_path)
 
     output = Path(output_path)
@@ -52,13 +48,7 @@ def export_render_plan_to_openshot(
     total_duration = 0.0
     total_items = len(plan) + (1 if audio_path is not None else 0)
 
-    for index, (entry, clip_path) in enumerate(zip(plan, clip_paths, strict=True), start=1):
-        if not isinstance(entry, dict):
-            raise ValueError(f"Render plan entry {index} must be an object")
-        scene_number = int(entry.get("scene") or entry.get("scene_number") or index)
-        duration = float(entry.get("duration_seconds", 0.0))
-        if duration <= 0:
-            raise ValueError(f"Render plan scene {scene_number} has no positive duration")
+    for index, ((entry, scene_number, duration, _start_seconds), clip_path) in enumerate(zip(entries, clip_paths, strict=True), start=1):
         position = float(entry.get("abs_start_seconds", total_duration))
         path = Path(clip_path)
         if not path.is_file():
