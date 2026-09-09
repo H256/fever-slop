@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import json
-import math
 import os
 import xml.etree.ElementTree as ET
 from collections.abc import Sequence
 from pathlib import Path
 
 from feverslop.application.render_plan_validation import (
-    require_non_empty_render_plan,
+    compute_timeline_intervals,
+    load_render_plan_entries,
     validate_render_plan_timeline,
 )
 from feverslop.utils.io import atomic_write_text
@@ -26,18 +25,14 @@ def export_render_plan_to_mlt(
     project_name: str | None = None,
 ) -> Path:
     """Write an MLT XML timeline for Shotcut and Kdenlive."""
-    plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8-sig"))
-    if isinstance(plan, dict):
-        plan = plan.get("shots") or plan.get("scenes") or []
-    if not isinstance(plan, list):
-        raise ValueError(f"Render plan must be a JSON list: {render_plan_path}")
+    entries = load_render_plan_entries(render_plan_path)
+    plan = [entry[0] for entry in entries]
     if len(plan) != len(clip_paths):
         raise ValueError(
             "MLT export requires one rendered clip per render-plan entry "
             f"(got {len(clip_paths)} clips for {len(plan)} entries)",
         )
 
-    require_non_empty_render_plan(plan, render_plan_path=render_plan_path)
     validate_render_plan_timeline(plan, fps=fps, render_plan_path=render_plan_path)
 
     output = Path(output_path)
@@ -73,32 +68,13 @@ def export_render_plan_to_mlt(
     total_frames = 0
     timeline_cursor = 0
 
-    indexed_entries = list(enumerate(zip(plan, clip_paths, strict=True), start=1))
-    indexed_entries.sort(
-        key=lambda item: (
-            item[1][0].get("abs_start_seconds") is None if isinstance(item[1][0], dict) else True,
-            float(item[1][0].get("abs_start_seconds", 0.0)) if isinstance(item[1][0], dict) else 0.0,
-            item[0],
-        ),
-    )
-    for index, (entry, clip_path) in indexed_entries:
-        if not isinstance(entry, dict):
-            raise ValueError(f"Render plan entry {index} must be an object")
-        scene_number = int(entry.get("scene") or entry.get("scene_number") or index)
-        duration = float(entry.get("duration_seconds", 0.0))
-        if duration <= 0:
-            raise ValueError(f"Render plan scene {scene_number} has no positive duration")
+    indexed_entries = list(zip(compute_timeline_intervals(entries, fps=fps), clip_paths, strict=True))
+    for index, (interval, clip_path) in enumerate(indexed_entries, start=1):
+        original_index, entry, scene_number, duration, _start_seconds, start_frame, end_frame = interval
         path = Path(clip_path)
         if not path.is_file():
             raise FileNotFoundError(f"Rendered clip does not exist: {path}")
-        start_seconds = entry.get("abs_start_seconds")
-        if start_seconds is not None:
-            start_frame = max(0, round(float(start_seconds) * int(fps)))
-            end_frame = max(start_frame + 1, round((float(start_seconds) + duration) * int(fps)))
-            frames = end_frame - start_frame
-        else:
-            start_frame = timeline_cursor
-            frames = max(1, math.ceil(duration * int(fps)))
+        frames = end_frame - start_frame
         if start_frame < timeline_cursor:
             if end_frame <= timeline_cursor:
                 raise ValueError(
@@ -112,7 +88,7 @@ def export_render_plan_to_mlt(
             frames = end_frame - start_frame
         if start_frame > timeline_cursor:
             ET.SubElement(video_playlist, "blank", {"length": str(start_frame - timeline_cursor)})
-        producer_id = f"video_{index:04}"
+        producer_id = f"video_{original_index:04}"
         _add_avformat_producer(
             root,
             producer_id,
