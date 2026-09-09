@@ -6,12 +6,12 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
-    BarColumn,
-    Progress,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
+    BarColumn,  # noqa: F401 - re-exported by the legacy root-level CLI wrapper.
+    Progress,  # noqa: F401
+    TaskProgressColumn,  # noqa: F401
+    TextColumn,  # noqa: F401
+    TimeElapsedColumn,  # noqa: F401
+    TimeRemainingColumn,  # noqa: F401
 )
 
 from feverslop.adapters.ltx_workflow_patcher import ResolvedLoraConfig
@@ -30,6 +30,7 @@ from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.utils.render_plan_selection import load_render_plan_subset, parse_scene_list
 from feverslop.utils.media_paths import safe_file_stem, write_concat_list as write_media_concat_list
+from feverslop.utils.rich_progress import build_progress
 
 console = Console()
 
@@ -290,15 +291,7 @@ def main():
 
     use_case = build_render_video_scenes_use_case(namespace_to_options(args), console=console)
 
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("{task.completed}/{task.total}"),
-        TaskProgressColumn(),
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-        console=console,
-    ) as progress:
+    with build_progress(console=console) as progress:
         task = progress.add_task("Rendering LTX scenes", total=len(planned))
 
         rendered = use_case.execute(
@@ -341,4 +334,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
