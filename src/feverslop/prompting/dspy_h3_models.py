@@ -103,9 +103,10 @@ class ReferenceAsset(BaseModel):
 
 
 class ReferenceLimits(BaseModel):
-    max_pictures: int = 10
-    max_audio: int = 5
-    max_videos: int = 3
+    # Keep validation aligned with the bundled MiniMax H3 reference guide.
+    max_pictures: int = 9
+    max_audio: int = 2
+    max_videos: int = 2
 
 
 class VideoPromptRequest(BaseModel):
