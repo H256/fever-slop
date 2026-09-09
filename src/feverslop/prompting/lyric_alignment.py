@@ -84,14 +84,5 @@ class LyricTimelineAligner:
             corrected_segments.get(id(seg), seg) for seg in timeline
         ]
 
-    @staticmethod
-    def _complete_word_timestamps(
-        text: str,
-        segment: TimelineSegment,
-    ) -> tuple[dict[str, object], ...]:
-        return tuple(align_words(segment.text, segment.word_timestamps, text,
-                                 segment.start, segment.end)["timed_words"])
-
-
 def _without_section_markers(value: object) -> str:
     return re.sub(r"(?m)^\s*\[[^]\r\n]+\]\s*$", "", str(value or "")).strip()

@@ -1,6 +1,7 @@
 import unittest
 
 from feverslop.domain.timeline import TimelineSegment
+from feverslop.domain.word_alignment import align_words
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.lyric_alignment import LyricTimelineAligner
 from tests.prompt_fakes import GeneralModulesFake
@@ -15,7 +16,8 @@ class LyricTimelineAlignerTests(unittest.TestCase):
              "source_index": i, "word_id": f"w{i}"}
             for i, word in enumerate(words)
         ))
-        aligned = LyricTimelineAligner._complete_word_timestamps("Churning the old world into dust", segment)
+        aligned = align_words(segment.text, segment.word_timestamps,
+                              "Churning the old world into dust", segment.start, segment.end)["timed_words"]
         self.assertEqual(56.02, aligned[1]["start"])
         self.assertEqual(58.32, aligned[-1]["end"])
         self.assertEqual("corrected_from_whisper", aligned[0]["source"])
@@ -92,9 +94,10 @@ class LyricTimelineAlignerTests(unittest.TestCase):
             ),
         )
 
-        timestamps = LyricTimelineAligner._complete_word_timestamps(
-            "Ich trug mein Name wie ein Messer", segment,
-        )
+        timestamps = align_words(
+            segment.text, segment.word_timestamps,
+            "Ich trug mein Name wie ein Messer", segment.start, segment.end,
+        )["timed_words"]
 
         self.assertTrue(all(item["end"] > item["start"] for item in timestamps))
         self.assertEqual(["Name", "wie", "ein", "Messer"], [item["word"] for item in timestamps])
