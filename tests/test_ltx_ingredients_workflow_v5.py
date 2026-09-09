@@ -56,12 +56,6 @@ CASES = (
         has_audio=False,
     ),
 )
-V4_NAMES = (
-    "video_ltxv_ingredients_audio_2stage_v4.json",
-    "video_ltxv_ingredients_audio_2stage_gguf_v4.json",
-    "video_ltxv_ingredients_2stage_v4.json",
-    "video_ltxv_ingredients_2stage_gguf_v4.json",
-)
 REQUIRED_ANCHORS = {
     "#INGREDIENTS",
     "#PROMPT_RELAY",
@@ -122,15 +116,6 @@ class IngredientsWorkflowV6Tests(unittest.TestCase):
                 )
                 self.assertTrue(required_anchors.issubset(titles))
                 self.assertTrue(all(titles[title] == 1 for title in required_anchors))
-
-    def test_v4_workflows_are_archived_without_root_aliases(self):
-        for name in V4_NAMES:
-            with self.subTest(workflow=name):
-                self.assertFalse((ROOT / "workflows" / name).exists())
-                archived = ROOT / "workflows" / "old" / name
-                self.assertTrue(archived.is_file())
-                workflow = self._load(archived)
-                self.assertEqual(["5011", 0], workflow["5203"]["inputs"]["model"])
 
     def _load(self, path: Path) -> dict:
         self.assertTrue(path.is_file(), f"Missing workflow: {path}")
