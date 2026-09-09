@@ -182,7 +182,7 @@ class MovieWorkflowPatcher:
         msr_frame_count: int | None = None,
     ) -> dict[str, Any]:
         patcher = WorkflowPatcher(workflow)
-        missing = [title for title in ("#MSR_ACTOR_1", "#MSR_BACKGROUND", "#MSR_LORA", "#MSR_FRAME_COUNT", "#PROMPT_RELAY", "#STARTFRAME") if not _has_title(patcher, title)]
+        missing = [title for title in ("#MSR_ACTOR_1", "#MSR_BACKGROUND", "#MSR_LORA", "#MSR_FRAME_COUNT", "#PROMPT_RELAY", "#STARTFRAME") if not patcher.has_title(title)]
         if missing:
             raise ValueError(f"MSR-I2V workflow is missing required anchor(s): {', '.join(missing)}")
         patcher.set_input_by_title("#STARTFRAME", "image", startframe_image_name)
@@ -217,11 +217,3 @@ def _is_link(value: Any) -> bool:
 def _next_node_id(workflow: dict[str, Any]) -> str:
     numeric_ids = [int(node_id) for node_id in workflow if str(node_id).isdigit()]
     return str((max(numeric_ids) if numeric_ids else 0) + 1)
-
-
-def _has_title(patcher: WorkflowPatcher, title: str) -> bool:
-    try:
-        patcher.find_node_by_meta_title(title)
-        return True
-    except KeyError:
-        return False

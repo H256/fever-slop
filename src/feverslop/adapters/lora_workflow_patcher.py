@@ -28,7 +28,7 @@ class LoraWorkflowPatcher:
         active_loras = self.active_loras()
         if active_loras:
             for lora in active_loras:
-                split_anchor_exists = self.has_anchor(patcher, lora.split_title)
+                split_anchor_exists = patcher.has_title(lora.split_title)
                 patch_base_as_split_first_pass = self.settings.lora_split_enabled and split_anchor_exists
 
                 if self.settings.lora_split_enabled:
@@ -97,14 +97,6 @@ class LoraWorkflowPatcher:
                 ),
             )
         return ()
-
-    @staticmethod
-    def has_anchor(patcher: WorkflowPatcher, title: str) -> bool:
-        try:
-            patcher.find_node_by_meta_title(title)
-            return True
-        except KeyError:
-            return False
 
     @staticmethod
     def patch_single_lora(

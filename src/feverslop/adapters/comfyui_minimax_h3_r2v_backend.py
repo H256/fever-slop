@@ -1086,8 +1086,4 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
     @staticmethod
     def _has_anchor(patcher: WorkflowPatcher, title: str) -> bool:
-        try:
-            patcher.find_node_by_meta_title(title)
-            return True
-        except KeyError:
-            return False
+        return patcher.has_title(title)

@@ -204,7 +204,7 @@ class ComfyUIMSRVideoRenderBackend:
         startframe_path = keyframes.get("startframe_path") or keyframes.get("start_frame_path")
         if not startframe_path:
             return
-        if not self._has_anchor(patcher, "#STARTFRAME"):
+        if not patcher.has_title("#STARTFRAME"):
             raise FeverSlopValidationError("Movie MSR-I2V scene provides a startframe, but workflow is missing #STARTFRAME")
         image_name = self.asset_uploader.resolve_reference_image_name(self._resolve_project_path(startframe_path))
         patcher.set_input_by_title("#STARTFRAME", "image", image_name)
@@ -252,7 +252,7 @@ class ComfyUIMSRVideoRenderBackend:
         for index, actor_path in enumerate(actor_paths, start=1):
             title = f"#MSR_ACTOR_{index}"
             image_name = self.asset_uploader.resolve_reference_image_name(actor_path)
-            if self._has_anchor(patcher, title):
+            if patcher.has_title(title):
                 node_id, node = patcher.find_node_by_meta_title(title)
                 node.setdefault("inputs", {})["image"] = image_name
             else:
@@ -313,7 +313,7 @@ class ComfyUIMSRVideoRenderBackend:
         prompt: str,
         rolling: AudioWindowSpec | None = None,
     ) -> None:
-        if self._has_anchor(patcher, "#PROMPT_RELAY"):
+        if patcher.has_title("#PROMPT_RELAY"):
             global_prompt, local_prompts, segment_lengths = self._build_prompt_relay_payload(
                 scene,
                 prompt=prompt,
@@ -433,13 +433,6 @@ class ComfyUIMSRVideoRenderBackend:
                 if input_name in inputs:
                     inputs[input_name] = seed
 
-    @staticmethod
-    def _has_anchor(patcher: WorkflowPatcher, title: str) -> bool:
-        try:
-            patcher.find_node_by_meta_title(title)
-            return True
-        except KeyError:
-            return False
 
 
 def _build_msr_prompt_relay_payload(
