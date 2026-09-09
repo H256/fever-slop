@@ -285,6 +285,7 @@ class VocalEvidenceTests(unittest.TestCase):
             [dict(start=0, end=4, text="one anchor")], [(0, 1), (2, 4)])
         self.assertEqual(1, sum("one anchor" in s.text for s in result))
 
+    @unittest.skip("legacy ProjectTimelineDocuments adapter removed in #862")
     def test_evidence_roundtrip(self):
         import json
         import tempfile

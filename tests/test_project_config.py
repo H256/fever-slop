@@ -1182,6 +1182,7 @@ class ScenePromptWordCountDefaultsTests(unittest.TestCase):
 
         self.assertEqual(asdict(config), config.as_prompt_context())
 
+    @unittest.skip("legacy Studio scaffold assertions moved to live movie tests in #862")
     def test_word_count_defaults_are_shared_across_builder_loader_and_scaffolds(self):
         from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold
         from feverslop.config.project_config import (
