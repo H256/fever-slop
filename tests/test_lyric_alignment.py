@@ -113,6 +113,17 @@ class LyricTimelineAlignerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Expected 2 corrected lyric segments"):
             aligner.align(timeline, "one\ntwo")
 
+    def test_empty_llm_correction_falls_back_to_whisper_segments(self):
+        timeline = [TimelineSegment(start=0.0, end=2.0, kind="vocals", text="one")]
+        aligner = LyricTimelineAligner(
+            object(), modules=GeneralModulesFake(lyric_alignment={"segments": {}}),
+        )
+
+        corrected = aligner.align(timeline, "one")
+
+        self.assertEqual("one", corrected[0].text)
+        self.assertEqual("one", corrected[0].alignment["corrected_text"])
+
     def test_returns_original_timeline_when_no_vocal_segments_exist(self):
         timeline = [TimelineSegment(start=0.0, end=2.0, kind="instrumental", text="")]
         modules = GeneralModulesFake()

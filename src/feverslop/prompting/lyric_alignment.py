@@ -52,6 +52,14 @@ class LyricTimelineAligner:
         corrected = self._modules.lyric_alignment(payload).segments
         expected_keys = [f"segment{index}" for index in range(1, len(vocal_segments) + 1)]
         actual_keys = list(corrected.keys())
+        if not corrected:
+            # A malformed/empty structured response should not discard valid
+            # Whisper timing evidence or abort an otherwise resumable run.
+            corrected = {
+                key: raw[index - 1]["text"]
+                for index, key in enumerate(expected_keys, start=1)
+            }
+            actual_keys = expected_keys
         if set(actual_keys) != set(expected_keys):
             raise ValueError(
                 f"Expected {len(expected_keys)} corrected lyric segments with keys "
