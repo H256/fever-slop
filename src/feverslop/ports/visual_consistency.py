@@ -32,11 +32,6 @@ class ReferenceManifestSnapshot:
             raise ValueError("revision is required")
 
 
-class ReferenceManifestPort(Protocol):
-    def load(self, project_id: str) -> ReferenceManifestSnapshot:
-        """Load immutable project reference anchors and their revision."""
-
-
 class PreviousFramePort(Protocol):
     def extract_last_frame(
         self,
