@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from copy import deepcopy
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,7 @@ from feverslop.prompting.dspy_h3_prompt_builder import (
 )
 from feverslop.prompting.scene_prompt_builder import normalize_scene_references
 from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures, build_h3_signature_bundle
+from feverslop.prompting.planning_payload import _EVIDENCE_FIELDS
 
 
 class FakeGeneratedPrompt:
@@ -68,6 +70,19 @@ class FakeGenerator:
 class CallbackGenerator(FakeGenerator):
     def set_warning_callback(self, callback):
         self.warning_callback = callback
+
+
+def _collect_keys(value: Any) -> set[str]:
+    keys: set[str] = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str):
+                keys.add(key)
+            keys.update(_collect_keys(item))
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            keys.update(_collect_keys(item))
+    return keys
 
 
 class IncompleteAudioPrompt:
@@ -1032,6 +1047,70 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertNotIn("Temporal shot directions:", result["prompt"])
         self.assertNotIn("[Shot 1, 0.00-6.40sec]", result["prompt"])
         self.assertIn("actor.png", " ".join(reference["source"] for reference in result["references"]))
+
+    def test_h3_request_notes_strip_evidence_while_relay_segments_stay_full_for_compiler(self):
+        generator = FakeGenerator()
+        builder = DspyH3PromptBuilder(generator)
+        marker = "x" * 100000
+        segment = {
+            "segment_id": "seg-1",
+            "type": "vocals",
+            "duration_seconds": 6.4,
+            "fps": 24,
+            "lyrics": "Mara sings into the rain",
+            "references": {"actor_ids": ["mara"]},
+            "performance_intervals": [
+                {
+                    "frame_start": 0,
+                    "frame_end": 154,
+                    "state": "singing",
+                    "prompt": "The singer turns.",
+                    "lyrics": "Mara sings into the rain",
+                    "word_timestamps": [
+                        {"word": "Mara", "start": 0.0, "end": 0.4},
+                        {"word": "sings", "start": 0.4, "end": 0.9},
+                    ],
+                    "vocal_sources": [
+                        {"subject_id": "mara", "alignment": {"raw_text": marker}},
+                    ],
+                    "vocal_events": [
+                        {
+                            "word": "Mara",
+                            "start": 0.0,
+                            "end": 0.4,
+                            "subject_id": "mara",
+                            "word_timestamps": [{"word": "Mara", "start": 0.0, "end": 0.4}],
+                        },
+                    ],
+                    "performance_conflicts": ["unresolved phase overlap"],
+                }
+            ],
+        }
+        original = deepcopy(segment)
+
+        builder.build_h3_prompt(
+            segment=segment,
+            concept="A singer performs.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        request = generator.requests[0]
+        notes = json.loads(request["notes"])
+        self.assertEqual(
+            {"scene", "scene_details", "global_context", "source_language", "language_policy"},
+            set(notes),
+        )
+        self.assertFalse(_collect_keys(notes) & _EVIDENCE_FIELDS)
+        self.assertNotIn(marker, request["notes"])
+        self.assertEqual("Mara sings into the rain", notes["scene"]["lyrics"])
+        # The compiler consumes exactly request["relay_segments"], so the
+        # word-level timing evidence must survive there untouched.
+        self.assertIn(marker, json.dumps(request["relay_segments"]))
+        self.assertTrue(any("word_timestamps" in item for item in request["relay_segments"]))
+        self.assertTrue(any("vocal_sources" in item for item in request["relay_segments"]))
+        self.assertEqual(original, segment)
 
     def test_keeps_complete_audio_references_unchanged(self):
         complete = IncompleteAudioPrompt.rendered_prompt.replace(

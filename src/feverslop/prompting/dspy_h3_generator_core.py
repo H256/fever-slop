@@ -35,6 +35,7 @@ from feverslop.prompting.dspy_h3_models import (
 )
 from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.planning_payload import compact_planning_payload
 from feverslop.prompting.h3_user_messages import renderer_recovery_message
 
 logger = logging.getLogger(__name__)
@@ -424,7 +425,7 @@ class VideoPromptGenerator:
             notes=request.notes or "",
             strict_fidelity=request.strict_fidelity,
             requested_music_intent=request.music_intent.value if request.music_intent else "",
-            relay_segments=request.relay_segments,
+            relay_segments=compact_planning_payload(request.relay_segments),
         )
         creative = prediction.plan
         music_intent = request.music_intent or creative.music_intent
@@ -513,7 +514,7 @@ class VideoPromptGenerator:
                 notes=notes,
                 strict_fidelity=request.strict_fidelity,
                 music_intent=plan.music_intent.value,
-                relay_segments=request.relay_segments,
+                relay_segments=compact_planning_payload(request.relay_segments),
             )
             rendered_fields = "\n".join(str(getattr(output, field, "") or "") for field in (
                 "summary",
@@ -592,7 +593,7 @@ class VideoPromptGenerator:
                 ).strip(),
                 strict_fidelity=request.strict_fidelity,
                 requested_music_intent=request.music_intent.value if request.music_intent else "",
-                relay_segments=request.relay_segments,
+                relay_segments=compact_planning_payload(request.relay_segments),
             )
             candidate_plan = prediction.plan
             current_payloads = creative_shots_from_plan(plan)
@@ -682,7 +683,7 @@ class VideoPromptGenerator:
                         references=refs, notes=effective_request.notes or "",
                         strict_fidelity=request.strict_fidelity,
                         music_intent=plan.music_intent.value,
-                        relay_segments=request.relay_segments,
+                        relay_segments=compact_planning_payload(request.relay_segments),
                     )
                     prompt = output.result
                 if plan.music_intent == MusicIntent.NONE:
