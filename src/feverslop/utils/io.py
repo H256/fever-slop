@@ -1,15 +1,93 @@
 from __future__ import annotations
 
 import json
+import errno
 import os
 import tempfile
 import threading
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from feverslop.errors import FeverSlopDataError
 
 _atomic_replace_lock = threading.Lock()
+
+
+@contextmanager
+def file_lock(
+    path: str | Path,
+    *,
+    shared: bool = False,
+    timeout: float | None = None,
+    on_wait: Callable[[], None] | None = None,
+    retry_on_error: str = "contention",
+) -> Iterator[None]:
+    """Acquire a cross-process advisory lock on *path*.
+
+    ``on_wait`` enables polling (and is called once per retry); otherwise a
+    blocking lock is used when no timeout is requested. Windows has no shared
+    lock primitive, so ``shared`` degrades to an exclusive lock there.
+    """
+    if retry_on_error not in {"contention", "all"}:
+        raise ValueError("retry_on_error must be 'contention' or 'all'")
+    lock_path = Path(path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+b") as handle:
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        deadline = None if timeout is None else time.monotonic() + timeout
+        polling = on_wait is not None or timeout is not None
+        locked = False
+        try:
+            while not locked:
+                try:
+                    if os.name == "nt":
+                        import msvcrt
+
+                        handle.seek(0)
+                        msvcrt.locking(
+                            handle.fileno(),
+                            msvcrt.LK_NBLCK if polling else msvcrt.LK_LOCK,
+                            1,
+                        )
+                    else:
+                        import fcntl
+
+                        operation = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+                        if polling:
+                            operation |= fcntl.LOCK_NB
+                        fcntl.flock(handle.fileno(), operation)
+                    locked = True
+                except OSError as exc:
+                    contention = exc.errno in (
+                        errno.EACCES,
+                        errno.EAGAIN,
+                        32,
+                        36,
+                    )
+                    if retry_on_error != "all" and not contention:
+                        raise
+                    if deadline is not None and time.monotonic() >= deadline:
+                        raise TimeoutError(f"Timed out waiting for file lock: {lock_path}") from exc
+                    if on_wait is not None:
+                        on_wait()
+                    time.sleep(0.05)
+            yield
+        finally:
+            if locked:
+                if os.name == "nt":
+                    import msvcrt
+
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _replace_atomically(source: Path, target: Path) -> None:
