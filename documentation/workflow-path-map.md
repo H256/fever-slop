@@ -2,7 +2,7 @@
 
 Status: Inventory baseline for Milestone 22 (#738)
 
-Generated from the tracked workflow JSON files on 2026-08-26. The classification is a review aid, not an authority derived only from filenames; before moving a file, inspect its node graph and all callers. Files under `workflows/old/` are explicitly marked for retirement/review and must not be migrated automatically.
+Generated from the tracked workflow JSON files on 2026-09-09. The classification is a review aid, not an authority derived only from filenames; before moving a file, inspect its node graph and all callers.
 
 | Current path | Medium | Model family | Mode | Planned target |
 |---|---|---|---|---|
@@ -16,39 +16,6 @@ Generated from the tracked workflow JSON files on 2026-08-26. The classification
 | `workflows/image/image-model/image_t2i_startframe_ideogram_v1.json` | image | image-model | t2i | workflows/image/image-model/ |
 | `workflows/image/image-model/image_t2i_startframe_krea_v1.json` | image | image-model | t2i | workflows/image/image-model/ |
 | `workflows/image/image-model/image_t2i_startframe_v1.json` | image | image-model | t2i | workflows/image/image-model/ |
-| `workflows/old/audio_song.json` | audio | audio-model | other | retire-or-review |
-| `workflows/old/autoprompt_image_z_image_turbo.json` | other | other | other | retire-or-review |
-| `workflows/old/autoprompt_ltxv_i2v.json` | other | ltx_legacy | i2v | retire-or-review |
-| `workflows/old/autoprompt_relay_ltxv_i2v.json` | other | ltx_legacy | i2v | retire-or-review |
-| `workflows/old/video_default_i2v_ltxv_msr_1actor_1background_v1.json` | video | ltx_legacy | i2v | retire-or-review |
-| `workflows/old/video_default_i2v_ltxv_msr_1actor_1background_v2.json` | video | ltx_legacy | i2v | retire-or-review |
-| `workflows/old/video_default_i2v_ltxv_msr_1actor_1background_v3.json` | video | ltx_legacy | i2v | retire-or-review |
-| `workflows/old/video_default_ltxv_msr_1actor_1background_v1.json` | video | ltx_legacy | msr | retire-or-review |
-| `workflows/old/video_default_ltxv_msr_1actor_1background_v2.json` | video | ltx_legacy | msr | retire-or-review |
-| `workflows/old/video_default_ltxv_msr_1actor_1background_v3.json` | video | ltx_legacy | msr | retire-or-review |
-| `workflows/old/video_ltxv_i2v_native_audio_v1.json` | video | ltx_legacy | i2v | retire-or-review |
-| `workflows/old/video_ltxv_i2v_v1.json` | video | ltx_legacy | i2v | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_2stage_gguf_v3.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_2stage_gguf_v4.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_2stage_gguf_v5.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_2stage_v1.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_2stage_v2.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_2stage_v3.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_2stage_v4.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_2stage_v5.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_audio_2stage_gguf_v3.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_audio_2stage_gguf_v4.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_audio_2stage_gguf_v5.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_audio_2stage_v1.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_audio_2stage_v2.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_audio_2stage_v3.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_audio_2stage_v4.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_audio_2stage_v5.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_audio_v1.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_ingredients_v1.json` | video | ltx_legacy | ingredients | retire-or-review |
-| `workflows/old/video_ltxv_msr_1actor_1background_v1.json` | video | ltx_legacy | msr | retire-or-review |
-| `workflows/old/video_ltxv_msr_1actor_1background_v2.json` | video | ltx_legacy | msr | retire-or-review |
-| `workflows/old/video_ltxv_msr_1actor_1background_v3.json` | video | ltx_legacy | msr | retire-or-review |
 | `workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json` | sequence | minimax_h3 | i2v | workflows/sequence/minimax_h3/ |
 | `workflows/video_default_i2v_ltxv_msr_1actor_1background_v4.json` | video | ltx_legacy | i2v | workflows/video/ltx_legacy/ |
 | `workflows/video_default_ltxv_msr_1actor_1background_v4.json` | video | ltx_legacy | msr | workflows/video/ltx_legacy/ |
@@ -113,7 +80,7 @@ Generated from the tracked workflow JSON files on 2026-08-26. The classification
 
 - Treat this table as the complete tracked-JSON inventory; a CI check should compare it with `rg --files workflows -g '*.json'`.
 - Resolve maintained callers through profile metadata or a centralized alias map; do not reconstruct paths from filenames at call sites.
-- Keep old LTX assets in the retirement set until the LTX 2.5 cutover explicitly replaces them.
+- Keep retired workflow references out of operational configuration; use the maintained typed workflow paths above.
 - Validate every moved JSON as an object and preserve its anchor/title contract before changing callers.
 - Update this map in the same change as any workflow add, move, or retirement.
 
@@ -125,10 +92,7 @@ normalizes separators, resolves only exact full-path matches, and emits a
 `DeprecationWarning`; it never maps by basename. Project and runner workflow
 resolution use this helper before reading a file.
 
-Removal point: delete these aliases only after all maintained project configs
-have been migrated to the typed paths and a repository-wide search confirms
-that no supported project or fixture still contains a legacy key. Until that
-audit is complete, old paths remain supported with diagnostics.
-
-
+The aliases above preserve compatibility for the maintained pre-typed paths;
+the retired `workflows/old/` archive has no runtime alias and is intentionally
+not part of the supported workflow set.
 
