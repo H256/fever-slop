@@ -16,7 +16,9 @@ from feverslop.application.openshot_exporter import export_render_plan_to_opensh
 from feverslop.cli.movie_cli import build_movie_arg_parser, config_from_args
 from feverslop.composition.movie_pipeline_jobs import (
     MINIMAX_H3_MOVIE_WORKFLOWS,
+    build_movie_i2v_edit_visual_adapter as _build_i2v_edit_visual_adapter,
     build_movie_reference_generator,
+    build_movie_startframe_director_visual_adapter as _build_startframe_director_visual_adapter,
     build_movie_visual_adapter,
     mark_movie_reference_backend,
     movie_references_ready,
@@ -894,109 +896,6 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, deb
     return ComfyUIMovieIngredientsVisualAdapter(backend=backend)
 
 
-def _build_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any]):
-    from feverslop.adapters.comfyui_client import ComfyUIClient
-    from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
-    from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
-    from feverslop.adapters.local_artifacts import JsonArtifactStore
-    from feverslop.adapters.movie_edit_image_backend import MovieTwoRefEditImageBackend
-    from feverslop.adapters.movie_i2v_visual import ComfyUIMovieI2VEditVisualAdapter
-    from feverslop.adapters.video_postprocessor import VideoPostProcessor
-    from feverslop.composition.render_video import (
-        RenderVideoCompositionOptions,
-        build_render_video_scenes_use_case,
-    )
-    from feverslop.config.app_config import AppConfig
-
-    app_config = AppConfig.load(_movie_app_config_path(config))
-    client = ComfyUIClient(
-        base_url=str(config.get("startframe_comfyui_base_url") or app_config.comfyui.base_url),
-        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
-    )
-    model_resolver = ComfyUIModelResolver(client, overrides=app_config.comfyui.model_overrides)
-    ltx_dir = project_dir / "output" / "movie" / "ltx_i2v"
-    video_use_case = build_render_video_scenes_use_case(
-        RenderVideoCompositionOptions(
-            workflow_path=config["i2v_workflow"],
-            single_prompt_workflow_path=config["i2v_workflow"],
-            output_dir=ltx_dir,
-            video_pipeline="ltx_i2v",
-        ),
-    )
-    return ComfyUIMovieI2VEditVisualAdapter(
-        base_image_backend=ComfyUIImageBackend(
-            client=client,
-            workflow_path=config["hero_workflow"],
-            output_dir=project_dir / "output" / "movie" / "storyboard" / "base",
-            model_resolver=model_resolver,
-        ),
-        edit_backend=MovieTwoRefEditImageBackend(
-            client=client,
-            workflow_path=config["edit_workflow"],
-            model_resolver=model_resolver,
-        ),
-        artifact_store=JsonArtifactStore(),
-        video_use_case=video_use_case,
-        workflow_path=Path(config["hero_workflow"]),
-        edit_workflow_path=Path(config["edit_workflow"]),
-        i2v_workflow_path=Path(config["i2v_workflow"]),
-        postprocessor=VideoPostProcessor(),
-    )
-
-
-def _build_startframe_director_visual_adapter(project_dir: Path, config: dict[str, Any]):
-    from feverslop.adapters.comfyui_client import ComfyUIClient
-    from feverslop.adapters.gemma4_startframe_validator import Gemma4StartframeValidator
-    from feverslop.adapters.movie_workflow import MovieWorkflowPatcher
-    from feverslop.adapters.startframe_director_comfyui import (
-        ComfyUIStartframeDirectorVisualAdapter,
-    )
-    from feverslop.composition.render_video import (
-        RenderVideoCompositionOptions,
-        build_render_video_scenes_use_case,
-    )
-    from feverslop.config.app_config import AppConfig
-
-    app_config = AppConfig.load(_movie_app_config_path(config))
-    client = ComfyUIClient(
-        base_url=app_config.comfyui.base_url,
-        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
-    )
-    ltx_dir = project_dir / "output" / "movie" / "ltx_startframe_director"
-    i2v_workflow_path = _write_startframe_i2v_empty_audio_workflow(
-        project_dir=project_dir,
-        workflow_path=Path(config["i2v_workflow"]),
-        patcher=MovieWorkflowPatcher(),
-    )
-    video_use_case = build_render_video_scenes_use_case(
-        RenderVideoCompositionOptions(
-            workflow_path=i2v_workflow_path,
-            single_prompt_workflow_path=i2v_workflow_path,
-            output_dir=ltx_dir,
-            video_pipeline="ltx_i2v",
-            debug_workflows_dir=config.get("startframe_debug_workflows_dir")
-            if config.get("startframe_write_debug_workflows")
-            else None,
-        ),
-    )
-    return ComfyUIStartframeDirectorVisualAdapter(
-        client=client,
-        director_workflow_path=config["director_workflow"],
-        mask_workflow_path=config["mask_workflow"],
-        identity_repair_workflow_path=config["identity_repair_workflow"],
-        detail_workflow_path=config["detail_workflow"],
-        i2v_workflow_path=i2v_workflow_path,
-        video_use_case=video_use_case,
-        validator=Gemma4StartframeValidator(
-            base_url=config["startframe_validator_base_url"],
-            model=config["startframe_validator_model"],
-        ),
-        debug_workflows_dir=config.get("startframe_debug_workflows_dir")
-        if config.get("startframe_write_debug_workflows")
-        else None,
-    )
-
-
 # --- Artifact delegation (thin wrappers around application layer) ---
 
 def _ensure_movie_planning_artifacts(project_dir, force_screenplay=False, force_story_design=False):
@@ -1193,15 +1092,6 @@ def _ingredients_debug_workflows_dir(project_dir: Path, args: argparse.Namespace
     if raw:
         return coerce_local_path(raw).resolve()
     return project_dir / "output" / "movie" / "ltx_ingredients" / "debug_workflows"
-
-
-def _write_startframe_i2v_empty_audio_workflow(*, project_dir: Path, workflow_path: Path, patcher) -> Path:
-    workflow = json.loads(Path(workflow_path).read_text(encoding="utf-8-sig"))
-    stripped = patcher.strip_audio_inputs(workflow)
-    output = project_dir / "output" / "movie" / "startframes" / "workflows" / "ltx_i2v_empty_audio.json"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(stripped, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return output
 
 
 def main() -> None:
