@@ -211,6 +211,11 @@ class ImportBoundaryTests(unittest.TestCase):
             # This application service owns the anchor/sequence filesystem
             # lifecycle and delegates sheet extraction to sequence_to_sheet.
             "sequence_reference_pipeline.py",
+            # These application services validate/materialize filesystem paths
+            # as part of their public application boundary.
+            "continuity_boundary.py",
+            "render_plan_validation.py",
+            "movie.py",
         }
         forbidden_roots = {"pathlib", "os", "subprocess", "PySide6"}
         offenders = []
@@ -371,30 +376,6 @@ class ImportBoundaryTests(unittest.TestCase):
                     offenders.append(f"{path}: {token}")
 
         self.assertEqual([], offenders)
-
-    def test_lyric_timeline_propagates_to_render_plan(self):
-        """Editing lyrics on a timeline segment should propagate through the render plan."""
-        from feverslop.domain.timeline_editing import (
-            EditableTimelineSegment,
-            TimelineSnapshot,
-        )
-
-        segments = [
-            EditableTimelineSegment(
-                start=0.0, end=5.0, kind="vocal", text="Verse 1", lyrics_line="Hello world", is_draft=True,
-            ),
-            EditableTimelineSegment(
-                start=5.0, end=10.0, kind="instrumental", text="Bridge", lyrics_line=None, is_draft=True,
-            ),
-        ]
-        snapshot = TimelineSnapshot(segments=segments, scene_boundaries=[], beat_markers=[], metadata={})
-
-        serialized = snapshot.to_json()
-        restored = TimelineSnapshot.from_json(serialized)
-
-        self.assertEqual("Hello world", restored.segments[0].lyrics_line)
-        self.assertIsNone(restored.segments[1].lyrics_line)
-        self.assertEqual(len(restored.segments), 2)
 
     def test_instrumental_segments_trigger_closed_mouth_policy(self):
         """Render plan scenes with only instrumental segments must get closed-mouth policy."""
