@@ -19,6 +19,7 @@ from feverslop.application.reference_bible import (
     INGREDIENTS_SHEET_LAYOUT_VERSION,
     build_ingredients_target_binding,
     build_runtime_consistency_contract,
+    collect_reference_scene_images,
     compose_cached_ingredients_sheet,
     generate_scene_sheet_anchors,
     generate_scene_sheet_description,
@@ -30,11 +31,7 @@ from feverslop.application.reference_bible import (
 )
 from feverslop.domain.prepared_workflow import sha256_file
 from feverslop.domain.vision_references import ReferenceImage
-from feverslop.domain.visual_consistency_runtime import (
-    bind_continuity_anchors,
-    reference_look_id,
-    resolve_reference_look,
-)
+from feverslop.domain.visual_consistency_runtime import bind_continuity_anchors
 from feverslop.ports.llm import VisionLLMPort
 from feverslop.utils.io import read_json_object
 
@@ -251,14 +248,20 @@ class IngredientsSceneSheetBuilder:
         self.size = size
 
     def build(self, shot: dict) -> dict:
-        actor_ids = shot.get("reference_ids", {}).get("actors") or shot.get("actor_ids") or []
-        location_id = shot.get("reference_ids", {}).get("location") or shot.get("location_id") or ""
-
-        images = []
-        for actor_id in actor_ids:
-            self._append_reference_image(images, shot, "actor", actor_id)
-        if location_id:
-            self._append_reference_image(images, shot, "location", location_id)
+        images = collect_reference_scene_images(
+            shot,
+            actor_manifests={
+                str(item.get("id")): item
+                for item in self.manifest.get("actors") or []
+                if isinstance(item, dict) and item.get("id") is not None
+            },
+            location_manifests={
+                str(item.get("id")): item
+                for item in self.manifest.get("locations") or []
+                if isinstance(item, dict) and item.get("id") is not None
+            },
+            project_base=self.project_dir,
+        )
 
         if not images:
             return {
@@ -321,38 +324,6 @@ class IngredientsSceneSheetBuilder:
             "scene_reference_sheet_anchors": anchors,
         }
 
-    def _append_reference_image(
-        self,
-        images: list[dict[str, Any]],
-        shot: dict,
-        kind: str,
-        reference_id: str,
-    ) -> None:
-        item = _item_for_id(self.manifest.get(f"{kind}s") or [], reference_id)
-        if not item:
-            return
-        item = resolve_reference_look(
-            item,
-            reference_look_id(shot, kind=kind, semantic_id=str(reference_id)),
-        )
-        logical = _pick_existing_path(item.get("sheet_path"), self.project_dir)
-        if not logical:
-            return
-        fallback_key = "msr_input_path" if kind == "actor" else "msr_background_path"
-        contract = logical if item.get("look_id") != "default" else (
-            item.get("msr_sheet_path") or item.get(fallback_key) or logical
-        )
-        images.append({
-            "path": logical,
-            "contract_path": _pick_existing_path(contract, self.project_dir) or logical,
-            "type": kind,
-            "id": reference_id,
-            "look_id": str(item.get("look_id") or "default"),
-            "visual_description": str(item.get("visual_description") or "").strip(),
-            "name": str(item.get("name") or "").strip(),
-            "image_prompt": str(item.get("image_prompt") or "").strip(),
-        })
-
 
 def _movie_target_context(shot: dict, bible: dict) -> dict[str, Any]:
     return {
@@ -382,25 +353,6 @@ def _fallback_movie_shot_invariants(shot: dict, *, anchors: list[dict]) -> str:
     if acting:
         parts.append(f"Acting: {str(acting).strip()}")
     return " ".join(part for part in parts if part).strip()
-
-
-def _pick_existing_path(value: Any | None, project_dir: Path) -> str:
-    if not value:
-        return ""
-    candidate = str(value).strip()
-    if not candidate:
-        return ""
-    full = project_dir / candidate
-    if full.exists():
-        return candidate
-    return ""
-
-
-def _item_for_id(items: list[dict], item_id: str) -> dict | None:
-    for item in items:
-        if isinstance(item, dict) and str(item.get("id")) == str(item_id):
-            return item
-    return None
 
 
 _read_json = read_json_object

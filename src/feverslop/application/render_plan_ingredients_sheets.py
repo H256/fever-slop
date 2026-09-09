@@ -19,6 +19,7 @@ from feverslop.application.reference_bible import (
     INGREDIENTS_SHEET_LAYOUT_VERSION,
     build_ingredients_target_binding,
     build_runtime_consistency_contract,
+    collect_reference_scene_images,
     compose_cached_ingredients_sheet,
     generate_scene_sheet_anchors,
     generate_scene_sheet_description,
@@ -30,11 +31,7 @@ from feverslop.application.reference_bible import (
 )
 from feverslop.domain.prepared_workflow import sha256_file
 from feverslop.domain.vision_references import ReferenceImage
-from feverslop.domain.visual_consistency_runtime import (
-    bind_continuity_anchors,
-    reference_look_id,
-    resolve_reference_look,
-)
+from feverslop.domain.visual_consistency_runtime import bind_continuity_anchors
 from feverslop.ports.llm import VisionLLMPort
 from feverslop.scene_artifacts import SceneArtifactLayout
 
@@ -123,76 +120,12 @@ def _enrich_scene(
     workflow_profile: str,
 ) -> dict:
     enriched = deepcopy(scene)
-    references = enriched.get("references") or {}
-
-    actor_ids = list(references.get("actor_ids") or [])
-    images = []
-    for actor_id in actor_ids:
-        manifest = actor_manifests.get(str(actor_id))
-        if manifest:
-            manifest = resolve_reference_look(
-                manifest,
-                reference_look_id(
-                    scene,
-                    kind="actor",
-                    semantic_id=str(actor_id),
-                ),
-            )
-            sheet_path = str(manifest.get("sheet_path") or "").strip()
-            if sheet_path and (project_base / sheet_path).exists():
-                desc = str(manifest.get("visual_description") or "").strip()
-                images.append({
-                    "path": sheet_path,
-                    "contract_path": str(
-                        sheet_path
-                        if manifest.get("look_id") != "default"
-                        else (
-                            manifest.get("msr_sheet_path")
-                            or manifest.get("msr_input_path")
-                            or sheet_path
-                        ),
-                    ).strip(),
-                    "type": "actor",
-                    "id": str(actor_id),
-                    "look_id": str(manifest.get("look_id") or "default"),
-                    "visual_description": desc,
-                    "name": str(manifest.get("name") or "").strip(),
-                    "image_prompt": str(manifest.get("image_prompt") or "").strip(),
-                })
-
-    location_id = str(references.get("location_id") or "").strip()
-    if location_id:
-        manifest = location_manifests.get(location_id)
-        if manifest:
-            manifest = resolve_reference_look(
-                manifest,
-                reference_look_id(
-                    scene,
-                    kind="location",
-                    semantic_id=location_id,
-                ),
-            )
-            sheet_path = str(manifest.get("sheet_path") or "").strip()
-            if sheet_path and (project_base / sheet_path).exists():
-                desc = str(manifest.get("visual_description") or "").strip()
-                images.append({
-                    "path": sheet_path,
-                    "contract_path": str(
-                        sheet_path
-                        if manifest.get("look_id") != "default"
-                        else (
-                            manifest.get("msr_sheet_path")
-                            or manifest.get("msr_background_path")
-                            or sheet_path
-                        ),
-                    ).strip(),
-                    "type": "location",
-                    "id": location_id,
-                    "look_id": str(manifest.get("look_id") or "default"),
-                    "visual_description": desc,
-                    "name": str(manifest.get("name") or "").strip(),
-                    "image_prompt": str(manifest.get("image_prompt") or "").strip(),
-                })
+    images = collect_reference_scene_images(
+        scene,
+        actor_manifests=actor_manifests,
+        location_manifests=location_manifests,
+        project_base=project_base,
+    )
 
     scene_number = int(scene.get("scene", 0))
     if images:
