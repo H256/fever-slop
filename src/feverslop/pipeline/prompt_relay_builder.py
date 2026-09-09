@@ -117,8 +117,6 @@ def build_scene_prompt_relay(
             rel_end = phase["end"] - scene_start
             frame_start = video_settings.seconds_to_frame(rel_start)
             frame_end = video_settings.seconds_to_frame(rel_end)
-            if frame_end <= frame_start:
-                continue
             if phase["state"] == "singing":
                 prompt = (singing_prompt_template.format(lyrics=phase["lyrics"])
                           if phase["lyrics"] else "same scene, sustained vocal continues with synchronized performance")
