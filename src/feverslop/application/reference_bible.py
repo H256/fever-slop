@@ -27,6 +27,8 @@ from feverslop.domain.visual_consistency import (
 )
 from feverslop.domain.visual_consistency_runtime import (
     ingredients_sheet_signature as _ingredients_sheet_signature,
+    reference_look_id,
+    resolve_reference_look,
 )
 from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import (
@@ -39,6 +41,54 @@ from feverslop.utils.io import atomic_write_json, file_lock
 INGREDIENTS_SHEET_LAYOUT_VERSION = "scene-reference-grid/v1"
 _INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS = 30.0
 _MAX_INGREDIENTS_SOURCE_BYTES = 64 * 1024 * 1024
+
+
+def collect_reference_scene_images(
+    scene: dict,
+    *,
+    actor_manifests: dict[str, dict],
+    location_manifests: dict[str, dict],
+    project_base: Path,
+) -> list[dict[str, str]]:
+    """Collect the normalized actor/location image records used by Ingredients."""
+    references = scene.get("references") or {}
+    reference_ids = scene.get("reference_ids") or {}
+    actor_ids = references.get("actor_ids") or reference_ids.get("actors") or scene.get("actor_ids") or []
+    location_id = references.get("location_id") or reference_ids.get("location") or scene.get("location_id") or ""
+    images: list[dict[str, str]] = []
+
+    for kind, ids, manifests, fallback_key in (
+        ("actor", actor_ids, actor_manifests, "msr_input_path"),
+        ("location", [location_id] if location_id else [], location_manifests, "msr_background_path"),
+    ):
+        for semantic_id in ids:
+            item = manifests.get(str(semantic_id))
+            if not item:
+                continue
+            item = resolve_reference_look(
+                item,
+                reference_look_id(scene, kind=kind, semantic_id=str(semantic_id)),
+            )
+            sheet_path = str(item.get("sheet_path") or "").strip()
+            if not sheet_path or not (project_base / sheet_path).exists():
+                continue
+            contract_path = sheet_path if item.get("look_id") != "default" else (
+                item.get("msr_sheet_path") or item.get(fallback_key) or sheet_path
+            )
+            contract = str(contract_path or "").strip()
+            if not (project_base / contract).exists():
+                contract = sheet_path
+            images.append({
+                "path": sheet_path,
+                "contract_path": contract,
+                "type": kind,
+                "id": str(semantic_id),
+                "look_id": str(item.get("look_id") or "default"),
+                "visual_description": str(item.get("visual_description") or "").strip(),
+                "name": str(item.get("name") or "").strip(),
+                "image_prompt": str(item.get("image_prompt") or "").strip(),
+            })
+    return images
 
 
 @dataclass(frozen=True)
