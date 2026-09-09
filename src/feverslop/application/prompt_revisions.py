@@ -9,7 +9,6 @@ from feverslop.domain.prompt_revisions import (
     PromptField,
     PromptHistory,
     PromptRevision,
-    build_revision,
     restore_revision,
 )
 from feverslop.ports.revision_store import RevisionStorePort
@@ -25,53 +24,6 @@ class HistoryLoadResult:
 
 class PatchPromptError(ValueError):
     pass
-
-
-class PatchPromptUseCase:
-    def __init__(
-        self,
-        *,
-        store: RevisionStorePort,
-        clock: Clock | None = None,
-    ) -> None:
-        self._store = store
-        self._clock = clock or _default_clock
-
-    def execute(
-        self,
-        *,
-        project_id: str,
-        scene_number: int,
-        field: PromptField,
-        value: str,
-    ) -> PromptRevision:
-        history = self._store.load_history(project_id, scene_number, field)
-        parent_id = history.revisions[-1].id if history.revisions else None
-
-        if history.revisions and history.revisions[-1].value == value:
-            raise PatchPromptError(
-                f"Value not changed from latest revision in scene {scene_number} {field.value}",
-            )
-
-        now = self._clock()
-        try:
-            revision = build_revision(
-                project_id=project_id,
-                scene_number=scene_number,
-                field=field,
-                value=value,
-                parent_id=parent_id,
-                now=now,
-            )
-        except ValueError as exc:
-            raise PatchPromptError(str(exc)) from exc
-
-        try:
-            self._store.save_revision(revision)
-        except DuplicateRevisionError:
-            raise PatchPromptError(f"Revision {revision.id!r} already exists") from None
-
-        return revision
 
 
 class LoadPromptHistoryUseCase:
