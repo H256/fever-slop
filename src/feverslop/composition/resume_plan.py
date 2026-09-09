@@ -35,6 +35,7 @@ def build_resume_plan(
     selected_scenes: Iterable[int] | None = None,
     render_settings: ProjectRenderSettings | None = None,
     judge_blocking: bool = True,
+    force_replan: bool = False,
 ) -> ExecutionPlan:
     root = Path(project).resolve()
     try:
@@ -44,6 +45,7 @@ def build_resume_plan(
             selected_scenes=selected_scenes,
             render_settings=render_settings,
             judge_blocking=judge_blocking,
+            force_replan=force_replan,
         )
     except (FeverSlopDataError, OSError, TypeError, ValueError, json.JSONDecodeError):
         return ExecutionPlan(root, "resume", (
@@ -62,6 +64,7 @@ def _build_resume_plan(
     selected_scenes: Iterable[int] | None = None,
     render_settings: ProjectRenderSettings | None = None,
     judge_blocking: bool = True,
+    force_replan: bool = False,
 ) -> ExecutionPlan:
     root = project
     layout = SceneArtifactLayout(root)
@@ -153,6 +156,9 @@ def _build_resume_plan(
             h3_action, h3_reason = _h3_state(
                 layout, canonical_scene, number, judge_blocking=judge_blocking,
             )
+            if force_replan:
+                h3_action = PlanAction.RUN
+                h3_reason = "explicit scene replan requested"
             if (
                 reference_changed
                 and video_pipeline in _REFERENCE_PIPELINES
