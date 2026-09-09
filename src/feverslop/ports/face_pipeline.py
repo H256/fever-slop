@@ -68,63 +68,6 @@ class FaceIdentityPort(Protocol):
         """Get all registered face embeddings."""
 
 
-class FrameSourcePort(Protocol):
-    """Stateful frame source with an explicit open/read/close lifecycle.
-
-    Implementations must release decoder resources with ``close`` even when
-    frame processing fails; context-manager support is recommended.
-    """
-
-    def open(self, path: Path) -> None:
-        """Open a video file for reading."""
-
-    def read_frame(self, frame_index: int) -> np.ndarray | None:
-        """Read a specific frame by index.
-
-        Returns RGB numpy array (H, W, 3) or None if frame not available.
-        """
-
-    def close(self) -> None:
-        """Close the video file and release resources."""
-
-    def __enter__(self) -> FrameSourcePort:
-        """Enter a managed decoder session."""
-
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
-        """Release the decoder session."""
-
-    @property
-    def frame_count(self) -> int:
-        """Total number of frames in the video."""
-
-    @property
-    def frame_size(self) -> tuple[int, int]:
-        """Video frame size as (width, height)."""
-
-    @property
-    def fps(self) -> float:
-        """Frames per second."""
-
-
-class VideoEncoderPort(Protocol):
-    """Encodes processed frames back to video."""
-
-    def open(
-        self,
-        output_path: Path,
-        frame_size: tuple[int, int],
-        fps: float,
-        frame_count: int,
-    ) -> None:
-        """Open encoder for writing."""
-
-    def write_frame(self, frame: np.ndarray) -> None:
-        """Write a single frame."""
-
-    def close(self) -> None:
-        """Finalize and close the video file."""
-
-
 class DebugArtifactPort(Protocol):
     """Writes debug artifacts for pipeline inspection."""
 
