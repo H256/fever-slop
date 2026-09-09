@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -87,10 +88,15 @@ class GlobalCastResolver:
         )
 
 
-def materialize_global_assets(project_config, app_config, *, refresh: bool = False) -> GlobalCastResolution:
+def materialize_global_assets(
+    project_config,
+    app_config,
+    *,
+    library_factory: Callable[[Any], Any],
+    refresh: bool = False,
+) -> GlobalCastResolution:
     """Materialize declarations before reference generation; refresh is explicit."""
-    adapter_type = __import__("feverslop.adapters.global_library", fromlist=["GlobalLibraryAdapter"]).GlobalLibraryAdapter
-    resolver = GlobalCastResolver(adapter_type(app_config.global_library_path))
+    resolver = GlobalCastResolver(library_factory(app_config.global_library_path))
     if not refresh:
         # Existing snapshots are intentionally left alone; callers can inspect their staleness.
         pass

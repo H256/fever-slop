@@ -159,7 +159,7 @@ class TestConfigFlags(unittest.TestCase):
         self.assertTrue(req.movie_refine_actor_prompts)
 
     def test_movie_project_config_includes_refine_actor_prompts(self):
-        from feverslop.composition.project_repository import movie_project_config
+        from feverslop.application.movie import movie_project_config
         from feverslop.composition.project_store import ProjectCreateRequest
 
         req = ProjectCreateRequest(
@@ -171,7 +171,7 @@ class TestConfigFlags(unittest.TestCase):
         self.assertTrue(config["refine_actor_prompts"])
 
     def test_movie_project_config_defaults_refine_actor_prompts_to_false(self):
-        from feverslop.composition.project_repository import movie_project_config
+        from feverslop.application.movie import movie_project_config
         from feverslop.composition.project_store import ProjectCreateRequest
 
         req = ProjectCreateRequest(

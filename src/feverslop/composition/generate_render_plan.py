@@ -18,6 +18,7 @@ from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.h3_prompt_checkpoints import H3PromptCheckpointStore
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
+from feverslop.adapters.global_library import GlobalLibraryAdapter
 from feverslop.adapters.storyboard_renderer import StoryboardRenderer
 from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
 from feverslop.application.generate_render_plan import (
@@ -74,6 +75,7 @@ def _common_pipeline_services():
             prompt_pipeline_factory=MusicVideoPromptPipeline,
             concept_batcher_factory=ConceptPromptBatcher,
             scene_prompt_builder_factory=ScenePromptBuilder,
+            global_library_factory=lambda path: GlobalLibraryAdapter(path),
         ),
         H3PromptPipeline(
             llm_factory=_build_llm,
