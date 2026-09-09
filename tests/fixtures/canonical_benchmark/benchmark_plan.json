@@ -1,0 +1,30 @@
+{
+  "schema": "feverslop.canonical-benchmark-plan/v1",
+  "project_name": "the-parts-they-left-canonical-benchmark",
+  "audio": {
+    "path": "example-project/input/the-parts-they-left.mp3",
+    "duration_seconds": 60.0,
+    "bpm": 168
+  },
+  "cast": {
+    "tamsin": {"role": "AR compliance inspector", "wardrobe": "ivory inspection coat, cyan seams, transparent visor"},
+    "soren": {"role": "maintenance worker and singer", "wardrobe": "rust-red utility jacket, graphite work suit, red survey thread"}
+  },
+  "locations": {
+    "terminal": "Mirrorline Central transit terminal, pristine augmented layer over exposed steel infrastructure",
+    "platform": "Mirrorline Central east platform beneath the high dawn window"
+  },
+  "props": {"red_thread": "vivid red survey thread used to mark cracks and connect the characters"},
+  "scenes": [
+    {"id": "scene_01_discovery", "start": 0.0, "end": 6.0, "section": "intro", "performance": false, "actors": ["tamsin"], "location": "terminal", "prop": "red_thread", "expected_reference": "terminal_empty", "lyrics": "instrumental opening", "camera": "wide locked establishing shot", "prompt": "Tamsin inspects a flawless augmented transit terminal and notices one red thread at a cracked pillar."},
+    {"id": "scene_02_marker", "start": 6.0, "end": 12.0, "section": "verse", "performance": true, "actors": ["soren"], "location": "terminal", "prop": "red_thread", "expected_reference": "soren_terminal", "lyrics": "Soren vocal verse", "camera": "slow lateral track", "prompt": "Soren sings beside the cracked pillar while tying vivid red survey thread around the exposed cable bundle."},
+    {"id": "scene_03_pursuit", "start": 12.0, "end": 18.0, "section": "verse", "performance": false, "actors": ["tamsin", "soren"], "location": "terminal", "prop": "red_thread", "expected_reference": "tamsin_soren_terminal", "lyrics": "instrumental response", "camera": "handheld follow shot", "prompt": "Tamsin follows Soren through the terminal, keeping distance as the red thread trails between them."},
+    {"id": "scene_04_confrontation", "start": 18.0, "end": 24.0, "section": "pre_chorus", "performance": true, "actors": ["tamsin", "soren"], "location": "platform", "prop": "red_thread", "expected_reference": "tamsin_soren_platform", "lyrics": "Soren vocal pre-chorus", "camera": "slow push-in two-shot", "prompt": "Soren sings on the east platform while Tamsin blocks his hand from pulling the red thread farther."},
+    {"id": "scene_05_revelation", "start": 24.0, "end": 30.0, "section": "chorus", "performance": true, "actors": ["soren"], "location": "platform", "prop": "red_thread", "expected_reference": "soren_platform", "lyrics": "Soren vocal chorus", "camera": "crane rise", "prompt": "Soren performs into the dawn-lit platform as the augmented walls flicker away to reveal steel, dust, and cables."},
+    {"id": "scene_06_choice", "start": 30.0, "end": 36.0, "section": "chorus", "performance": false, "actors": ["tamsin"], "location": "platform", "prop": "red_thread", "expected_reference": "tamsin_platform", "lyrics": "instrumental chorus break", "camera": "close orbit", "prompt": "Tamsin removes her visor, studies the physical station, and reaches deliberately for the red thread."},
+    {"id": "scene_07_cooperation", "start": 36.0, "end": 42.0, "section": "verse", "performance": true, "actors": ["tamsin", "soren"], "location": "platform", "prop": "red_thread", "expected_reference": "tamsin_soren_platform", "lyrics": "Soren vocal verse", "camera": "sideways dolly", "prompt": "Tamsin and Soren pull the red thread together along a cracked platform seam while Soren sings."},
+    {"id": "scene_08_unveiling", "start": 42.0, "end": 48.0, "section": "bridge", "performance": false, "actors": ["tamsin", "soren"], "location": "terminal", "prop": "red_thread", "expected_reference": "tamsin_soren_terminal", "lyrics": "instrumental bridge", "camera": "overhead descent", "prompt": "The red thread draws a path through the terminal as the last augmented surfaces collapse into the real station."},
+    {"id": "scene_09_release", "start": 48.0, "end": 54.0, "section": "final_chorus", "performance": true, "actors": ["soren"], "location": "platform", "prop": "red_thread", "expected_reference": "soren_platform", "lyrics": "Soren vocal final chorus", "camera": "forward tracking shot", "prompt": "Soren sings beside the exposed east window, red thread glowing against the warm dawn and weathered steel."},
+    {"id": "scene_10_afterglow", "start": 54.0, "end": 60.0, "section": "outro", "performance": false, "actors": ["tamsin", "soren"], "location": "platform", "prop": "red_thread", "expected_reference": "tamsin_soren_platform", "lyrics": "instrumental outro", "camera": "wide static closing shot", "prompt": "Tamsin and Soren stand side by side before the unfiltered station, holding the completed red-thread line."}
+  ]
+}
