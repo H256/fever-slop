@@ -96,7 +96,6 @@ _LAZY_MAP: dict[str, tuple[str, str]] = {
     "SceneMediaPort": ("feverslop.ports.scene_documents", "SceneMediaPort"),
     # -- Workflow ports (feverslop.ports.workflow) --
     "PreparedWorkflowRendererPort": ("feverslop.ports.workflow", "PreparedWorkflowRendererPort"),
-    "WorkflowBackendPort": ("feverslop.ports.workflow", "WorkflowBackendPort"),
     "WorkflowMaterializationRequest": ("feverslop.ports.workflow", "WorkflowMaterializationRequest"),
     "WorkflowMaterializerPort": ("feverslop.ports.workflow", "WorkflowMaterializerPort"),
     # -- Domain utilities (feverslop.domain.movie_utils and slug_utils) --
@@ -239,7 +238,6 @@ __all__ = [
     "SceneMediaPort",
     # -- Workflow ports and types --
     "PreparedWorkflowRendererPort",
-    "WorkflowBackendPort",
     "WorkflowMaterializationRequest",
     "WorkflowMaterializerPort",
     # -- Domain utilities --
