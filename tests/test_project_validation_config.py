@@ -1,6 +1,6 @@
 import unittest
 
-from feverslop.config.project_validation import validate_pipeline_mode
+from feverslop.config.project_config import validate_pipeline_mode
 
 
 class ProjectValidationConfigTests(unittest.TestCase):
