@@ -268,11 +268,13 @@ class PromptGenerationPipeline:
         prompt_pipeline_factory: PromptPipelineFactory,
         concept_batcher_factory: ConceptBatcherFactory,
         scene_prompt_builder_factory: ScenePromptBuilderFactory,
+        global_library_factory: Callable[[Any], Any] | None = None,
     ):
         self.llm_factory = llm_factory
         self.prompt_pipeline_factory = prompt_pipeline_factory
         self.concept_batcher_factory = concept_batcher_factory
         self.scene_prompt_builder_factory = scene_prompt_builder_factory
+        self.global_library_factory = global_library_factory
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
@@ -730,7 +732,13 @@ class PromptGenerationPipeline:
             get_config_value(config, field_name, ())
             for field_name in ("global_cast", "global_locations", "global_styles", "global_props")
         ):
-            global_resolution = materialize_global_assets(config, app_config)
+            if self.global_library_factory is None:
+                raise RuntimeError("global assets require a composition-provided library factory")
+            global_resolution = materialize_global_assets(
+                config,
+                app_config,
+                library_factory=self.global_library_factory,
+            )
             actors = list(global_resolution.actors) + actors
             structured_locations = list(global_resolution.locations) + structured_locations
 
