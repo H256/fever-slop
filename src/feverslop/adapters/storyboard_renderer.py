@@ -5,17 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from rich.progress import (
-    BarColumn,
-    Progress,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
-
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_rendering import ComfyUIImageBackend
 from feverslop.ports.rendering import ImageRenderRequest, WorkflowAnchorConfig
+from feverslop.utils.rich_progress import build_progress
 
 
 class StoryboardRenderer:
@@ -95,13 +88,7 @@ class StoryboardRenderer:
 
         rendered_files = []
 
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("{task.completed}/{task.total}"),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
-        ) as progress:
+        with build_progress() as progress:
             task = progress.add_task(
                 "Rendering storyboard",
                 total=len(render_plan),

@@ -178,7 +178,7 @@ class LTXWorkflowPatcher:
         patcher.set_input_by_title(self.settings.framerate_node_title, "value", fps)
         patcher.set_input_by_title(self.settings.seed_node_title, "noise_seed", self.seed_for_scene(scene))
 
-        if self.has_node_title(patcher, self.settings.load_audio_node_title):
+        if patcher.has_title(self.settings.load_audio_node_title):
             patcher.set_input_by_title(self.settings.load_audio_node_title, "audio", comfy_audio_name)
             patcher.try_set_existing_input_by_title(
                 self.settings.load_audio_node_title,
@@ -186,7 +186,7 @@ class LTXWorkflowPatcher:
                 f"/api/view?filename={comfy_audio_name}&type=input",
             )
 
-        if self.has_node_title(patcher, self.settings.trim_audio_node_title):
+        if patcher.has_title(self.settings.trim_audio_node_title):
             patcher.set_input_by_title(self.settings.trim_audio_node_title, "start_index", float(rolling["audio_start_seconds"]))
             patcher.set_input_by_title(self.settings.trim_audio_node_title, "duration", float(rolling["audio_duration_seconds"]))
         patcher.set_input_by_title(self.settings.startframe_node_title, "image", comfy_startframe_name)
@@ -217,14 +217,6 @@ class LTXWorkflowPatcher:
 
     def active_loras(self) -> tuple[ResolvedLoraConfig, ...]:
         return self.lora_patcher.active_loras()
-
-    @staticmethod
-    def has_node_title(patcher: WorkflowPatcher, title: str) -> bool:
-        try:
-            patcher.find_node_by_meta_title(title)
-            return True
-        except KeyError:
-            return False
 
     @staticmethod
     def _uses_empty_audio(patcher: WorkflowPatcher) -> bool:

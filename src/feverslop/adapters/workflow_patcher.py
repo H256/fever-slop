@@ -57,6 +57,9 @@ class WorkflowPatcher:
             if node.get("_meta", {}).get("title") == title
         ]
 
+    def has_title(self, title: str) -> bool:
+        return bool(self.find_nodes_by_meta_title(title))
+
     def apply_patch_spec(self, operations: list[dict], context: dict | None = None) -> WorkflowPatcher:
         context = context or {}
         for operation in operations:

@@ -174,7 +174,7 @@ class ComfyUIIngredientsVideoRenderBackend:
         return patcher.get()
 
     def _patch_ingredients_input(self, patcher: WorkflowPatcher, scene: dict) -> None:
-        if not self._has_anchor(patcher, "#INGREDIENTS"):
+        if not patcher.has_title("#INGREDIENTS"):
             raise FeverSlopValidationError("Ingredients workflow is missing #INGREDIENTS anchor")
 
         ingredients = scene.get("ingredients") or {}
@@ -195,7 +195,7 @@ class ComfyUIIngredientsVideoRenderBackend:
         prompt: str,
         rolling: AudioWindowSpec | None = None,
     ) -> None:
-        if self._has_anchor(patcher, "#PROMPT_RELAY"):
+        if patcher.has_title("#PROMPT_RELAY"):
             self._patch_prompt_relay(patcher, scene, rolling=rolling)
             return
 
@@ -326,13 +326,6 @@ class ComfyUIIngredientsVideoRenderBackend:
                 if input_name in inputs:
                     inputs[input_name] = seed
 
-    @staticmethod
-    def _has_anchor(patcher: WorkflowPatcher, title: str) -> bool:
-        try:
-            patcher.find_node_by_meta_title(title)
-            return True
-        except KeyError:
-            return False
 
     def _write_debug_workflow(self, scene_number: int, workflow: dict) -> None:
         if self.debug_workflows_dir is None:

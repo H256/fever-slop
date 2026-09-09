@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import math
+import json
 from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
 
 
 def require_non_empty_render_plan(
@@ -12,6 +15,53 @@ def require_non_empty_render_plan(
     """Raise a clear error when the parsed render plan contains no scenes."""
     if not plan:
         raise ValueError(f"Render plan is empty: {render_plan_path}")
+
+
+def load_render_plan_entries(
+    render_plan_path: str | Path,
+) -> list[tuple[dict[str, Any], int, float, float | None]]:
+    """Load and validate the common render-plan entry contract."""
+    path = Path(render_plan_path)
+    plan = json.loads(path.read_text(encoding="utf-8-sig"))
+    if isinstance(plan, dict):
+        plan = plan.get("shots") or plan.get("scenes") or []
+    if not isinstance(plan, list):
+        raise ValueError(f"Render plan must be a JSON list: {render_plan_path}")
+    require_non_empty_render_plan(plan, render_plan_path=render_plan_path)
+
+    entries = []
+    for index, entry in enumerate(plan, start=1):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Render plan entry {index} must be an object")
+        scene_number = int(entry.get("scene") or entry.get("scene_number") or index)
+        duration = float(entry.get("duration_seconds", 0.0))
+        if duration <= 0:
+            raise ValueError(f"Render plan scene {scene_number} has no positive duration")
+        start_seconds = entry.get("abs_start_seconds")
+        entries.append((entry, scene_number, duration, None if start_seconds is None else float(start_seconds)))
+    return entries
+
+
+def compute_timeline_intervals(
+    entries: Sequence[tuple[dict[str, Any], int, float, float | None]],
+    *,
+    fps: int,
+) -> list[tuple[dict[str, Any], int, float, float | None, int, int]]:
+    """Return entries in the canonical MLT order with frame intervals."""
+    indexed = list(enumerate(entries, start=1))
+    indexed.sort(key=lambda item: (item[1][3] is None, item[1][3] or 0.0, item[0]))
+    cursor = 0
+    intervals = []
+    for _index, (entry, scene_number, duration, start_seconds) in indexed:
+        if start_seconds is not None:
+            start_frame = max(0, round(start_seconds * int(fps)))
+            end_frame = max(start_frame + 1, round((start_seconds + duration) * int(fps)))
+        else:
+            start_frame = cursor
+            end_frame = start_frame + max(1, math.ceil(duration * int(fps)))
+        intervals.append((_index, entry, scene_number, duration, start_seconds, start_frame, end_frame))
+        cursor = max(cursor, end_frame)
+    return intervals
 
 
 def validate_render_plan_timeline(
@@ -33,30 +83,16 @@ def validate_render_plan_timeline(
     the cursor, is rejected. Entries without ``abs_start_seconds`` are
     anchored to the running cursor like the exporters' sequential entries.
     """
-    fps = int(fps)
-    cursor = 0
-    intervals = []
+    entries = []
     for index, entry in enumerate(plan, start=1):
         if not isinstance(entry, dict):
             raise ValueError(f"Render plan entry {index} must be an object")
         scene_number = int(entry.get("scene") or entry.get("scene_number") or index)
         duration = float(entry.get("duration_seconds", 0.0))
-        if duration <= 0:
-            raise ValueError(f"Render plan scene {scene_number} has no positive duration")
         start_seconds = entry.get("abs_start_seconds")
-        if start_seconds is not None:
-            start_frame = max(0, round(float(start_seconds) * fps))
-            end_frame = max(start_frame + 1, round((float(start_seconds) + duration) * fps))
-        else:
-            start_frame = cursor
-            end_frame = start_frame + max(1, math.ceil(duration * fps))
-        intervals.append((start_frame, end_frame, scene_number, index))
-        cursor = max(cursor, end_frame)
-
+        entries.append((entry, scene_number, duration, None if start_seconds is None else float(start_seconds)))
     cursor = 0
-    for start_frame, end_frame, scene_number, _index in sorted(
-        intervals, key=lambda interval: (interval[0], interval[3]),
-    ):
+    for _index, _entry, scene_number, _duration, _start_seconds, start_frame, end_frame in compute_timeline_intervals(entries, fps=fps):
         frames = end_frame - start_frame
         if start_frame < cursor:
             if end_frame <= cursor:
