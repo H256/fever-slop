@@ -5,7 +5,6 @@ import json
 import math
 import os
 import shutil
-import time
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -35,7 +34,7 @@ from feverslop.ports.rendering import (
     ImageRenderRequest,
     WorkflowAnchorConfig,
 )
-from feverslop.utils.io import atomic_write_json
+from feverslop.utils.io import atomic_write_json, file_lock
 
 INGREDIENTS_SHEET_LAYOUT_VERSION = "scene-reference-grid/v1"
 _INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS = 30.0
@@ -785,31 +784,32 @@ def compose_cached_ingredients_sheet(
     output_path = Path(cache_dir) / f"{signature}.png"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = output_path.parent / f".{signature}.lock"
-    lock_fd = _acquire_cache_lock(lock_path, output_path)
     try:
-        if _valid_cached_ingredients_sheet(output_path, size=size):
-            return output_path, signature
-        with NamedTemporaryFile(
-            suffix=".png",
-            dir=output_path.parent,
-            delete=False,
-        ) as handle:
-            temporary = Path(handle.name)
-        try:
-            if snapshots is None:
-                compose_scene_reference_sheet(image_paths, temporary, size=size)
-            else:
-                _compose_scene_reference_snapshots(
-                    snapshots,
-                    temporary,
-                    size=size,
-                )
-            os.replace(temporary, output_path)
-        finally:
-            temporary.unlink(missing_ok=True)
-    finally:
-        _release_cache_lock(lock_fd)
-        os.close(lock_fd)
+        with file_lock(lock_path, timeout=_INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS, retry_on_error="all"):
+            if _valid_cached_ingredients_sheet(output_path, size=size):
+                return output_path, signature
+            with NamedTemporaryFile(
+                suffix=".png",
+                dir=output_path.parent,
+                delete=False,
+            ) as handle:
+                temporary = Path(handle.name)
+            try:
+                if snapshots is None:
+                    compose_scene_reference_sheet(image_paths, temporary, size=size)
+                else:
+                    _compose_scene_reference_snapshots(
+                        snapshots,
+                        temporary,
+                        size=size,
+                    )
+                os.replace(temporary, output_path)
+            finally:
+                temporary.unlink(missing_ok=True)
+    except TimeoutError as exc:
+        raise TimeoutError(
+            f"Timed out waiting for Ingredients cache entry: {output_path}",
+        ) from exc
     return output_path, signature
 
 
@@ -828,50 +828,6 @@ def _valid_cached_ingredients_sheet(
     except (OSError, SyntaxError, ValueError):
         return False
     return True
-
-
-def _acquire_cache_lock(lock_path: Path, output_path: Path) -> int:
-    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
-    if os.fstat(lock_fd).st_size == 0:
-        os.write(lock_fd, b"\0")
-    deadline = time.monotonic() + _INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS
-    while True:
-        if _try_cache_lock(lock_fd):
-            return lock_fd
-        if time.monotonic() >= deadline:
-            os.close(lock_fd)
-            raise TimeoutError(
-                f"Timed out waiting for Ingredients cache entry: {output_path}",
-            )
-        time.sleep(0.01)
-
-
-def _try_cache_lock(lock_fd: int) -> bool:
-    os.lseek(lock_fd, 0, os.SEEK_SET)
-    try:
-        if os.name == "nt":
-            import msvcrt
-
-            msvcrt.locking(lock_fd, msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        return False
-    return True
-
-
-def _release_cache_lock(lock_fd: int) -> None:
-    os.lseek(lock_fd, 0, os.SEEK_SET)
-    if os.name == "nt":
-        import msvcrt
-
-        msvcrt.locking(lock_fd, msvcrt.LK_UNLCK, 1)
-    else:
-        import fcntl
-
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
 
 def build_runtime_consistency_contract(
