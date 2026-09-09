@@ -272,7 +272,7 @@ class GlobalLibraryAdapterTests(unittest.TestCase):
         media_path = self.root / "character" / "ava" / media_rel
         media_path.parent.mkdir(parents=True)
         media_path.write_bytes(b"materialize-me")
-        lock_handle = (self.root / "character" / "ava" / ".lock").open("a+b")
+        lock_handle = (self.root / ".locks" / "character" / "ava.lock").open("a+b")
         fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
         finished = threading.Event()
         outcome: dict = {}

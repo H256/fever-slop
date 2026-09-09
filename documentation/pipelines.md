@@ -5,9 +5,8 @@ FeverSlop has two main ways to create a music-video project:
 - **Standard music video pipeline**: starts from an existing project folder, `config.json`, and input audio.
 - **Full-Auto pipeline**: starts from a project idea and song style, generates ACE-Step audio, scaffolds a project, then optionally runs the video pipeline.
 
-Studio also supports a **Movie project pipeline**. Movie projects start from
-prose or screenplay text, create a story arch and cinematic render plan, then
-can run a movie full-auto job.
+Movie projects start from prose or screenplay text, create a story arch and
+cinematic render plan, then can run a movie full-auto job.
 
 Video rendering can use one of three pipelines:
 
@@ -120,8 +119,6 @@ before the first ComfyUI phase.
 | `uv run python run_pipeline.py <project>` | Standard end-to-end music-video runner for an existing project. |
 | `uv run python full_auto.py ...` | Creates a project from idea/style, renders ACE-Step audio, and can run the video pipeline. |
 | `uv run python main.py --project <config.json>` | Lower-level audio/timeline/prompt/render-plan stage, useful for debugging. |
-| Studio **Pipeline** page | Starts the same pipeline actions as background jobs and streams progress/logs. |
-| Studio `/projects/new/movie` page | Creates movie scaffolds and can start the movie full-auto job. |
 
 `run_pipeline.py` also accepts `--stage <stage>` to run one or more atomic stages
 without composing skip flags manually. Example:
@@ -212,12 +209,6 @@ CLI:
 
 ```bash
 uv run python run_pipeline.py ./projects/my-song --skip-tests
-```
-
-Studio action:
-
-```text
-Project -> Pipeline -> Full pipeline
 ```
 
 Normal full pipeline stages:
@@ -314,7 +305,7 @@ Important CLI options:
 | `--video-pipeline ltx_i2v` | Classic mode. This is the CLI runner default. |
 | `--video-pipeline ltx_msr` | MSR mode. Uses reference manifests/sheets and MSR workflow. |
 | `--video-pipeline ltx_ingredients` | Ingredients mode. Composes per-scene ingredients reference sheets and renders with an ingredients workflow. |
-| `--skip-tests` | Skip the initial unit-test run. Studio pipeline jobs set this internally. |
+| `--skip-tests` | Skip the initial unit-test run. Automated pipeline jobs set this internally. |
 | `--skip-main-pipeline` | Reuse existing timeline/prompts/render plan. |
 | `--scenes 3,5-8` | Render selected scenes. |
 | `--smoke-only --smoke-scene 3` | Render one smoke scene into smoke output folders. |
@@ -363,7 +354,7 @@ uv run python full_auto.py \
   --skip-tests
 ```
 
-Full-Auto stages exposed in Studio:
+Full-Auto stages:
 
 1. `Song brief`
 2. `ACE-Step audio rendering`
@@ -406,9 +397,9 @@ projects/<slug>/output/render/scenes/
 projects/<slug>/output/render/final/movie.mp4
 ```
 
-MSR-specific Studio actions:
+MSR-specific actions:
 
-| Studio action | Backend action | Effect |
+| Action | Backend action | Effect |
 | --- | --- | --- |
 | MSR references | `msr-references` | Render actor/location references. |
 | MSR enrichment | `msr-enrich` | Rebuild MSR-enriched render plan/prompt fields. |
@@ -450,12 +441,6 @@ uv run python full_auto.py \
   --skip-tests
 ```
 
-Studio:
-
-- **Project Settings** -> set `video_pipeline` to `ltx_ingredients`.
-- **Pipeline** -> **Full pipeline** to run the full ingredients pipeline.
-- **Pipeline** -> **Ingredients sheets** to compose or refresh ingredients scene sheets.
-
 Ingredients mode stages:
 
 1. Main pipeline (audio, timeline, render plan).
@@ -475,9 +460,9 @@ projects/<slug>/output/render/scenes/scene_0001/final.mp4
 projects/<slug>/output/render/final/movie.mp4
 ```
 
-Ingredients-specific Studio actions:
+Ingredients-specific actions:
 
-| Studio action | Backend action | Effect |
+| Action | Backend action | Effect |
 | --- | --- | --- |
 | Ingredients sheets | `ingredients-sheets` | Compose ingredients scene sheets from references. |
 
@@ -509,18 +494,15 @@ projects/<slug>/output/render/ltx_single_prompt/<project_name>.mp4
 | CLI `run_pipeline.py` | `--video-pipeline ltx_i2v` |
 | CLI `full_auto.py` | `--video-pipeline ltx_i2v` unless passed through |
 | Ingredients workflow default | `workflows/video_ltxv_ingredients_audio_2stage_v6.json` |
-| Studio full-auto API payload | `pipeline_mode: "classic"` if omitted |
-| Studio full-auto UI | sends `pipeline_mode: "msr"` by default |
-| Studio Project Settings defaults | `video_pipeline: "ltx_msr"` |
 | Full-Auto resolution | `1280 x 704` |
 | Full-Auto FPS | `24` |
 | Full-Auto allowed FPS | `16`, `24`, `50` |
 
-## Studio Pipeline Actions
+## Pipeline Actions
 
 Standard project actions:
 
-| UI label | Backend action |
+| Action label | Backend action |
 | --- | --- |
 | Main pipeline | `main-pipeline` |
 | Relay compact | `relay-compact` |
@@ -570,8 +552,8 @@ Scaffold mode runs:
 8. Scene/shot planning from the Bible and memory artifacts into `movie/render_plan.json`.
 9. Reference manifest persistence from Bible actors/locations.
 
-Full-auto mode starts the `movie-full-auto` job after scaffold creation. Studio
-reports these job steps:
+Full-auto mode starts the `movie-full-auto` job after scaffold creation. The job
+reports these steps:
 
 1. `Movie Bible`
 2. `Movie Continuity`
@@ -586,7 +568,7 @@ paths in `movie/references/manifest.json`. The manifest is generated from
 `movie/bible.json`, not from shot text. `movie-full-auto` also runs this
 reference step automatically when required paths are missing.
 
-Movie stages are also available without Studio:
+Movie stages are also available without job orchestration:
 
 ```powershell
 uv run python movie_pipeline.py .\projects\tm3 --skip-movie-render
@@ -845,12 +827,6 @@ uv run python movie_pipeline.py .\projects\my-movie `
   --i2v-workflow .\workflows\video_ltxv_i2v_native_audio_v2.json
 ```
 
-Studio:
-
-- **Project Settings** -> set `movie_video_workflow` to `startframe-director`.
-- Set `movie_startframe_director_backend` to `krea2` or `ideogram`.
-- Provide workflow paths or accept the defaults.
-
 Required ComfyUI workflows:
 
 | Workflow | Default path | Purpose |
@@ -887,10 +863,6 @@ uv run python movie_pipeline.py .\projects\my-movie `
   --movie-video-workflow ingredients `
   --ingredients-workflow .\workflows\video_ltxv_ingredients_2stage_v6.json
 ```
-
-Studio:
-
-- **Project Settings** -> set `movie_video_workflow` to `ingredients`.
 
 The ingredients workflow must anchor `#PROMPT_POSITIVE`, `#SEED`, `#WIDTH`,
 `#HEIGHT`, `#FRAMES`, `#FRAMERATE`, and `#SAVE_VIDEO`.
@@ -1021,10 +993,10 @@ so the startframe/I2V path establishes the transition before MSR identity
 guidance takes over. This handoff is written only into the patched ComfyUI
 workflow/debug workflow, not into `movie/render_plan_msr.json`.
 
-By default Studio uses `ComfyUIMovieVisualAdapter` for movie production. The
+By default movie production uses `ComfyUIMovieVisualAdapter`. The
 movie project metadata stores `render_backend: "comfyui"` and the MSR workflow
 path used for patching. A local placeholder render backend exists only as an
-explicit development/test option in the movie creation form or API payload.
+explicit development/test configuration option.
 The ComfyUI adapter renders each shot through the patched MSR workflow with
 `upload_audio=False`, so no custom audio is supplied and LTX 2.3 owns voice,
 effects, and environment audio.
@@ -1043,13 +1015,12 @@ workflows/image/image-model/image_t2i_startframe_krea_v1.json
 workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json
 ```
 
-Override them in the movie creation form's advanced execution section or by
-passing `movie_hero_workflow` and `movie_edit_workflow` to the project creation
-API.
+Override them in the movie project configuration with `movie_hero_workflow` and
+`movie_edit_workflow`.
 
 ## Progress Reporting
 
-Studio jobs expose:
+Pipeline jobs expose:
 
 - job id
 - project id and project type
@@ -1062,29 +1033,16 @@ Studio jobs expose:
 - ETA field, currently `null` unless a future job can estimate it
 - recent logs and full retained logs
 
-Exact step percentages are only shown when a step has a real numeric progress value. Otherwise Studio shows an indeterminate running indicator. ACE-Step/ComfyUI audio rendering currently appears as the `ACE-Step audio rendering` step with indeterminate progress unless the underlying ComfyUI integration later exposes exact node progress.
+Exact step percentages are only shown when a step has a real numeric progress value. Otherwise the job exposes an indeterminate running indicator. ACE-Step/ComfyUI audio rendering currently appears as the `ACE-Step audio rendering` step with indeterminate progress unless the underlying ComfyUI integration later exposes exact node progress.
 
-## Log Streaming
-
-Studio streams logs with Server-Sent Events:
-
-```text
-GET /api/jobs/<job-id>/logs
-```
-
-The Pipeline page opens this stream for the active job and appends lines to **Recent output**. The UI auto-scrolls only while the user is already at the bottom.
-
-Log handling:
+Job log handling:
 
 - Rich panels/tables/markup are rendered to readable plain text.
-- stdout/stderr from CLI-style code is captured for Studio jobs.
+- stdout/stderr from CLI-style code is captured for pipeline jobs.
 - Logs are in memory and retained per process.
 - Restarting the backend clears job history and logs.
-- The right Jobs column shows per-job logs in a capped scroll area.
 
 ## Duplicate-Start Protection
-
-Studio disables pipeline start buttons while any queued/running pipeline job exists for the project.
 
 The backend also rejects duplicate starts for pipeline actions:
 
@@ -1092,7 +1050,9 @@ The backend also rejects duplicate starts for pipeline actions:
 Pipeline is already running for this project
 ```
 
-This protects against duplicate starts from the Studio or other local callers. Buttons become available again after the job reaches a terminal status such as `succeeded` or `failed`.
+This protects against duplicate starts from local callers. A new start is
+available after the job reaches a terminal status such as `succeeded` or
+`failed`.
 
 ## Failure Handling
 
@@ -1101,7 +1061,7 @@ If a job raises an exception:
 - job status becomes `failed`
 - current running step is marked failed
 - the error text is exposed on the job object
-- Pipeline page displays the error
+- Callers can display the error from the job object
 - logs remain available while the backend process stays alive
 
 External failures usually come from ComfyUI availability, missing workflow anchors, missing models/custom nodes, FFmpeg failures, LLM endpoint failures, or invalid project paths/config.

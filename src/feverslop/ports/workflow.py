@@ -8,11 +8,6 @@ from feverslop.domain.effective_render_plan import CanonicalSceneDependencies
 from feverslop.domain.prepared_workflow import PreparedSceneWorkflow
 
 
-class WorkflowBackendPort(Protocol):
-    def validate_workflow(self, workflow_path: Path, required_titles: list[str]) -> None:
-        """Validate a backend workflow before rendering."""
-
-
 @dataclass(frozen=True)
 class WorkflowMaterializationRequest:
     scene: dict[str, Any]
