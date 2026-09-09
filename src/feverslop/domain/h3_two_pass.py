@@ -115,56 +115,6 @@ class H3TwoPassSpec:
             )
 
 
-def apply_h3_two_pass_patch(workflow: Mapping[str, Any], spec: H3TwoPassSpec) -> dict[str, Any]:
-    """Patch sampler parameters on a validated two-pass workflow.
-
-    The workflow remains a plain API dictionary. Only explicitly declared
-    ``#PASS1`` and ``#PASS2`` anchors are modified; graph wiring and audio
-    latents are deliberately left untouched.
-    """
-    if not isinstance(spec, H3TwoPassSpec):
-        raise TypeError("spec must be an H3TwoPassSpec")
-    result = {str(node_id): dict(node) for node_id, node in workflow.items()}
-    validate_audio_latent_preservation(result, spec)
-    validate_h3_two_pass_topology(result, spec)
-    by_title = {
-        str(node.get("_meta", {}).get("title")): node
-        for node in result.values()
-        if node.get("_meta", {}).get("title")
-    }
-    spec.validate_workflow_anchors(by_title)
-    for title, prefix in (("#PASS1", "pass1"), ("#PASS2", "pass2")):
-        values = {
-            "sampler_name": getattr(spec, f"{prefix}_sampler"),
-            "scheduler": getattr(spec, f"{prefix}_scheduler"),
-            "steps": getattr(spec, f"{prefix}_steps"),
-            "denoise": getattr(spec, f"{prefix}_denoise"),
-        }
-        aliases = {
-            "sampler_name": ("sampler_name", "sampler"),
-            "scheduler": ("scheduler",),
-            "steps": ("steps",),
-            "denoise": ("denoise",),
-        }
-        for field, value in values.items():
-            target_title = title
-            node = by_title[target_title]
-            inputs = dict(node.get("inputs") or {})
-            target = next((name for name in aliases[field] if name in inputs), None)
-            if target is None:
-                split_title = f"{title}_{'SAMPLER' if field == 'sampler_name' else 'SCHEDULER'}"
-                node = by_title.get(split_title)
-                if node is None:
-                    raise H3TwoPassSchemaError(f"workflow anchor {title} has no {field} input")
-                inputs = dict(node.get("inputs") or {})
-                target = next((name for name in aliases[field] if name in inputs), None)
-            if target is None:
-                raise H3TwoPassSchemaError(f"workflow anchor {title} has no {field} input")
-            inputs[target] = value
-            node["inputs"] = inputs
-    return result
-
-
 def default_h3_two_pass_spec(quality: str, *, audio: bool = False) -> H3TwoPassSpec:
     """Return the calibrated two-pass budget for draft, standard, or final."""
     level = str(quality).strip().lower()
@@ -193,41 +143,6 @@ def default_h3_two_pass_spec(quality: str, *, audio: bool = False) -> H3TwoPassS
         preserve_audio_latent=bool(audio),
         required_anchors=anchors,
     )
-
-
-def validate_audio_latent_preservation(
-    workflow: Mapping[str, Any], spec: H3TwoPassSpec,
-) -> None:
-    """Ensure the audio latent branch is not routed through spatial upscaling."""
-    if not spec.preserve_audio_latent:
-        return
-    nodes = {str(node_id): node for node_id, node in workflow.items()}
-    audio_ids = {
-        node_id for node_id, node in nodes.items()
-        if node.get("_meta", {}).get("title") == "#AUDIO_LATENT"
-    }
-    if not audio_ids:
-        raise H3TwoPassSchemaError("audio-preserving two-pass workflow requires #AUDIO_LATENT")
-    reachable = set(audio_ids)
-    changed = True
-    while changed:
-        changed = False
-        for node_id, node in nodes.items():
-            if node_id in reachable:
-                continue
-            encoded = repr(node.get("inputs", {}))
-            if any(f"'{source_id}'" in encoded or f'"{source_id}"' in encoded for source_id in reachable):
-                reachable.add(node_id)
-                changed = True
-    forbidden = [
-        node_id for node_id in reachable
-        if any(token in str(nodes[node_id].get("class_type", "")).lower() for token in ("upscale", "spatial"))
-    ]
-    if forbidden:
-        raise H3TwoPassSchemaError(
-            "audio latent branch must bypass spatial upscale; offending nodes: "
-            + ", ".join(sorted(forbidden))
-        )
 
 
 def validate_h3_two_pass_topology(

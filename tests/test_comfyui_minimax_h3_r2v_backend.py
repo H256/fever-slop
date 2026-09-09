@@ -12,7 +12,6 @@ from feverslop.adapters.comfyui_minimax_h3_r2v_backend import (
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.domain.audio_timing_contract import AudioTimingWindow
 from feverslop.domain.continuity import BoundaryFrameManifest
-from feverslop.domain.h3_two_pass import default_h3_two_pass_spec
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
@@ -985,26 +984,6 @@ class LatentUpscalerDeviceTests(unittest.TestCase):
         self.assertNotIn("#LATENT_UPSCALE", titles)
         plain = self._backend(self._template("r2v_v1.json")).build_workflow(self._scene(), prompt="test")
         self.assertEqual(plain, overridden)
-
-    def test_device_override_applies_with_two_pass_spec(self):
-        backend = self._backend(
-            self._template("r2v_two_pass.json"),
-            latent_upscaler_device="rocm",
-            client=UpscalerFakeClient(),
-        )
-        result = backend.build_workflow(
-            self._scene(),
-            prompt="test",
-            two_pass_spec=default_h3_two_pass_spec("draft"),
-        )
-        node = self._latent_upscale_node(result)
-        self.assertEqual("rocm", node["inputs"]["device"])
-        pass1 = next(
-            node
-            for node in result.values()
-            if node.get("_meta", {}).get("title") == "#PASS1"
-        )
-        self.assertEqual("res_multistep", pass1["inputs"]["sampler"])
 
     def test_auto_detects_rocm_for_amd_gpu(self):
         client = UpscalerFakeClient(gpu_name="AMD Radeon RX 7900 XTX")
