@@ -17,7 +17,6 @@ INTEGRATION_MODULES = (
     "minimax_h3_integration",
     "movie_planning_refine_actors",
     "movie_project",
-    "timeline_integration",
 )
 
 
