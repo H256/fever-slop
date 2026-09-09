@@ -5,14 +5,6 @@ import json
 from pathlib import Path
 
 from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    Progress,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-)
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
@@ -29,6 +21,7 @@ from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.path_utils import resolve_workflow_reference
 from feverslop.ports.rendering import WorkflowAnchorConfig
+from feverslop.utils.rich_progress import build_progress
 
 console = Console()
 MSR_ACTOR_VIEW_NAMES = ReferenceBibleGenerator.direct_msr_actor_view_names
@@ -209,19 +202,8 @@ def run(args: argparse.Namespace) -> list[Path]:
     manifests: list[Path] = []
     current_task_id = None
 
-    columns = (
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("{task.completed}/{task.total}"),
-        TaskProgressColumn(),
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-    )
-    run._last_progress_columns = columns
-    with Progress(
-        *columns,
-        console=console,
-    ) as progress:
+    with build_progress(console=console) as progress:
+        run._last_progress_columns = tuple(progress.columns)
         total_task_id = progress.add_task("Rendering reference views", total=total_views)
 
         if sequence_backend is not None:
