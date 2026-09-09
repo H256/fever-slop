@@ -256,74 +256,9 @@ class IngredientsSceneSheetBuilder:
 
         images = []
         for actor_id in actor_ids:
-            actor_item = _item_for_id(self.manifest.get("actors") or [], actor_id)
-            if actor_item:
-                actor_item = resolve_reference_look(
-                    actor_item,
-                    reference_look_id(
-                        shot,
-                        kind="actor",
-                        semantic_id=str(actor_id),
-                    ),
-                )
-                logical = _pick_existing_path(actor_item.get("sheet_path"), self.project_dir)
-                if logical:
-                    images.append({
-                        "path": logical,
-                        "contract_path": _pick_existing_path(
-                            (
-                                logical
-                                if actor_item.get("look_id") != "default"
-                                else (
-                                    actor_item.get("msr_sheet_path")
-                                    or actor_item.get("msr_input_path")
-                                    or logical
-                                )
-                            ),
-                            self.project_dir,
-                        ) or logical,
-                        "type": "actor",
-                        "id": actor_id,
-                        "look_id": str(actor_item.get("look_id") or "default"),
-                        "visual_description": str(actor_item.get("visual_description") or "").strip(),
-                        "name": str(actor_item.get("name") or "").strip(),
-                        "image_prompt": str(actor_item.get("image_prompt") or "").strip(),
-                    })
-
+            self._append_reference_image(images, shot, "actor", actor_id)
         if location_id:
-            location_item = _item_for_id(self.manifest.get("locations") or [], location_id)
-            if location_item:
-                location_item = resolve_reference_look(
-                    location_item,
-                    reference_look_id(
-                        shot,
-                        kind="location",
-                        semantic_id=str(location_id),
-                    ),
-                )
-                logical = _pick_existing_path(location_item.get("sheet_path"), self.project_dir)
-                if logical:
-                    images.append({
-                        "path": logical,
-                        "contract_path": _pick_existing_path(
-                            (
-                                logical
-                                if location_item.get("look_id") != "default"
-                                else (
-                                    location_item.get("msr_sheet_path")
-                                    or location_item.get("msr_background_path")
-                                    or logical
-                                )
-                            ),
-                            self.project_dir,
-                        ) or logical,
-                        "type": "location",
-                        "id": location_id,
-                        "look_id": str(location_item.get("look_id") or "default"),
-                        "visual_description": str(location_item.get("visual_description") or "").strip(),
-                        "name": str(location_item.get("name") or "").strip(),
-                        "image_prompt": str(location_item.get("image_prompt") or "").strip(),
-                    })
+            self._append_reference_image(images, shot, "location", location_id)
 
         if not images:
             return {
@@ -385,6 +320,38 @@ class IngredientsSceneSheetBuilder:
             "scene_reference_sheet_description": description,
             "scene_reference_sheet_anchors": anchors,
         }
+
+    def _append_reference_image(
+        self,
+        images: list[dict[str, Any]],
+        shot: dict,
+        kind: str,
+        reference_id: str,
+    ) -> None:
+        item = _item_for_id(self.manifest.get(f"{kind}s") or [], reference_id)
+        if not item:
+            return
+        item = resolve_reference_look(
+            item,
+            reference_look_id(shot, kind=kind, semantic_id=str(reference_id)),
+        )
+        logical = _pick_existing_path(item.get("sheet_path"), self.project_dir)
+        if not logical:
+            return
+        fallback_key = "msr_input_path" if kind == "actor" else "msr_background_path"
+        contract = logical if item.get("look_id") != "default" else (
+            item.get("msr_sheet_path") or item.get(fallback_key) or logical
+        )
+        images.append({
+            "path": logical,
+            "contract_path": _pick_existing_path(contract, self.project_dir) or logical,
+            "type": kind,
+            "id": reference_id,
+            "look_id": str(item.get("look_id") or "default"),
+            "visual_description": str(item.get("visual_description") or "").strip(),
+            "name": str(item.get("name") or "").strip(),
+            "image_prompt": str(item.get("image_prompt") or "").strip(),
+        })
 
 
 def _movie_target_context(shot: dict, bible: dict) -> dict[str, Any]:
