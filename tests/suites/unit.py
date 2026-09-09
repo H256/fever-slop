@@ -42,6 +42,7 @@ UNIT_MODULES = (
     "composition_defensive",
     "concept_prompt_batcher",
     "continuity_handoff",
+    "continuation_benchmark_fixture",
     "creative_shot_payload",
     "deterministic_h3_compiler",
     "documentation_current",
