@@ -12,7 +12,6 @@ from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
-from feverslop.adapters.workflow_debug import write_debug_workflow
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.ports.rendering import VideoRenderRequest
 from feverslop.ports.reporting import Reporter
