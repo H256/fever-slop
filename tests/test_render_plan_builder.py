@@ -30,18 +30,12 @@ class DetailListPickerTests(unittest.TestCase):
             picker.pick("camera_motion", items, scene_number=4, strategy="random"),
         )
 
-    def test_random_no_repeat_cycles_before_reusing_items(self):
+    def test_index_pick_wraps_around_items(self):
         picker = DetailListPicker(seed=99)
         items = ["one", "two", "three"]
 
-        first_cycle = [
-            picker.pick("camera_motion", items, scene_number=i, strategy="random_no_repeat")
-            for i in range(1, 4)
-        ]
-        fourth = picker.pick("camera_motion", items, scene_number=4, strategy="random_no_repeat")
-
-        self.assertEqual(set(items), set(first_cycle))
-        self.assertIn(fourth, items)
+        self.assertEqual("three", picker.pick("camera_motion", items, scene_number=3, strategy="index"))
+        self.assertEqual("one", picker.pick("camera_motion", items, scene_number=4, strategy="index"))
 
 
 class OriginalStylePromptTests(unittest.TestCase):

@@ -122,8 +122,6 @@ LOCATION_DETAILS = [
 class DetailListPicker:
     def __init__(self, seed: int = 0):
         self.seed = int(seed)
-        self._cycles: dict[str, list[str]] = {}
-        self._positions: dict[str, int] = {}
 
     def pick(
         self,
@@ -131,7 +129,6 @@ class DetailListPicker:
         items: list[str],
         scene_number: int,
         strategy: str = "random",
-        index: int | None = None,
         pick_count: int = 1,
     ) -> str:
         if not items:
@@ -140,34 +137,17 @@ class DetailListPicker:
         count = max(1, int(pick_count))
 
         if strategy == "index":
-            start = int(index if index is not None else scene_number - 1)
+            start = scene_number - 1
             picks = [items[(start + offset) % len(items)] for offset in range(count)]
-        elif strategy == "random_no_repeat":
-            picks = [self._pick_no_repeat(list_name, items) for _ in range(count)]
         elif strategy == "random":
             rng = random.Random(f"{self.seed}:{scene_number}:{list_name}")
             picks = [items[rng.randrange(len(items))] for _ in range(count)]
         else:
-            raise ValueError("strategy must be 'index', 'random', or 'random_no_repeat'")
+            raise ValueError("strategy must be 'index' or 'random'")
 
         if len(picks) == 1:
             return picks[0]
         return f"start with {picks[0]} then follow with {picks[1]}"
-
-    def _pick_no_repeat(self, list_name: str, items: list[str]) -> str:
-        position = self._positions.get(list_name, 0)
-        cycle = self._cycles.get(list_name)
-
-        if cycle is None or position >= len(cycle):
-            cycle = list(items)
-            random.Random(f"{self.seed}:{list_name}:{position // max(1, len(items))}").shuffle(cycle)
-            self._cycles[list_name] = cycle
-            position = 0
-
-        value = cycle[position]
-        self._positions[list_name] = position + 1
-        return value
-
 
 def _clamp_relay_segment(frame_start: int, frame_end: int, frame_count: int) -> tuple[int, int] | None:
     """Clamp a relay segment to valid frame range.
