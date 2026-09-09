@@ -9,6 +9,7 @@ from typing import Any
 
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.adapters.workflow_debug import write_debug_workflow
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.utils.io import read_json
 
@@ -263,11 +264,11 @@ class ComfyUIStartframeDirectorVisualAdapter:
     def _write_debug_workflow(self, debug_name: str, workflow: dict[str, Any]) -> None:
         if self.debug_workflows_dir is None:
             return
-        self.debug_workflows_dir.mkdir(parents=True, exist_ok=True)
         safe_name = "".join(char if char.isalnum() or char in {"_", "-"} else "_" for char in debug_name)
-        (self.debug_workflows_dir / f"{safe_name}.json").write_text(
-            json.dumps(workflow, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
+        write_debug_workflow(
+            self.debug_workflows_dir / f"{safe_name}.json",
+            workflow,
+            trailing_newline=True,
         )
 
 

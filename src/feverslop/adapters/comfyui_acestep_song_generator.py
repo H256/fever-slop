@@ -7,6 +7,7 @@ from typing import Any
 
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.adapters.workflow_debug import write_debug_workflow
 from feverslop.domain.full_auto import GeneratedSong, SongSpec
 from feverslop.errors import FeverSlopRenderError
 
@@ -114,11 +115,10 @@ class ComfyUIAceStepSongGenerator:
     def _write_debug_workflow(self, *, output_dir: Path, workflow: dict) -> None:
         project_dir = output_dir.parent
         debug_dir = project_dir / "output" / "debug" / "ace_step"
-        debug_dir.mkdir(parents=True, exist_ok=True)
         run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-        (debug_dir / f"ace_step_{run_id}_workflow.json").write_text(
-            json.dumps(workflow, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        write_debug_workflow(
+            debug_dir / f"ace_step_{run_id}_workflow.json",
+            workflow,
         )
 
     def _first_audio_output(self, history: dict) -> dict:
