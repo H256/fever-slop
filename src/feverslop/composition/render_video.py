@@ -87,10 +87,7 @@ def build_render_video_scenes_use_case(
         round_render_frames_to_8n1=round_render_frames_to_8n1,
     )
 
-    client = ComfyUIClient(
-        base_url=app_config.comfyui.base_url,
-        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
-    )
+    client = ComfyUIClient.from_app_config(app_config)
     model_resolver = ComfyUIModelResolver(
         client,
         overrides=app_config.comfyui.model_overrides,
