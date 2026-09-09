@@ -6,6 +6,7 @@ from pathlib import Path
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.prompting.scene_prompt_builder import (
     ScenePromptBuilder,
+    limit_scene_prompt_words,
     normalize_scene_references,
     scene_prompt_word_limit,
 )
@@ -115,6 +116,166 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertEqual(50, len(data[0]["i2v_prompt_from_t2i"].split()))
         self.assertIn("51 words", messages[0])
         self.assertIn("trimmed to 50 words", messages[0])
+
+    def test_limit_scene_prompt_words_cuts_at_sentence_boundary(self):
+        messages = []
+        prompt = "one two three. four five six seven. eight nine ten eleven twelve"
+
+        result = limit_scene_prompt_words(
+            prompt,
+            scene_number=1,
+            prompt_kind="T2I",
+            max_words=10,
+            status_callback=messages.append,
+        )
+
+        self.assertEqual("one two three. four five six seven.", result)
+        self.assertLessEqual(len(result.split()), 10)
+        self.assertEqual(1, len(messages))
+        self.assertIn("trimmed to 7 words", messages[0])
+        self.assertIn("12 words", messages[0])
+
+    def test_limit_scene_prompt_words_cuts_at_semicolon_clause_boundary(self):
+        messages = []
+        prompt = "alpha beta gamma; delta epsilon; zeta eta theta iota kappa"
+
+        result = limit_scene_prompt_words(
+            prompt,
+            scene_number=2,
+            prompt_kind="I2V",
+            max_words=8,
+            status_callback=messages.append,
+        )
+
+        self.assertEqual("alpha beta gamma; delta epsilon;", result)
+        self.assertEqual(1, len(messages))
+        self.assertIn("trimmed to 5 words", messages[0])
+
+    def test_limit_scene_prompt_words_cuts_at_comma_descriptor_boundary(self):
+        messages = []
+        prompt = "cinematic photo, red dress, fog, night city, neon glow, rain, silence"
+
+        result = limit_scene_prompt_words(
+            prompt,
+            scene_number=1,
+            prompt_kind="T2I",
+            max_words=6,
+            status_callback=messages.append,
+        )
+
+        self.assertEqual("cinematic photo, red dress, fog,", result)
+        self.assertEqual(1, len(messages))
+        self.assertIn("trimmed to 5 words", messages[0])
+
+    def test_limit_scene_prompt_words_fallback_hard_cut_without_boundary(self):
+        messages = []
+        prompt = "alpha beta gamma delta epsilon zeta"
+
+        result = limit_scene_prompt_words(
+            prompt,
+            scene_number=1,
+            prompt_kind="I2V",
+            max_words=5,
+            status_callback=messages.append,
+        )
+
+        self.assertEqual("alpha beta gamma delta epsilon", result)
+        self.assertEqual(1, len(messages))
+        self.assertIn("trimmed to 5 words", messages[0])
+
+    def test_limit_scene_prompt_words_under_limit_unchanged(self):
+        messages = []
+        prompt = "A lone  singer\nunder a  spotlight."
+
+        result = limit_scene_prompt_words(
+            prompt,
+            scene_number=1,
+            prompt_kind="T2I",
+            max_words=50,
+            status_callback=messages.append,
+        )
+
+        self.assertEqual(prompt, result)
+        self.assertEqual([], messages)
+
+    def test_limit_scene_prompt_words_at_limit_unchanged(self):
+        messages = []
+        prompt = "one two three four five"
+
+        result = limit_scene_prompt_words(
+            prompt,
+            scene_number=1,
+            prompt_kind="T2I",
+            max_words=5,
+            status_callback=messages.append,
+        )
+
+        self.assertEqual(prompt, result)
+        self.assertEqual([], messages)
+
+    def test_limit_scene_prompt_words_ignores_bare_punctuation_boundaries(self):
+        messages = []
+        prompt = "end . . . . start more words here"
+
+        result = limit_scene_prompt_words(
+            prompt,
+            scene_number=1,
+            prompt_kind="I2V",
+            max_words=5,
+            status_callback=messages.append,
+        )
+
+        self.assertEqual("end . . . .", result)
+        self.assertEqual(1, len(messages))
+        self.assertIn("trimmed to 5 words", messages[0])
+
+    def test_scene_prompt_overflow_t2i_trimmed_at_clause_boundary(self):
+        t2i_prompt = (
+            "A high resolution cinematic photograph of a crimson-skinned band leader, "
+            "white war paint, holding a black flag, in a ruined cathedral during a "
+            "thunderstorm. She raises the flag while lightning cracks behind her, "
+            "rain falling in silver sheets, candles guttering in the dark, smoke "
+            "curling past broken statues while the congregation stands silent"
+        )
+        modules = GeneralModulesFake(zimage=t2i_prompt, i2v="A short video prompt.")
+        messages = []
+        builder = ScenePromptBuilder(object(), modules=modules)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "scene_prompts.json"
+            builder.build_scene_prompts(
+                stage1_segments=[{"segment_id": "segment_001", "scene": 1, "type": "instrumental"}],
+                concept_prompts={"segment_001": "A band leader raises a black flag."},
+                scene_details={},
+                global_context={
+                    "subject": "a crimson-skinned band leader",
+                    "story_idea": "A ritual in a ruined cathedral.",
+                    "style": "cinematic",
+                    "locations": ["ruined cathedral"],
+                    "prompt_guidance": {},
+                },
+                output_json_path=output_path,
+                artifact_store=JsonArtifactStore(),
+                status_callback=messages.append,
+            )
+            data = json.loads(output_path.read_text(encoding="utf-8"))
+
+        expected_prefix = " ".join(t2i_prompt.split()[:43])
+        self.assertEqual(
+            "A high resolution cinematic photograph of a crimson-skinned band leader, "
+            "white war paint, holding a black flag, in a ruined cathedral during a "
+            "thunderstorm. She raises the flag while lightning cracks behind her, "
+            "rain falling in silver sheets, candles guttering in the dark,",
+            expected_prefix,
+        )
+        self.assertEqual(expected_prefix, data[0]["t2i_prompt"])
+        self.assertEqual(expected_prefix, data[0]["zimage_prompt"])
+        self.assertEqual(expected_prefix, data[0]["ltx_base_prompt"])
+        self.assertLessEqual(len(data[0]["t2i_prompt"].split()), 50)
+        self.assertEqual(1, len(messages))
+        self.assertIn("Scene 1 T2I prompt", messages[0])
+        self.assertIn("trimmed to 43 words", messages[0])
+        self.assertEqual("A short video prompt.", data[0]["i2v_prompt_from_t2i"])
 
     def test_scene_prompts_report_progress_after_each_scene(self):
         modules = GeneralModulesFake()

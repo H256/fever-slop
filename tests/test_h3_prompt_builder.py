@@ -255,6 +255,143 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
             request=request, plan=plan, references=[], final_prompt="prompt",
         ).verdict)
 
+    def test_judge_coerces_null_suggested_prompt_on_good_verdict(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptMode,
+            ResolvedPromptPlan,
+        )
+
+        generator = VideoPromptGenerator.__new__(VideoPromptGenerator)
+        generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
+        generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
+        generator.judge = lambda **_payload: SimpleNamespace(judge={
+            "verdict": "good",
+            "issues": [],
+            "suggested_prompt": None,
+        })
+
+        @contextmanager
+        def lm_context(*, lm):
+            yield
+
+        generator.lm = object()
+        generator.dspy_runtime = SimpleNamespace(context=lm_context)
+        plan = ResolvedPromptPlan(
+            creative_intent="intent",
+            shots=[PlannedShot(shot_number=1, description="action")],
+            overall_soundscape="sound",
+            music_intent=MusicIntent.NONE,
+        )
+
+        result = generator.judge_compiled_prompt(
+            request={"mode": PromptMode.R2V.value, "user_prompt": "prompt"},
+            plan=plan,
+            references=[],
+            final_prompt="prompt",
+        )
+
+        self.assertEqual("good", result.verdict)
+        self.assertEqual("", result.suggested_prompt)
+
+    def test_judge_coerces_null_suggested_prompt_on_bad_verdict(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptMode,
+            ResolvedPromptPlan,
+        )
+
+        generator = VideoPromptGenerator.__new__(VideoPromptGenerator)
+        generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
+        generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
+        generator.judge = lambda **_payload: SimpleNamespace(judge={
+            "verdict": "bad",
+            "issues": ["timing mismatch"],
+            "suggested_prompt": None,
+            "repair_instruction": None,
+        })
+
+        @contextmanager
+        def lm_context(*, lm):
+            yield
+
+        generator.lm = object()
+        generator.dspy_runtime = SimpleNamespace(context=lm_context)
+        plan = ResolvedPromptPlan(
+            creative_intent="intent",
+            shots=[PlannedShot(shot_number=1, description="action")],
+            overall_soundscape="sound",
+            music_intent=MusicIntent.NONE,
+        )
+
+        result = generator.judge_compiled_prompt(
+            request={"mode": PromptMode.R2V.value, "user_prompt": "prompt"},
+            plan=plan,
+            references=[],
+            final_prompt="prompt",
+        )
+
+        self.assertEqual("bad", result.verdict)
+        self.assertIn("timing mismatch", result.issues)
+        self.assertEqual("", result.suggested_prompt)
+        self.assertEqual("", result.repair_instruction)
+
+    def test_judge_coerces_null_issue_lists(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
+        from feverslop.prompting.dspy_h3_models import (
+            MusicIntent,
+            PlannedShot,
+            PromptMode,
+            ResolvedPromptPlan,
+        )
+
+        generator = VideoPromptGenerator.__new__(VideoPromptGenerator)
+        generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
+        generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
+        generator.judge = lambda **_payload: SimpleNamespace(judge={
+            "verdict": "good",
+            "issues": None,
+            "field_issues": None,
+        })
+
+        @contextmanager
+        def lm_context(*, lm):
+            yield
+
+        generator.lm = object()
+        generator.dspy_runtime = SimpleNamespace(context=lm_context)
+        plan = ResolvedPromptPlan(
+            creative_intent="intent",
+            shots=[PlannedShot(shot_number=1, description="action")],
+            overall_soundscape="sound",
+            music_intent=MusicIntent.NONE,
+        )
+
+        result = generator.judge_compiled_prompt(
+            request={"mode": PromptMode.R2V.value, "user_prompt": "prompt"},
+            plan=plan,
+            references=[],
+            final_prompt="prompt",
+        )
+
+        # Pre-fix this path also survived via the repair retry.
+        self.assertEqual("good", result.verdict)
+        self.assertEqual([], result.issues)
+        self.assertEqual([], result.field_issues)
+
     def test_h3_llm_inputs_receive_compact_relay_segments(self):
         import json
         from contextlib import contextmanager
