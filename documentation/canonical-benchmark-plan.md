@@ -17,3 +17,11 @@ it with:
 ```bash
 uv run python -m unittest tests.test_canonical_benchmark_fixture
 ```
+
+The companion continuation fixture at
+`tests/fixtures/continuation/continuous_action_24s.json` exercises one
+24-second cutless action split into three eight-second technical segments. It
+records the absolute 12.0-36.0 second audio interval, the 576 timeline frames,
+and the two predecessor-last-frame/start-frame boundaries. Its interruption
+fixture renders segment one, fails at segment two, and resumes with segments
+two and three.

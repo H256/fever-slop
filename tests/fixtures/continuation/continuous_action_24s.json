@@ -1,0 +1,55 @@
+{
+  "schema": "feverslop.continuation-benchmark/v1",
+  "group_id": "scene-07:lantern-walk",
+  "semantic_action": "Tamsin and Soren carry one lantern through the flooded terminal without a cut.",
+  "audio_interval": {"start_seconds": 12.0, "end_seconds": 36.0},
+  "fps": 24,
+  "duration_capability": {
+    "min_seconds": 4.0,
+    "max_seconds": 10.0,
+    "preferred_seconds": 8.0,
+    "frame_alignment": 17,
+    "frame_offset": 5
+  },
+  "segments": [
+    {
+      "segment_id": "lantern-walk-0001",
+      "index": 1,
+      "start_seconds": 12.0,
+      "end_seconds": 20.0,
+      "duration_seconds": 8.0,
+      "starts_with_anchor": false,
+      "render_frame_count": 192,
+      "anchor_frames": 0,
+      "audio_mode": "absolute_source_window"
+    },
+    {
+      "segment_id": "lantern-walk-0002",
+      "index": 2,
+      "start_seconds": 20.0,
+      "end_seconds": 28.0,
+      "duration_seconds": 8.0,
+      "starts_with_anchor": true,
+      "render_frame_count": 209,
+      "anchor_frames": 1,
+      "audio_mode": "absolute_source_window_with_predecessor_last_frame"
+    },
+    {
+      "segment_id": "lantern-walk-0003",
+      "index": 3,
+      "start_seconds": 28.0,
+      "end_seconds": 36.0,
+      "duration_seconds": 8.0,
+      "starts_with_anchor": true,
+      "render_frame_count": 209,
+      "anchor_frames": 1,
+      "audio_mode": "absolute_source_window_with_predecessor_last_frame"
+    }
+  ],
+  "expected_timeline_frames": 576,
+  "resume_fixture": {
+    "interrupted_after": "lantern-walk-0001",
+    "failed_segment": "lantern-walk-0002",
+    "resume_chain": ["lantern-walk-0002", "lantern-walk-0003"]
+  }
+}
