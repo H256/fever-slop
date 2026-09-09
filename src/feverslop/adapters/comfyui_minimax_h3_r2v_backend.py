@@ -651,55 +651,6 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                     f"{input_group}.{input_group[:-1]}_{index}"
                 ] = [loader_id, 0]
 
-    def _patch_audio_inputs(
-        self,
-        patcher: WorkflowPatcher,
-        comfy_audio_name: str,
-        duration_seconds: float | None = None,
-        scene: dict | None = None,
-    ) -> None:
-        """Patch ``#LOAD_AUDIO`` and ``#TRIM_AUDIO`` anchors (audio workflow only).
-
-        Also wires the trimmed audio output to ref_audios.ref_audio_0 on the
-        MiniMaxH3ReferenceToVideo node and patches start_index from scene data.
-        """
-        if patcher.try_set_existing_input_by_title(
-            "#LOAD_AUDIO", "audio", comfy_audio_name,
-        ):
-            patcher.try_set_existing_input_by_title(
-                "#LOAD_AUDIO",
-                "audioUI",
-                f"/api/view?filename={comfy_audio_name}&type=input",
-            )
-        # -- patch start_index and duration on #TRIM_AUDIO --------------------
-        start_index: float = 0.0
-        if scene is not None:
-            raw_start = scene.get("abs_start_seconds")
-            if raw_start is not None:
-                start_index = float(raw_start)
-        patcher.try_set_existing_input_by_title("#TRIM_AUDIO", "start_index", start_index)
-        if duration_seconds is not None:
-            patcher.try_set_existing_input_by_title(
-                "#TRIM_AUDIO", "duration", float(duration_seconds),
-            )
-        # -- wire trimmed audio to MiniMaxH3ReferenceToVideo ------------------
-        self._wire_trimmed_audio_to_r2v(patcher)
-
-    @staticmethod
-    def _wire_trimmed_audio_to_r2v(patcher: WorkflowPatcher) -> None:
-        """Connect the #TRIM_AUDIO output to ref_audios.ref_audio_0 on the core node."""
-        try:
-            trim_node_id, _ = patcher.find_node_by_meta_title("#TRIM_AUDIO")
-        except KeyError:
-            return
-        core_nodes = patcher.find_nodes_by_class_type("MiniMaxH3ReferenceToVideo")
-        if not core_nodes:
-            return
-        core_nodes[0][1].setdefault("inputs", {})["ref_audios.ref_audio_0"] = [
-            trim_node_id,
-            0,
-        ]
-
     # -----------------------------------------------------------------------
     # Dynamic ref wiring
     # -----------------------------------------------------------------------
@@ -1127,8 +1078,4 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
     @staticmethod
     def _has_anchor(patcher: WorkflowPatcher, title: str) -> bool:
-        try:
-            patcher.find_node_by_meta_title(title)
-            return True
-        except KeyError:
-            return False
+        return patcher.has_title(title)

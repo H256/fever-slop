@@ -207,13 +207,23 @@ class SubjectDirectivePipelineTests(unittest.TestCase):
         ) as planner_type:
             planner_type.return_value.plan.return_value = generated
             PromptGenerationPipeline._generate_subject_directives(
-                llm=LLM(), stage1_segments=[{"segment_id": "seg-1"}],
+                llm=LLM(), stage1_segments=[{
+                    "segment_id": "seg-1",
+                    "performance_intervals": [{
+                        "lyrics": "sings",
+                        "word_timestamps": [{"word": "sings", "start": 0, "end": 1}],
+                        "vocal_sources": [{"alignment": {"raw_words": [{"word": "sings"}]}}],
+                    }],
+                }],
                 concept_prompts={}, scene_details={}, global_context={},
                 scene_prompts_json="scene-prompts.json", artifact_store=store,
                 reporter=type("Reporter", (), {"message": lambda *_args: None})(),
             )
         self.assertEqual("scene-47-shot-1", store.payload[0]["subject_directives"]["shot_id"])
         planner_type.assert_called_once()
+        planner_scene = planner_type.return_value.plan.call_args.args[0]
+        self.assertNotIn("performance_intervals", planner_scene["segment"])
+        self.assertNotIn("word_timestamps", planner_scene["segment"])
 
     def test_subject_staging_retry_uses_rich_panel_output(self):
         generated = _plan()

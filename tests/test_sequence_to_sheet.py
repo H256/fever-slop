@@ -8,13 +8,11 @@ from PIL import Image, ImageDraw, ImageFilter
 from feverslop.adapters.global_library import GlobalLibraryAdapter
 from feverslop.application.orbitsheets_logic import select_orbitsheet_frames
 from feverslop.application.sequence_to_sheet import (
-    FrameSelectionConfig,
     compose_contact_sheet,
     compose_sheet_from_contact_sheet,
     generate_sequence_to_sheet,
     recommended_sheet_layout,
     recommended_view_count,
-    select_frames,
 )
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
 
@@ -38,42 +36,6 @@ class SequenceToSheetTests(unittest.TestCase):
     def test_recommended_layout_preserves_video_aspect_ratio(self):
         self.assertEqual((2, (288, 512)), recommended_sheet_layout("character"))
         self.assertEqual((3, (512, 288)), recommended_sheet_layout("location"))
-
-    def test_select_frames_is_deterministic_and_prefers_sharp_frames(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            paths = []
-            for index in range(8):
-                path = root / f"frame_{index:04}.png"
-                make_frame(path, marker=index, blurred=index in {1, 5})
-                paths.append(path)
-
-            config = FrameSelectionConfig(view_count=4)
-            first = select_frames(paths, config=config)
-            second = select_frames(paths, config=config)
-
-            self.assertEqual(first, second)
-            self.assertEqual(4, len(first))
-            self.assertNotIn(root / "frame_0001.png", first)
-            self.assertNotIn(root / "frame_0005.png", first)
-
-    def test_select_frames_reserves_temporal_segments_for_each_view(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            paths = []
-            for index in range(16):
-                path = root / f"frame_{index:04}.png"
-                make_frame(path, marker=index)
-                paths.append(path)
-
-            selected = select_frames(paths, config=FrameSelectionConfig(view_count=4))
-
-            positions = [paths.index(path) for path in selected]
-            self.assertEqual(4, len(selected))
-            self.assertLessEqual(positions[0], 3)
-            self.assertGreaterEqual(positions[1], 3)
-            self.assertGreaterEqual(positions[2], 7)
-            self.assertGreaterEqual(positions[3], 11)
 
     def test_orbitsheet_selection_uses_late_temporal_slot_for_each_view(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -180,32 +142,6 @@ class SequenceToSheetTests(unittest.TestCase):
                 b"sheet",
                 (root / "library" / "location" / "room" / "looks" / "default" / "sheet.png").read_bytes(),
             )
-
-    def test_frame_selection_config_rejects_invalid_values(self):
-        invalid = [
-            {"view_count": 0},
-            {"view_count": -3},
-            {"view_count": "4"},
-            {"view_count": None},
-            {"sharpness_weight": -0.1},
-            {"sharpness_weight": 0.0, "diversity_weight": 0.0, "coverage_weight": 0.0},
-        ]
-        for kwargs in invalid:
-            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
-                FrameSelectionConfig(**kwargs)
-
-    def test_frame_selection_config_accepts_default_and_valid_configs(self):
-        self.assertEqual(4, FrameSelectionConfig().view_count)
-        config = FrameSelectionConfig(
-            view_count=2,
-            sharpness_weight=1.0,
-            diversity_weight=0.0,
-            coverage_weight=0.0,
-        )
-        self.assertEqual(2, config.view_count)
-        self.assertEqual(1.0, config.sharpness_weight)
-        self.assertEqual(0.0, config.diversity_weight)
-        self.assertEqual(0.0, config.coverage_weight)
 
 
 if __name__ == "__main__":

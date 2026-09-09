@@ -180,6 +180,31 @@ class OpenShotExporterTests(unittest.TestCase):
         self.assertEqual(str(openshot_error.exception), str(mlt_error.exception))
         self.assertIn("scene 2 ends at frame 22, before frame 48", str(openshot_error.exception))
 
+    def test_accepts_mixed_sequential_and_absolute_entries_in_mlt_order(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([
+                {"scene": 1, "duration_seconds": 2.0},
+                {"scene": 2, "duration_seconds": 1.0, "abs_start_seconds": 1.0},
+            ]), encoding="utf-8")
+            clips = [root / "one.mp4", root / "two.mp4"]
+            for clip in clips:
+                clip.touch()
+
+            export_render_plan_to_mlt(
+                render_plan_path=plan,
+                clip_paths=clips,
+                output_path=root / "timeline.mlt",
+                width=1216,
+                height=672,
+                fps=24,
+            )
+
+            self.assertTrue((root / "timeline.mlt").is_file())
+
     def test_tolerates_one_frame_boundary_rounding_difference(self):
         from feverslop.application.openshot_exporter import (
             export_render_plan_to_openshot,

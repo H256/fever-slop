@@ -4,6 +4,14 @@ from feverslop.adapters.workflow_patcher import WorkflowPatcher
 
 
 class WorkflowPatchSpecTests(unittest.TestCase):
+    def test_has_title_reports_matching_and_missing_meta_titles(self):
+        patcher = WorkflowPatcher({
+            "1": {"_meta": {"title": "#PROMPT"}},
+        })
+
+        self.assertTrue(patcher.has_title("#PROMPT"))
+        self.assertFalse(patcher.has_title("#MISSING"))
+
     def test_patch_spec_sets_input_from_dotted_context_path(self):
         patcher = WorkflowPatcher({
             "1": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT"}},

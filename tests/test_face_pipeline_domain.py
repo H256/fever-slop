@@ -20,7 +20,6 @@ from feverslop.domain.face_detection import (
     expand_box,
     filter_detections,
     is_valid_face_detection,
-    normalized_center_distance,
     rank_face_candidates,
     smooth_box,
     valid_landmark_geometry,
@@ -141,26 +140,6 @@ class TestBoxIoU(unittest.TestCase):
         a = BoundingBox(x1=0.0, y1=0.0, x2=0.0, y2=0.0)
         b = BoundingBox(x1=0.0, y1=0.0, x2=100.0, y2=100.0)
         self.assertAlmostEqual(box_iou(a, b), 0.0)
-
-
-class TestNormalizedCenterDistance(unittest.TestCase):
-    def test_identical(self):
-        box = BoundingBox(x1=0.0, y1=0.0, x2=100.0, y2=100.0)
-        self.assertAlmostEqual(
-            normalized_center_distance(box, box, 320, 240), 0.0,
-        )
-
-    def test_different(self):
-        a = BoundingBox(x1=0.0, y1=0.0, x2=100.0, y2=100.0)
-        b = BoundingBox(x1=200.0, y1=100.0, x2=300.0, y2=200.0)
-        dist = normalized_center_distance(a, b, 320, 240)
-        self.assertGreater(dist, 0.0)
-
-    def test_zero_frame(self):
-        box = BoundingBox(x1=0.0, y1=0.0, x2=100.0, y2=100.0)
-        self.assertAlmostEqual(
-            normalized_center_distance(box, box, 0, 0), 0.0,
-        )
 
 
 class TestIsValidFaceDetection(unittest.TestCase):

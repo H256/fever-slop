@@ -287,19 +287,6 @@ def box_iou(box_a: BoundingBox, box_b: BoundingBox) -> float:
     return intersection / union
 
 
-def normalized_center_distance(
-    box_a: BoundingBox,
-    box_b: BoundingBox,
-    frame_width: int,
-    frame_height: int,
-) -> float:
-    """Calculate normalized center distance between two boxes."""
-    diag = math.sqrt(frame_width ** 2 + frame_height ** 2)
-    if diag == 0:
-        return 0.0
-    return math.dist(box_a.center, box_b.center) / diag
-
-
 def valid_landmark_geometry(landmarks: FaceLandmarks) -> bool:
     """Validate 5-point landmark geometry.
 

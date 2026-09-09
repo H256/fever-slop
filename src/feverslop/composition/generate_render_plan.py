@@ -181,9 +181,7 @@ def build_rebuild_render_plan_use_case(console: Console | None = None) -> Genera
     return GenerateRenderPlanUseCase(
         console=console,
         artifact_store=JsonArtifactStore(),
-        pipeline_services=[
-            *_common_pipeline_services(),
-        ],
+        pipeline_services=_common_pipeline_services(),
         storyboard_renderer_factory=_build_storyboard_renderer,
     )
 
