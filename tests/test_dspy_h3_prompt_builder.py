@@ -1107,9 +1107,9 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual("Mara sings into the rain", notes["scene"]["lyrics"])
         # The compiler consumes exactly request["relay_segments"], so the
         # word-level timing evidence must survive there untouched.
-        self.assertIn(marker, json.dumps(request["relay_segments"]))
+        self.assertNotIn(marker, json.dumps(request["relay_segments"]))
         self.assertTrue(any("word_timestamps" in item for item in request["relay_segments"]))
-        self.assertTrue(any("vocal_sources" in item for item in request["relay_segments"]))
+        self.assertFalse(any("vocal_sources" in item for item in request["relay_segments"]))
         self.assertEqual(original, segment)
 
     def test_keeps_complete_audio_references_unchanged(self):
