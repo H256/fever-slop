@@ -12,7 +12,7 @@ from feverslop.adapters.comfyui_minimax_h3_r2v_backend import (
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.domain.audio_timing_contract import AudioTimingWindow
 from feverslop.domain.continuity import BoundaryFrameManifest
-from feverslop.domain.h3_two_pass import default_h3_two_pass_spec
+from feverslop.domain.h3_two_pass import H3TwoPassSpec
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
@@ -882,7 +882,19 @@ class LatentUpscalerDeviceTests(unittest.TestCase):
         result = backend.build_workflow(
             self._scene(),
             prompt="test",
-            two_pass_spec=default_h3_two_pass_spec("draft"),
+            two_pass_spec=H3TwoPassSpec.from_dict({
+                "model_assets": ["minimax_h3", "minimax_h3_video_vae"],
+                "pass1_sampler": "res_multistep",
+                "pass1_scheduler": "simple",
+                "pass1_steps": 12,
+                "pass1_denoise": 1.0,
+                "pass2_sampler": "res_multistep",
+                "pass2_scheduler": "simple",
+                "pass2_steps": 4,
+                "pass2_denoise": 0.55,
+                "preserve_audio_latent": False,
+                "required_anchors": ["#PROMPT", "#FRAMECOUNT", "#PASS1", "#PASS2"],
+            }),
         )
         node = self._latent_upscale_node(result)
         self.assertEqual("rocm", node["inputs"]["device"])
