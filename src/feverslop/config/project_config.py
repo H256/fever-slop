@@ -11,12 +11,9 @@ SCENE_PROMPT_WORD_COUNT_MIN = 40
 SCENE_PROMPT_WORD_COUNT_MAX = 50
 
 
-@dataclass(frozen=True)
-class VideoConfig:
-    fps: int = 24
-    width: int = 1280
-    height: int = 704
-    megapixels: float | None = None
+# Keep the project configuration API name while sharing the canonical settings
+# type used by the pipeline builders.
+VideoConfig = VideoSettings
 
 
 @dataclass(frozen=True)
@@ -645,12 +642,7 @@ class ProjectConfig:
         return stems_list
 
     def to_video_settings(self) -> VideoSettings:
-        return VideoSettings(
-            fps=self.video.fps,
-            width=self.video.width,
-            height=self.video.height,
-            megapixels=self.video.megapixels,
-        )
+        return self.video
 
     def apply_resolution_override(
         self, *, width: int | None = None, height: int | None = None,
