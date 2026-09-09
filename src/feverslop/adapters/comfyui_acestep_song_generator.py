@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
@@ -40,10 +43,12 @@ class ComfyUIAceStepSongGenerator:
         client: Any,
         workflow_path: str | Path,
         model_resolver: Any | None = None,
+        audio_normalizer: Callable[[Path], bool] | None = None,
     ):
         self.client = client
         self.workflow_path = Path(workflow_path)
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
+        self.audio_normalizer = audio_normalizer or self._ensure_decodable_audio
 
     def load_workflow(self) -> dict:
         return json.loads(self.workflow_path.read_text(encoding="utf-8-sig"))
@@ -103,14 +108,55 @@ class ComfyUIAceStepSongGenerator:
             file_type=output.get("type", "output"),
             output_path=output_path,
         )
+        audio_normalized = self.audio_normalizer(downloaded)
         return GeneratedSong(
             audio_path=downloaded,
             manifest={
                 "prompt_id": prompt_id,
                 "seed": seed,
                 "workflow_path": str(self.workflow_path),
+                "audio_normalized": audio_normalized,
             },
         )
+
+    @staticmethod
+    def _ensure_decodable_audio(path: Path) -> bool:
+        """Normalize malformed ComfyUI audio before handing it to Demucs."""
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a:0",
+             "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1", str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if probe.returncode == 0 and probe.stdout.strip():
+            return False
+
+        original = path.with_name(f"{path.stem}.comfyui-original{path.suffix}")
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=path.parent, prefix=f".{path.stem}.", suffix=".mp3", delete=False,
+            ) as handle:
+                temporary = Path(handle.name)
+            subprocess.run(
+                ["ffmpeg", "-y", "-v", "error", "-f", "mp3", "-i", str(path),
+                 "-map", "0:a:0", "-c:a", "libmp3lame", "-q:a", "2", str(temporary)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            if not temporary.stat().st_size:
+                raise ValueError("FFmpeg produced an empty normalized audio file")
+            os.replace(path, original)
+            os.replace(temporary, path)
+            return True
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+            raise FeverSlopRenderError(
+                f"ComfyUI returned an undecodable audio file and normalization failed: {exc}",
+            ) from exc
 
     def _write_debug_workflow(self, *, output_dir: Path, workflow: dict) -> None:
         project_dir = output_dir.parent
