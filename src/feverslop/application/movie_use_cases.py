@@ -4,7 +4,6 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from feverslop.adapters.reporting import ConsoleReporter, NullReporter
 from feverslop.application.movie_bible import (
     _bible_dict,
     _reference_manifest,
@@ -45,7 +44,7 @@ from feverslop.ports.movie import (
     ReferenceGenerationPort,
     VisualGenerationPort,
 )
-from feverslop.ports.reporting import Reporter
+from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
 
 
 class ScaffoldMovieUseCase:
@@ -245,6 +244,5 @@ class AutoProduceMovieUseCase:
             shot_cards_path=scaffolded.shot_cards_path,
             final_video_path=final_video,
         )
-
 
 

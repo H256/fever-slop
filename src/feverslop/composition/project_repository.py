@@ -11,15 +11,13 @@ from feverslop.composition.movie_planner import build_movie_planner
 from feverslop.config.project_config import (
     SCENE_PROMPT_WORD_COUNT_MAX,
     SCENE_PROMPT_WORD_COUNT_MIN,
-)
-from feverslop.domain.slug_utils import slugify_project_name
-from feverslop.domain.render_profile import PostprocessStrategy, QualityProfile, RenderPassStrategy
-from feverslop.ports.reporting import Reporter
-from feverslop.config.project_validation import (
     VIDEO_PIPELINE_BY_MODE,
     validate_full_auto_inputs,
     validate_pipeline_mode,
 )
+from feverslop.domain.slug_utils import slugify_project_name
+from feverslop.domain.render_profile import PostprocessStrategy, QualityProfile, RenderPassStrategy
+from feverslop.ports.reporting import Reporter
 from feverslop.ports.project_requests import ProjectCreateRequest, StudioPathError
 from feverslop.path_utils import resolve_workflow_reference
 from feverslop.utils.io import atomic_write_json

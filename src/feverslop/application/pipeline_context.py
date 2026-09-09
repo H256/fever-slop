@@ -5,11 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from feverslop.adapters.reporting import NullReporter
 from feverslop.domain.scene_duration_limits import ResolvedSceneDurationPolicy
 from feverslop.domain.duration_capability import DurationCapability
 from feverslop.ports.artifacts import ArtifactStore
-from feverslop.ports.reporting import Reporter
+from feverslop.ports.reporting import NullReporter, Reporter
 
 
 @dataclass
