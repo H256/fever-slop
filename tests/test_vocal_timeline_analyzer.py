@@ -285,26 +285,6 @@ class VocalEvidenceTests(unittest.TestCase):
             [dict(start=0, end=4, text="one anchor")], [(0, 1), (2, 4)])
         self.assertEqual(1, sum("one anchor" in s.text for s in result))
 
-    @unittest.skip("legacy ProjectTimelineDocuments adapter removed in #862")
-    def test_evidence_roundtrip(self):
-        import json
-        import tempfile
-        from feverslop.adapters.audio.vocal_timeline_analyzer import VocalTimelineAnalyzer
-        from feverslop.adapters.project_timeline_documents import ProjectTimelineDocuments
-        from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
-        from feverslop.pipeline.utils import save_timeline_json
-        timeline = VocalTimelineAnalyzer()._combine_whisper_and_energy([], [(214.62, 238.18)])
-        class Store:
-            def read_json(self, path):
-                return json.loads(path.read_text())
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "render/timing/timeline.json"
-            save_timeline_json(timeline, path)
-            documents = ProjectTimelineDocuments(Path(directory))
-            self.assertIn("evidence", documents.read_timeline()[0])
-            documents.write_timeline(documents.read_timeline())
-            self.assertEqual(timeline, AudioTimelinePipeline._load_existing_timeline(path, Store()))
-
     def test_merging_legacy_does_not_confirm_unknown_region(self):
         from feverslop.domain.vocal_evidence import VocalEvidence
         confirmed = TimelineSegment(0, 1, "vocals", "hello", evidence=VocalEvidence("confirmed", "accepted"))
