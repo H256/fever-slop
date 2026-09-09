@@ -43,7 +43,7 @@ The command shape is:
 
 ```bash
 uv run python run_pipeline.py ./example_movie_project \
-  --run-video-pipeline --video-pipeline minimax-h3-r2v --skip-tests
+  --video-pipeline minimax-h3-r2v --skip-tests
 ```
 
 Repeat it with the selected LTX 2.5 or H3 mode and the release's documented
