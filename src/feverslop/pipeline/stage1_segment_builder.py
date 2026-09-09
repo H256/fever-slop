@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from feverslop.domain.performance_timeline import project_performance
+from feverslop.domain.performance_timeline import lean_performance_projection, project_performance
 from feverslop.pipeline.prompt_relay_builder import parse_scene_dicts
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.reporting import Reporter
@@ -31,7 +31,7 @@ def build_stage1_segment_json(
         scene_end = float(scene["end"])
         scene_duration = max(scene_end - scene_start, 1e-6)
 
-        performance = project_performance(timeline, scene_start, scene_end)
+        performance = lean_performance_projection(project_performance(timeline, scene_start, scene_end))
         vocal_time = sum(phase["end"] - phase["start"] for phase in performance if phase["state"] == "singing")
         lyrics = [phase["lyrics"] for phase in performance if phase["lyrics"]]
 
