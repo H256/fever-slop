@@ -106,6 +106,42 @@ class MultiItemDspyLimitTests(unittest.TestCase):
 
         self.assertEqual(dict[str, Any], signature.fields["result"].annotation)
 
+    def test_scene_prompt_budget_uses_configured_output_bound(self):
+        calls = []
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        modules = GeneralPromptModules(
+            LLM(),
+            dspy_runtime=self._runtime(calls, {"result": {"prompt": "short"}}),
+        )
+        modules.zimage_prompt({
+            "prompt_word_limits": {"min": 30, "max": 40},
+            "prompt_output_max_tokens": 160,
+        })
+
+        self.assertEqual(160, calls[0]["config"]["max_tokens"])
+
+    def test_scene_prompt_budget_defaults_to_safe_floor_for_small_bound(self):
+        calls = []
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        modules = GeneralPromptModules(
+            LLM(),
+            dspy_runtime=self._runtime(calls, {"result": {"prompt": "short"}}),
+        )
+        modules.i2v_prompt(
+            {"prompt_output_max_tokens": 100},
+            guide="test guide",
+        )
+
+        self.assertEqual(100, calls[0]["config"]["max_tokens"])
+
     def test_i2v_prompt_normalizes_single_text_field_and_missing_speaker_id(self):
         calls = []
 
