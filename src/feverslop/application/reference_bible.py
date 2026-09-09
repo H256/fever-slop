@@ -5,7 +5,6 @@ import json
 import math
 import os
 import shutil
-import time
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -35,7 +34,7 @@ from feverslop.ports.rendering import (
     ImageRenderRequest,
     WorkflowAnchorConfig,
 )
-from feverslop.utils.io import atomic_write_json
+from feverslop.utils.io import atomic_write_json, file_lock
 
 INGREDIENTS_SHEET_LAYOUT_VERSION = "scene-reference-grid/v1"
 _INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS = 30.0
@@ -132,8 +131,25 @@ class ReferenceBibleGenerator:
             shutil.rmtree(staging_dir, ignore_errors=True)
 
     def _generate_sequence_subject_bible(self, subject: ReferenceSubject) -> Path:
+        return self._generate_sequence_bible(
+            subject,
+            request_kind="character",
+            manifest_kind="actor",
+            output_kind="actors",
+            reference_image_size=self.actor_hero_size,
+        )
+
+    def _generate_sequence_bible(
+        self,
+        asset: ReferenceSubject | ReferenceLocation,
+        *,
+        request_kind: str,
+        manifest_kind: str,
+        output_kind: str,
+        reference_image_size: tuple[int, int],
+    ) -> Path:
         if self.sequence_planner is not None and hasattr(self.sequence_planner, "on_event"):
-            self.sequence_planner.on_event = lambda event: self._report_planner_event(event, asset_id=subject.id)
+            self.sequence_planner.on_event = lambda event: self._report_planner_event(event, asset_id=asset.id)
         result = SequenceReferencePipeline(
             anchor_backend=self.backend,
             sequence_backend=self.sequence_backend,
@@ -141,25 +157,25 @@ class ReferenceBibleGenerator:
             on_phase=self._report_sequence_phase,
         ).generate(
             SequenceReferenceRequest(
-                kind="character",
-                asset_id=subject.id,
-                name=subject.name,
-                description=subject.visual_description or subject.name,
-                image_prompt=subject.image_prompt,
+                kind=request_kind,
+                asset_id=asset.id,
+                name=asset.name,
+                description=asset.visual_description or asset.name,
+                image_prompt=asset.image_prompt,
                 visual_style=self.visual_style,
-                asset_context=asdict(subject),
+                asset_context=asdict(asset),
                 output_dir=self.output_dir,
-                reference_image_size=self.actor_hero_size,
+                reference_image_size=reference_image_size,
+                reference_mode=(asset.reference_mode if isinstance(asset, ReferenceLocation) else None),
             ),
         )
         manifest = {
-            **asdict(subject),
-            "kind": "actor",
+            **asdict(asset),
+            "kind": manifest_kind,
             "views": [],
             "anchor_path": self._artifact_path(result.anchor_path),
             "sequence_path": self._artifact_path(result.sequence_path),
             "contact_sheet_path": self._artifact_path(result.contact_sheet_path),
-            "msr_input_path": self._artifact_path(result.sheet_path),
             "sheet_path": self._artifact_path(result.sheet_path),
             "planning_profile": result.planning_profile,
             "prompt_revision": result.prompt_revision,
@@ -172,7 +188,11 @@ class ReferenceBibleGenerator:
             "frames": result.frames,
             "anchor_prompt": result.anchor_prompt,
         }
-        manifest_path = self.output_dir / "actors" / subject.id / "manifest.json"
+        if manifest_kind == "actor":
+            manifest["msr_input_path"] = self._artifact_path(result.sheet_path)
+        else:
+            manifest["msr_background_path"] = self._artifact_path(result.anchor_path)
+        manifest_path = self.output_dir / output_kind / asset.id / "manifest.json"
         atomic_write_json(manifest_path, manifest)
         return manifest_path
 
@@ -299,50 +319,13 @@ class ReferenceBibleGenerator:
             shutil.rmtree(staging_dir, ignore_errors=True)
 
     def _generate_sequence_location_bible(self, location: ReferenceLocation) -> Path:
-        if self.sequence_planner is not None and hasattr(self.sequence_planner, "on_event"):
-            self.sequence_planner.on_event = lambda event: self._report_planner_event(event, asset_id=location.id)
-        result = SequenceReferencePipeline(
-            anchor_backend=self.backend,
-            sequence_backend=self.sequence_backend,
-            planner=self.sequence_planner,
-            on_phase=self._report_sequence_phase,
-        ).generate(
-            SequenceReferenceRequest(
-                kind="location",
-                asset_id=location.id,
-                name=location.name,
-                description=location.visual_description or location.name,
-                image_prompt=location.image_prompt,
-                visual_style=self.visual_style,
-                asset_context=asdict(location),
-                output_dir=self.output_dir,
-                reference_image_size=self.location_hero_size,
-                reference_mode=location.reference_mode,
-            ),
+        return self._generate_sequence_bible(
+            location,
+            request_kind="location",
+            manifest_kind="location",
+            output_kind="locations",
+            reference_image_size=self.location_hero_size,
         )
-        manifest = {
-            **asdict(location),
-            "kind": "location",
-            "views": [],
-            "anchor_path": self._artifact_path(result.anchor_path),
-            "sequence_path": self._artifact_path(result.sequence_path),
-            "contact_sheet_path": self._artifact_path(result.contact_sheet_path),
-            "msr_background_path": self._artifact_path(result.anchor_path),
-            "sheet_path": self._artifact_path(result.sheet_path),
-            "planning_profile": result.planning_profile,
-            "prompt_revision": result.prompt_revision,
-            "planner_source": result.planner_source,
-            "fallback_reason": result.fallback_reason,
-            "semantic_plan_hash": result.semantic_plan_hash,
-            "prompt_hash": result.prompt_hash,
-            "workflow_profile": result.workflow_profile,
-            "seed": result.seed,
-            "frames": result.frames,
-            "anchor_prompt": result.anchor_prompt,
-        }
-        manifest_path = self.output_dir / "locations" / location.id / "manifest.json"
-        atomic_write_json(manifest_path, manifest)
-        return manifest_path
 
     def _generate_location_bible(self, location: ReferenceLocation, location_dir: Path) -> Path:
         location_dir.mkdir(parents=True, exist_ok=True)
@@ -785,31 +768,32 @@ def compose_cached_ingredients_sheet(
     output_path = Path(cache_dir) / f"{signature}.png"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = output_path.parent / f".{signature}.lock"
-    lock_fd = _acquire_cache_lock(lock_path, output_path)
     try:
-        if _valid_cached_ingredients_sheet(output_path, size=size):
-            return output_path, signature
-        with NamedTemporaryFile(
-            suffix=".png",
-            dir=output_path.parent,
-            delete=False,
-        ) as handle:
-            temporary = Path(handle.name)
-        try:
-            if snapshots is None:
-                compose_scene_reference_sheet(image_paths, temporary, size=size)
-            else:
-                _compose_scene_reference_snapshots(
-                    snapshots,
-                    temporary,
-                    size=size,
-                )
-            os.replace(temporary, output_path)
-        finally:
-            temporary.unlink(missing_ok=True)
-    finally:
-        _release_cache_lock(lock_fd)
-        os.close(lock_fd)
+        with file_lock(lock_path, timeout=_INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS, retry_on_error="all"):
+            if _valid_cached_ingredients_sheet(output_path, size=size):
+                return output_path, signature
+            with NamedTemporaryFile(
+                suffix=".png",
+                dir=output_path.parent,
+                delete=False,
+            ) as handle:
+                temporary = Path(handle.name)
+            try:
+                if snapshots is None:
+                    compose_scene_reference_sheet(image_paths, temporary, size=size)
+                else:
+                    _compose_scene_reference_snapshots(
+                        snapshots,
+                        temporary,
+                        size=size,
+                    )
+                os.replace(temporary, output_path)
+            finally:
+                temporary.unlink(missing_ok=True)
+    except TimeoutError as exc:
+        raise TimeoutError(
+            f"Timed out waiting for Ingredients cache entry: {output_path}",
+        ) from exc
     return output_path, signature
 
 
@@ -828,50 +812,6 @@ def _valid_cached_ingredients_sheet(
     except (OSError, SyntaxError, ValueError):
         return False
     return True
-
-
-def _acquire_cache_lock(lock_path: Path, output_path: Path) -> int:
-    lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
-    if os.fstat(lock_fd).st_size == 0:
-        os.write(lock_fd, b"\0")
-    deadline = time.monotonic() + _INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS
-    while True:
-        if _try_cache_lock(lock_fd):
-            return lock_fd
-        if time.monotonic() >= deadline:
-            os.close(lock_fd)
-            raise TimeoutError(
-                f"Timed out waiting for Ingredients cache entry: {output_path}",
-            )
-        time.sleep(0.01)
-
-
-def _try_cache_lock(lock_fd: int) -> bool:
-    os.lseek(lock_fd, 0, os.SEEK_SET)
-    try:
-        if os.name == "nt":
-            import msvcrt
-
-            msvcrt.locking(lock_fd, msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        return False
-    return True
-
-
-def _release_cache_lock(lock_fd: int) -> None:
-    os.lseek(lock_fd, 0, os.SEEK_SET)
-    if os.name == "nt":
-        import msvcrt
-
-        msvcrt.locking(lock_fd, msvcrt.LK_UNLCK, 1)
-    else:
-        import fcntl
-
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
 
 def build_runtime_consistency_contract(

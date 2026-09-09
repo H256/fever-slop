@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import time
 from contextlib import contextmanager
 from copy import deepcopy
@@ -9,12 +8,11 @@ from typing import Any, Callable, Iterator, Literal
 
 from feverslop.domain.scene_recovery import RECOVERY_POLICY_VERSION, RecoveryStage
 from feverslop.errors import FeverSlopDataError
-from feverslop.utils.io import atomic_write_json, read_json_document
+from feverslop.utils.io import atomic_write_json, file_lock, read_json_document
 
 
 @contextmanager
 def scene_file_lock(path: Path, *, waiting: Callable[[], None] | None = None) -> Iterator[None]:
-    path.parent.mkdir(parents=True, exist_ok=True)
     next_update = time.monotonic() + 5
 
     def report_wait() -> None:
@@ -23,40 +21,8 @@ def scene_file_lock(path: Path, *, waiting: Callable[[], None] | None = None) ->
             waiting()
             next_update = time.monotonic() + 5
 
-    with path.open('a+b') as handle:
-        if os.name == 'nt':
-            import msvcrt
-            handle.seek(0, 2)
-            if handle.tell() == 0:
-                handle.write(b'\0')
-                handle.flush()
-            while True:
-                handle.seek(0)
-                try:
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                    break
-                except OSError as exc:
-                    if exc.errno not in (13, 11, 36):
-                        raise
-                    report_wait()
-                    time.sleep(0.05)
-        else:
-            import fcntl
-            while True:
-                try:
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    break
-                except BlockingIOError:
-                    report_wait()
-                    time.sleep(0.05)
-        try:
-            yield
-        finally:
-            if os.name == 'nt':
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    with file_lock(path, on_wait=report_wait):
+        yield
 
 
 class PersistentSceneRecovery:

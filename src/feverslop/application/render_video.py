@@ -10,6 +10,11 @@ from typing import Any
 
 from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.application.effective_render_plan import project_effective_plan
+from feverslop.application.continuity_boundary import (
+    LAST_FRAME_EXTRACTOR_REVISION,
+    build_boundary_frame_manifest,
+    stored_continuity_path,
+)
 from feverslop.domain.artifact_hash import sha256_file
 from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.domain.render_plan import RenderPlan
@@ -258,17 +263,11 @@ def _attach_r2v_continuation_anchor(
     frame_path.parent.mkdir(parents=True, exist_ok=True)
     extracted = Path(postprocessor.extract_last_frame(source_clip, frame_path)).resolve()
     project = Path(project_dir).resolve() if project_dir is not None else None
-    source_stored = _stored_continuation_path(source_clip, project)
-    frame_stored = _stored_continuation_path(extracted, project)
+    source_stored = stored_continuity_path(source_clip, project)
     last_frame_index = getattr(postprocessor, "last_frame_index", 0)
     frame_index = last_frame_index(source_clip) if callable(last_frame_index) else last_frame_index
-    manifest = BoundaryFrameManifest.create(
-        source_clip_path=source_stored,
-        source_clip_sha256=sha256_file(source_clip),
-        frame_index=int(frame_index or 0),
-        extractor_revision="last-frame-v1",
-        frame_path=frame_stored,
-        frame_sha256=sha256_file(extracted),
+    manifest = build_boundary_frame_manifest(
+        source_clip, extracted, frame_index, project_dir=project,
     )
     keyframes = dict(scene.get("keyframes") or {})
     keyframes.update({
@@ -278,7 +277,7 @@ def _attach_r2v_continuation_anchor(
         "startframe_mode": "last_frame_from_previous",
         "startframe_source_clip_path": source_stored,
         "startframe_source_clip_sha256": sha256_file(source_clip),
-        "startframe_extractor": "last-frame-v1",
+        "startframe_extractor": LAST_FRAME_EXTRACTOR_REVISION,
         "startframe_sha256": sha256_file(extracted),
         "boundary_frame_manifest": manifest.to_dict(),
         "continuation_predecessor_id": predecessor_id,
@@ -286,12 +285,6 @@ def _attach_r2v_continuation_anchor(
     result = dict(scene)
     result["keyframes"] = keyframes
     return result
-
-
-def _stored_continuation_path(path: Path, project_dir: Path | None) -> str:
-    if project_dir is not None and path.is_relative_to(project_dir):
-        return path.relative_to(project_dir).as_posix()
-    return path.as_posix()
 
 
 def _restore_r2v_continuation_anchor(
