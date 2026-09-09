@@ -71,7 +71,7 @@ def build_scene_contract(
             scene_number=scene_number,
             kind="actor",
             semantic_id=actor_id,
-            look_id=_actor_look_id(scene, actor_id),
+            look_id=actor_look_id(scene, actor_id),
         )
         for actor_id in actor_ids
     )
@@ -81,7 +81,7 @@ def build_scene_contract(
             scene_number=scene_number,
             kind="location",
             semantic_id=location_id,
-            look_id=_location_look_id(scene),
+            look_id=location_look_id(scene),
         )
         if location_id
         else None
@@ -117,7 +117,7 @@ def _look_ids(scene: Mapping[str, Any]) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
-def _actor_look_id(scene: Mapping[str, Any], actor_id: str) -> str:
+def actor_look_id(scene: Mapping[str, Any], actor_id: str) -> str:
     look_ids = _look_ids(scene)
     actors = look_ids.get("actors")
     if isinstance(actors, Mapping):
@@ -134,7 +134,7 @@ def _actor_look_id(scene: Mapping[str, Any], actor_id: str) -> str:
     return str(value or "default").strip() or "default"
 
 
-def _location_look_id(scene: Mapping[str, Any]) -> str:
+def location_look_id(scene: Mapping[str, Any]) -> str:
     look_ids = _look_ids(scene)
     value = look_ids.get("location")
     if not isinstance(value, str) or not value.strip():
