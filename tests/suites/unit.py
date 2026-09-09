@@ -44,7 +44,6 @@ UNIT_MODULES = (
     "continuity_handoff",
     "creative_shot_payload",
     "deterministic_h3_compiler",
-    "deterministic_ltx25_compiler",
     "documentation_current",
     "dspy_h3_prompt_builder",
     "duration_capability",
