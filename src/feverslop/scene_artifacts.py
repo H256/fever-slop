@@ -112,10 +112,6 @@ class SceneArtifactLayout:
         return self.final_dir / "video_only_upscaled.mp4"
 
     @property
-    def video_audio_upscaled(self) -> Path:
-        return self.final_dir / "video_audio_upscaled.mp4"
-
-    @property
     def concat_raw(self) -> Path:
         return self.final_dir / "concat_raw.txt"
 
