@@ -558,7 +558,7 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
             "state": str(item.get("state") or "").strip(),
             "prompt": str(item.get("prompt") or "").strip(),
         }
-        for key in ("performance_phase", "performance_intervals_version", "word_timestamps", "vocal_sources", "acoustically_verified", "reason_codes", "performance_conflicts"):
+        for key in ("performance_phase", "performance_intervals_version", "word_timestamps", "acoustically_verified", "reason_codes", "performance_conflicts"):
             if key in item:
                 shot[key] = item[key]
         if item.get("performance_phase"):

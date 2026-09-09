@@ -69,3 +69,9 @@ silently fall back to an older model asset when a 2.5 capability is missing.
 Do not delete a legacy project plan until its prompts, frame anchors, audio
 timing, and selected workflow have been revalidated under the corresponding
 LTX 2.5 profile.
+
+The active LTX 2.5 workflow JSON is also checked for retired LTX 2.3 model and
+LoRA identifiers. The optional legacy LoRA slots are explicitly disabled when
+no LTX 2.5 replacement asset exists; they must not silently load an LTX 2.3
+file. Historical LTX 2.3 workflow paths remain documented only in migration
+and diagnostic material until the retirement cleanup is complete.

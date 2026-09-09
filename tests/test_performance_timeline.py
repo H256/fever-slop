@@ -1,9 +1,18 @@
 import unittest
 
-from feverslop.domain.performance_timeline import alignment_reference, project_performance
+from feverslop.domain.performance_timeline import alignment_reference, lean_performance_projection, project_performance
 
 
 class PerformanceTimelineTests(unittest.TestCase):
+    def test_lean_projection_keeps_relay_facts_without_raw_source_copy(self):
+        phases = project_performance([{"type": "vocals", "start": 0, "end": 2,
+            "alignment": {"raw_text": "large source payload"},
+            "word_timestamps": [{"word": "one", "start": 0, "end": 2, "source": "whisper"}]}], 0, 2)
+        lean = lean_performance_projection(phases)[0]
+        self.assertNotIn("vocal_sources", lean)
+        self.assertEqual(phases[0]["vocal_events"][0]["lyrics"], lean["vocal_events"][0]["lyrics"])
+        self.assertNotIn("alignment", lean["vocal_events"][0])
+
     def test_phases_expose_stable_source_references(self):
         timeline = [{"type": "vocals", "start": 0, "end": 2,
                      "word_timestamps": [{"word": "one", "start": 0,
