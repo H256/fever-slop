@@ -10,7 +10,6 @@ from feverslop.domain.rebuild_policy import (
     RebuildPlan,
     preview_rebuild,
 )
-from feverslop.ports.rebuild_execution import RebuildExecutionPort
 
 
 class RebuildStage(Enum):
@@ -85,21 +84,3 @@ class PreviewRebuildUseCase:
             plan=plan,
         )
 
-
-class RequestRebuildUseCase:
-    def __init__(self, executor: RebuildExecutionPort) -> None:
-        if not callable(getattr(executor, "request_rebuild", None)):
-            raise TypeError("executor must implement RebuildExecutionPort.request_rebuild")
-        self._executor = executor
-
-    def execute(
-        self,
-        *,
-        project_id: str,
-        change: ChangeSet,
-        current_fingerprints: dict[ArtifactKind, Freshness] | None = None,
-    ) -> str:
-        plan = preview_rebuild(change, current_fingerprints=current_fingerprints)
-        if not plan.rebuild:
-            return ""
-        return self._executor.request_rebuild(project_id, plan)
