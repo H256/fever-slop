@@ -13,6 +13,7 @@ from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.adapters.workflow_debug import write_debug_workflow
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import VideoRenderRequest
@@ -294,12 +295,9 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     def _write_debug_workflow(self, scene_number: int, workflow: dict) -> None:
         if self.debug_workflows_dir is None:
             return
-        self.debug_workflows_dir.mkdir(parents=True, exist_ok=True)
-        (
-            self.debug_workflows_dir / f"scene_{scene_number:04}_workflow.json"
-        ).write_text(
-            json.dumps(workflow, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        write_debug_workflow(
+            self.debug_workflows_dir / f"scene_{scene_number:04}_workflow.json",
+            workflow,
         )
 
     def _resolve_start_frame(self, scene: dict) -> str | Path | None:

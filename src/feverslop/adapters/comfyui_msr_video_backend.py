@@ -15,6 +15,7 @@ from feverslop.adapters.visual_consistency_runtime import (
     validate_backend_visual_consistency,
 )
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.adapters.workflow_debug import write_debug_workflow
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.ltx_rendering import (
     AudioWindowSpec,
@@ -242,10 +243,9 @@ class ComfyUIMSRVideoRenderBackend:
     def _write_debug_workflow(self, scene_number: int, workflow: dict) -> None:
         if self.debug_workflows_dir is None:
             return
-        self.debug_workflows_dir.mkdir(parents=True, exist_ok=True)
-        (self.debug_workflows_dir / f"scene_{scene_number:04}_workflow.json").write_text(
-            json.dumps(workflow, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        write_debug_workflow(
+            self.debug_workflows_dir / f"scene_{scene_number:04}_workflow.json",
+            workflow,
         )
 
     def _patch_actor_reference_inputs(self, patcher: WorkflowPatcher, actor_paths: list[Path]) -> None:
