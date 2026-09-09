@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from collections.abc import Iterable, Mapping, Sequence
 
 from feverslop.domain.locked_scene_facts import LockedSceneFacts
+from feverslop.domain.prompt_corruption import replacement_character_positions
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload, ResolvedPromptPlan
 
 _REFERENCE_LABEL = re.compile(r"<(?:Picture|Audio|Video) [1-9][0-9]*>")
@@ -219,6 +220,15 @@ def validate_h3_prompt_contract(
     must be anchored to that subject rather than an unanchored audible voice.
     Both default to off, preserving the legacy validation for non-relay prompts.
     """
+    corruption_positions = replacement_character_positions(str(prompt or ""))
+    if corruption_positions:
+        count = len(corruption_positions)
+        suffix = "" if count == 1 else f" ({count} occurrences)"
+        return [PromptContractIssue(
+            "prompt.corrupt_utf8",
+            "prompt",
+            f"prompt contains UTF-8 replacement character (U+FFFD) at position {corruption_positions[0]}{suffix}; check the response decoding",
+        )]
     issues = validate_h3_prompt_shape(prompt, mode=mode)
     if issues:
         return issues

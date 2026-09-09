@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from feverslop.domain.locked_scene_facts import LockedSceneFacts
+from feverslop.domain.prompt_corruption import ensure_no_replacement_character
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload
 from feverslop.prompting.dspy_h3_models import MusicIntent, PromptMode
 from feverslop.prompting.dspy_h3_models import ResolvedPromptPlan
@@ -243,6 +244,7 @@ class DeterministicH3Compiler:
             if labels:
                 lines.append("References: " + ", ".join(labels))
         result = "\n".join(lines)
+        ensure_no_replacement_character(result)
         if self.max_words is not None and len(result.split()) > self.max_words:
             raise ValueError(f"compiled prompt exceeds word budget ({self.max_words})")
         issues = validate_prompt_contract(
@@ -554,6 +556,7 @@ class DeterministicH3Compiler:
             if instruction:
                 sections.insert(0, instruction)
         result = "\n\n".join(section.strip() for section in sections)
+        ensure_no_replacement_character(result)
         performance_issues = validate_performance_phases(relay_segments or (), result)
         if performance_issues:
             raise PromptContractError(performance_issues)

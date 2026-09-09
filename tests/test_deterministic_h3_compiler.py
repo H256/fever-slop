@@ -20,6 +20,21 @@ from feverslop.prompting.dspy_h3_models import (
 
 
 class DeterministicH3CompilerTests(unittest.TestCase):
+    def test_compile_rejects_utf8_replacement_character(self):
+        facts = LockedSceneFacts.create(
+            scene_id="scene-01",
+            facts=[{"category": "wardrobe", "key": "hero", "value": "silver\ufffdcoat", "source_id": "cast:hero"}],
+        )
+        shot = CreativeShotPayload(shot_id="shot-01", visible_action="waits", performance="quiet")
+
+        with self.assertRaisesRegex(ValueError, r"U\+FFFD.*position"):
+            DeterministicH3Compiler().compile(
+                mode="base",
+                facts=facts,
+                shots=[shot],
+                shot_windows={"shot-01": (0, 2)},
+            )
+
     def test_copied_instruments_remain_audible_without_an_audience_score(self):
         from feverslop.prompting.prompt_contract_validation import validate_h3_prompt_contract
         plan = ResolvedPromptPlan(creative_intent="A drummer performs", subjects=[], reference_usage=[],
