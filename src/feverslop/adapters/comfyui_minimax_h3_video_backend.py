@@ -26,6 +26,8 @@ from feverslop.domain.minimax_h3_frames import (
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest, StoredArtifact
 from feverslop.errors import FeverSlopValidationError
+from feverslop.adapters.scene_seed import resolve_scene_seed
+from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import VideoRenderRequest
 from feverslop.ports.reporting import Reporter
 
@@ -55,6 +57,11 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         video_settings: VideoSettings | None = None,
         project_dir: str | Path | None = None,
         workflow: dict | None = None,
+        seed_offset: int = 100000,
+        randomize_seed: bool = False,
+        debug_workflows_dir: str | Path | None = None,
+        workflow_label: str | Path | None = None,
+        latent_upscaler_device: str | None = None,
         progress_callback: Callable[[str], None] | None = None,
         reporter: Reporter | None = None,
     ):
@@ -64,6 +71,11 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         self.output_dir = Path(output_dir)
         self.raw_output_dir = self.output_dir / "raw"
         self.project_dir = Path(project_dir) if project_dir is not None else None
+        self.seed_offset = int(seed_offset)
+        self.randomize_seed = bool(randomize_seed)
+        self.debug_workflows_dir = Path(debug_workflows_dir) if debug_workflows_dir else None
+        self.workflow_label = Path(workflow_label) if workflow_label is not None else self.workflow_path
+        self.latent_upscaler_device = latent_upscaler_device
         self.preroll_frames = max(0, int(preroll_frames))
         self.tail_loss_frames = max(0, int(tail_loss_frames))
         self.postprocess = bool(postprocess)
@@ -430,6 +442,21 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
 
     def _manifest_assets(self, request: VideoRenderRequest) -> list[tuple]:
         return []
+
+    def _seed_for_scene(self, scene: int | dict) -> int:
+        return resolve_scene_seed(self.seed_offset, self.randomize_seed, scene)
+
+    def _resolve_project_path(self, path: str | Path) -> Path:
+        return coerce_local_path(path, base_dir=self.project_dir) if self.project_dir else coerce_local_path(path)
+
+    def _write_debug_workflow(self, scene_number: int, workflow: dict) -> None:
+        if self.debug_workflows_dir is None:
+            return
+        self.debug_workflows_dir.mkdir(parents=True, exist_ok=True)
+        (self.debug_workflows_dir / f"scene_{scene_number:04}_workflow.json").write_text(
+            json.dumps(workflow, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     @staticmethod
     def _workflow_seed(workflow: dict) -> int:
