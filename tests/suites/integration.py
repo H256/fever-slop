@@ -16,7 +16,6 @@ INTEGRATION_MODULES = (
     "global_library_adapter",
     "minimax_h3_integration",
     "movie_planning_refine_actors",
-    "movie_project",
 )
 
 
