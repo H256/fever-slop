@@ -22,6 +22,7 @@ from feverslop.prompting.subject_directive_planning import (
     DspySubjectDirectivePlanner,
     build_shared_staging_plan,
 )
+from feverslop.prompting.planning_payload import compact_planning_payload
 from feverslop.utils.sub_step_progress import SubStepProgress
 
 
@@ -530,10 +531,13 @@ class PromptGenerationPipeline:
                 "shot_id": segment_id,
                 "scene": source.get("scene") or scene.get("scene"),
                 "duration_seconds": source.get("duration") or source.get("duration_seconds") or scene.get("duration_seconds"),
-                "segment": source,
+                # Subject staging only needs semantic scene facts. Keep the
+                # authoritative timing in artifacts, but do not resend the
+                # expanded whisper/alignment evidence to the LLM.
+                "segment": compact_planning_payload(source),
                 "concept": str(concept),
                 "scene_details": scene_details.get(segment_id, {}),
-                "global_context": global_context,
+                "global_context": compact_planning_payload(global_context),
                 "allowed_subject_ids": list(
                     (scene.get("references") or {}).get("actor_ids") or [],
                 ),
