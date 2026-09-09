@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from feverslop.adapters.scene_seed import resolve_scene_seed
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_minimax_h3_video_backend import (
     ComfyUIMiniMaxH3VideoRenderBackend,
@@ -15,7 +14,6 @@ from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.adapters.workflow_debug import write_debug_workflow
 from feverslop.domain.postprocessing import TrimSpec
-from feverslop.path_utils import coerce_local_path
 from feverslop.ports.rendering import VideoRenderRequest
 from feverslop.ports.reporting import Reporter
 
@@ -74,14 +72,14 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             video_settings=video_settings,
             project_dir=project_dir,
             workflow=workflow,
+            seed_offset=seed_offset,
+            randomize_seed=randomize_seed,
+            debug_workflows_dir=debug_workflows_dir,
+            workflow_label=workflow_label,
+            latent_upscaler_device=latent_upscaler_device,
             reporter=reporter,
         )
-        self.seed_offset = int(seed_offset)
-        self.randomize_seed = bool(randomize_seed)
-        self.debug_workflows_dir = Path(debug_workflows_dir) if debug_workflows_dir else None
-        self.workflow_label = Path(workflow_label) if workflow_label is not None else self.workflow_path
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
-        self.latent_upscaler_device = latent_upscaler_device
 
     # -----------------------------------------------------------------------
     # High-level entry points
@@ -285,29 +283,14 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     # Internals
     # -----------------------------------------------------------------------
 
-    def _seed_for_scene(self, scene: int | dict) -> int:
-        return resolve_scene_seed(self.seed_offset, self.randomize_seed, scene)
-
-    @staticmethod
-    def _resolve_project_path(path: str | Path, project_dir: Path | None = None) -> Path:
-        return coerce_local_path(path, base_dir=project_dir) if project_dir else coerce_local_path(path)
-
-    def _write_debug_workflow(self, scene_number: int, workflow: dict) -> None:
-        if self.debug_workflows_dir is None:
-            return
-        write_debug_workflow(
-            self.debug_workflows_dir / f"scene_{scene_number:04}_workflow.json",
-            workflow,
-        )
-
     def _resolve_start_frame(self, scene: dict) -> str | Path | None:
         keyframes = scene.get("keyframes") or {}
         path = keyframes.get("startframe_path")
         if path is None:
             return None
         if self.project_dir is not None:
-            return self._resolve_project_path(path, self.project_dir)
-        return coerce_local_path(path)
+            return self._resolve_project_path(path)
+        return self._resolve_project_path(path)
 
     def _resolve_end_frame(self, scene: dict) -> str | Path | None:
         keyframes = scene.get("keyframes") or {}
@@ -315,8 +298,8 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if path is None:
             return None
         if self.project_dir is not None:
-            return self._resolve_project_path(path, self.project_dir)
-        return coerce_local_path(path)
+            return self._resolve_project_path(path)
+        return self._resolve_project_path(path)
 
     def _manifest_assets(self, request: VideoRenderRequest) -> list[tuple]:
         assets: list[tuple] = []

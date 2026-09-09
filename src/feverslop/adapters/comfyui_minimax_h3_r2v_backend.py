@@ -5,7 +5,6 @@ import re
 import subprocess
 from pathlib import Path
 
-from feverslop.adapters.scene_seed import resolve_scene_seed
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_minimax_h3_video_backend import (
     ComfyUIMiniMaxH3VideoRenderBackend,
@@ -26,7 +25,6 @@ from feverslop.domain.postprocessing import TrimSpec
 from feverslop.domain.artifact_hash import sha256_file
 from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.errors import FeverSlopValidationError
-from feverslop.path_utils import coerce_local_path
 from feverslop.prompting.h3_user_messages import render_reference_contract_message
 from feverslop.ports.rendering import VideoRenderRequest
 from feverslop.ports.reporting import Reporter
@@ -93,16 +91,16 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             video_settings=video_settings,
             project_dir=project_dir,
             workflow=workflow,
+            seed_offset=seed_offset,
+            randomize_seed=randomize_seed,
+            debug_workflows_dir=debug_workflows_dir,
+            workflow_label=workflow_label,
+            latent_upscaler_device=latent_upscaler_device,
             reporter=reporter,
         )
-        self.seed_offset = int(seed_offset)
-        self.randomize_seed = bool(randomize_seed)
-        self.debug_workflows_dir = Path(debug_workflows_dir) if debug_workflows_dir else None
-        self.workflow_label = Path(workflow_label) if workflow_label is not None else self.workflow_path
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
         self.audio_ref_stems = audio_ref_stems
         self.input_audio = Path(input_audio) if input_audio is not None else None
-        self.latent_upscaler_device = latent_upscaler_device
 
     # -----------------------------------------------------------------------
     # High-level entry points
@@ -1000,9 +998,6 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     # Internals
     # -----------------------------------------------------------------------
 
-    def _seed_for_scene(self, scene: int | dict) -> int:
-        return resolve_scene_seed(self.seed_offset, self.randomize_seed, scene)
-
     def _resolve_ref_image_paths(self, scene: dict) -> list[Path]:
         """Extract and resolve reference image paths from a scene dict."""
         self._continuity_manifest(scene)
@@ -1060,19 +1055,6 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if self.project_dir is not None:
             audio_paths = [self._resolve_project_path(p) for p in audio_paths]
         return list(audio_paths)
-
-    def _resolve_project_path(self, path: str | Path) -> Path:
-        if self.project_dir is None:
-            return coerce_local_path(path)
-        return coerce_local_path(path, base_dir=self.project_dir)
-
-    def _write_debug_workflow(self, scene_number: int, workflow: dict) -> None:
-        if self.debug_workflows_dir is None:
-            return
-        write_debug_workflow(
-            self.debug_workflows_dir / f"scene_{scene_number:04}_workflow.json",
-            workflow,
-        )
 
     @staticmethod
     def _has_anchor(patcher: WorkflowPatcher, title: str) -> bool:
