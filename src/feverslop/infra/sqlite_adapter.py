@@ -11,11 +11,7 @@ from feverslop.domain.prompt_revisions import (
     PromptHistory,
     PromptRevision,
 )
-from feverslop.domain.rebuild_policy import ArtifactFingerprint, ArtifactKind
-from feverslop.ports.rebuild_execution import ArtifactProvenancePort
 from feverslop.ports.revision_store import RevisionStorePort
-
-_UTC = datetime.timezone.utc
 
 SCHEMA_VERSION = 3
 
@@ -113,18 +109,6 @@ def _connect(db_path: str) -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
-def _fingerprint_from_row(row: sqlite3.Row) -> ArtifactFingerprint:
-    return ArtifactFingerprint(
-        artifact_kind=ArtifactKind(row["artifact_kind"]),
-        scene_number=row["scene_number"],
-        prompt_hash=row["prompt_hash"],
-        workflow_hash=row["workflow_hash"],
-        reference_hash=row["reference_hash"],
-        timeline_hash=row["timeline_hash"],
-        dimensions_hash=row["dimensions_hash"],
-    )
-
-
 class SqliteRevisionStore(RevisionStorePort):
     """SQLite-backed implementation of RevisionStorePort."""
 
@@ -203,68 +187,3 @@ class SqliteRevisionStore(RevisionStorePort):
                 (project_id, scene_number),
             )
             return [PromptField(row["field"]) for row in cursor.fetchall()]
-
-
-class SqliteArtifactProvenance(ArtifactProvenancePort):
-    """SQLite-backed implementation of ArtifactProvenancePort."""
-
-    def __init__(self, db_path: str) -> None:
-        self._db_path = db_path
-
-    def _connection(self) -> Generator[sqlite3.Connection, None, None]:
-        return _connect(self._db_path)
-
-    def record_fingerprint(self, project_id: str, fingerprint: ArtifactFingerprint) -> None:
-        with self._connection() as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO artifact_provenance
-                    (project_id, artifact_kind, scene_number, prompt_hash, workflow_hash, reference_hash, timeline_hash, dimensions_hash, recorded_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    project_id,
-                    fingerprint.artifact_kind.value,
-                    fingerprint.scene_number,
-                    fingerprint.prompt_hash,
-                    fingerprint.workflow_hash,
-                    fingerprint.reference_hash,
-                    fingerprint.timeline_hash,
-                    fingerprint.dimensions_hash,
-                    datetime.datetime.now(_UTC).isoformat(),
-                ),
-            )
-            conn.commit()
-
-    def load_fingerprint(
-        self, project_id: str, kind: ArtifactKind, scene_number: int | None = None,
-    ) -> ArtifactFingerprint | None:
-        with self._connection() as conn:
-            cursor = conn.execute(
-                """
-                SELECT * FROM artifact_provenance
-                WHERE project_id = ? AND artifact_kind = ?
-                AND (scene_number = ? OR (scene_number IS NULL AND ? IS NULL))
-                ORDER BY recorded_at DESC LIMIT 1
-                """,
-                (project_id, kind.value, scene_number, scene_number),
-            )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            return _fingerprint_from_row(row)
-
-    def load_fingerprints(self, project_id: str) -> list[ArtifactFingerprint]:
-        with self._connection() as conn:
-            cursor = conn.execute(
-                """
-                SELECT * FROM artifact_provenance
-                WHERE project_id = ?
-                ORDER BY recorded_at DESC
-                """,
-                (project_id,),
-            )
-            return [
-                _fingerprint_from_row(row)
-                for row in cursor.fetchall()
-            ]
