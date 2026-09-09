@@ -7,6 +7,7 @@ from typing import Any
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.domain.timeline import TimelineSegment
+from feverslop.domain.vocal_evidence import VocalEvidence
 from feverslop.ports.generate_pipeline import (
     BeatImpactAnalyzerFactory,
     LyricAlignerFactory,
@@ -115,6 +116,9 @@ class AudioTimelinePipeline:
             reporter.message("[yellow]Skipping Whisper analysis; using existing timeline.[/yellow]")
         else:
             analyzer = self.vocal_analyzer_factory(config)
+            set_reporter = getattr(analyzer, "set_reporter", None)
+            if callable(set_reporter):
+                set_reporter(reporter)
             try:
                 timeline = run_spinner(
                     "Detecting vocal activity and transcribing lyrics...",
@@ -127,6 +131,8 @@ class AudioTimelinePipeline:
         reference_lyrics = str(getattr(config, "lyrics", "") or "").strip()
         if reference_lyrics and self.lyric_aligner_factory is not None:
             aligner = self.lyric_aligner_factory(context)
+            if callable(getattr(aligner, "set_reporter", None)):
+                aligner.set_reporter(reporter)
             vocal_segments = sum(1 for seg in timeline if seg.kind == "vocals")
             reporter.message(
                 f"[cyan]LLM lyric alignment: correcting "
@@ -219,6 +225,8 @@ class AudioTimelinePipeline:
                 kind=str(item.get("type") or item.get("kind") or "instrumental"),
                 text=str(item.get("lyrics") or item.get("text") or ""),
                 word_timestamps=tuple(item.get("word_timestamps") or ()),
+                evidence=VocalEvidence.from_dict(item.get("evidence")),
+                alignment=item.get("alignment"),
             )
             for item in artifact_store.read_json(path)
         ]

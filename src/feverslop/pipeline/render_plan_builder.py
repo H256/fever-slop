@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+from copy import deepcopy
 import random
 import re
 from collections.abc import Callable, Mapping
@@ -275,16 +276,17 @@ def _require_key(d: dict[str, object], key: str, context: str) -> object:
     return d[key]
 
 
+def _resolve_prompt_chain(scene: dict, *keys: str) -> str:
+    return str(next((scene.get(key) for key in keys if scene.get(key)), "")).strip()
+
+
 def build_original_style_i2v_prompt(scene: dict, seed: int = 0) -> str:
     scene_number = int(scene["scene"])
     scene_type = str(scene.get("type", "")).strip().lower()
     silent_mode = _scene_silent_mode(scene)
-    zimage_prompt = str(
-        scene.get("t2i_prompt")
-        or scene.get("zimage_prompt")
-        or scene.get("z_image", {}).get("prompt", "")
-        or "",
-    ).strip()
+    zimage_prompt = _resolve_prompt_chain(scene, "t2i_prompt", "zimage_prompt")
+    if not zimage_prompt:
+        zimage_prompt = str((scene.get("z_image") or {}).get("prompt", "")).strip()
     explicit_i2v_prompt = str(
         scene.get("i2v_prompt_from_t2i")
         or scene.get("original_style_i2v_prompt")
@@ -486,7 +488,13 @@ def build_render_plan(
             _require_key(scene, "segment_id", f"scene prompts, scene {scene_number}"),
         )
         zimage_prompt = _require_key(scene, "zimage_prompt", f"scene prompts, scene {scene_number}")
-        t2i_prompt = str(scene.get("t2i_prompt") or scene.get("zimage_prompt") or scene.get("ltx_base_prompt") or scene.get("base_prompt") or "").strip()
+        t2i_prompt = _resolve_prompt_chain(
+            scene,
+            "t2i_prompt",
+            "zimage_prompt",
+            "ltx_base_prompt",
+            "base_prompt",
+        )
         ltx_base_prompt = t2i_prompt
         original_style_i2v_prompt = build_original_style_i2v_prompt(scene, seed=scene_seed)
         i2v_prompt_from_t2i = original_style_i2v_prompt if _scene_silent_mode(scene) else str(
@@ -524,13 +532,15 @@ def build_render_plan(
                 )
 
             relay_entry = {
+                **deepcopy(relay),
                 "frame_start": frame_start,
                 "frame_end": frame_end,
                 "state": state,
                 "prompt": f"{ltx_base_prompt} {state_prompt}",
             }
-            if state == "singing":
-                relay_entry.update(_vocal_relay_binding(scene))
+            if state == "singing" and len(relay.get("vocal_events") or []) <= 1:
+                for key, value in _vocal_relay_binding(scene).items():
+                    relay_entry.setdefault(key, value)
             prompt_relay.append(relay_entry)
 
         if not prompt_relay:
@@ -587,6 +597,16 @@ def build_render_plan(
                 "spatial_relations": scene.get("spatial_relations", ""),
             },
         }
+        if "performance_intervals" in relay_scene:
+            intervals = deepcopy(relay_scene["performance_intervals"])
+            for interval in intervals:
+                interval["state"] = _effective_relay_state(interval["state"], scene)
+                if interval["state"] == "singing":
+                    events = interval.get("vocal_events") or [interval]
+                    if len(events) == 1 and not events[0].get("offscreen"):
+                        for key, value in _vocal_relay_binding(scene).items():
+                            events[0].setdefault(key, value)
+            render_scene["performance_intervals"] = intervals
         if scene.get("subject_directives") is not None:
             try:
                 directive_plan = SubjectDirectivePlan.from_dict(scene["subject_directives"])
@@ -607,6 +627,10 @@ def build_render_plan(
         if references:
             render_scene["references"] = references
         h3_entry = h3_by_segment.get(scene.get("segment_id", ""))
+        if h3_entry and "h3_audio_sources" in h3_entry:
+            render_scene["h3_audio_sources"] = deepcopy(h3_entry["h3_audio_sources"])
+        if h3_entry and "readiness" in h3_entry:
+            render_scene["readiness"] = deepcopy(h3_entry["readiness"])
         canonical_h3_audio_refs = _h3_audio_references(h3_entry)
         if h3_entry and h3_entry.get("prompt"):
             render_scene["h3"] = {"prompt": str(h3_entry["prompt"]).strip()}

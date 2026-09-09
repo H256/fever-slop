@@ -51,6 +51,13 @@ assert loaded == [], f"Unexpected submodules loaded: {loaded}"
             self.assertIn(name, dir_result)
         self.assertIn("__version__", dir_result)
 
+    def test_dir_is_unique_and_excludes_private_imports(self):
+        import feverslop
+        dir_result = dir(feverslop)
+        self.assertEqual(len(dir_result), len(set(dir_result)))
+        self.assertNotIn("importlib", dir_result)
+        self.assertNotIn("warnings", dir_result)
+
 
 class TestDeprecationUtility(unittest.TestCase):
     """API-003: deprecation decorator works correctly."""

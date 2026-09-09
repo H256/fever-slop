@@ -28,7 +28,7 @@ from feverslop.adapters.project_visual_consistency import (
     validate_project_scene_artifacts,
 )
 from feverslop.adapters.reporting import ConsoleReporter
-from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.adapters.video_postprocessor import VideoPostProcessor, final_video_postprocessor
 from feverslop.adapters.cutless_assembly import CutlessAssemblyService
 from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
 from feverslop.composition.cutless_assembly import assemble_declared_cutless_group
@@ -490,6 +490,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         scene_details=scene_details,
         scene_prompts_json=state.context.scene_prompts,
         h3_prompts_json=h3_prompts_json,
+        render_plan_json=state.context.render_plan,
         stem_files=_discover_stem_files(paths.stems_dir, config.input_audio),
         ltx_prompt_relay_json=paths.prompts_dir / f"ltx_prompt_relay_{config.song_id}.json",
         beat_json=paths.timeline_dir / f"beat_data_{config.song_id}.json",
@@ -517,6 +518,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             build_dspy_generator(llm),
             reference_root=paths.project_dir,
             allow_fallback=True,
+            reporter=reporter,
         ),
         checkpoint_store_factory=lambda _context: H3PromptCheckpointStore(
             paths.project_dir,
@@ -623,6 +625,10 @@ def _preserve_enriched_reference_paths(
 def _run_relay_compact_stage(state: PipelineRunState) -> None:
     if state.args.render_mode == "single_prompt":
         raise ValueError("relay_compact requires render_mode relay or auto")
+    resolved_context = json.loads(state.context.resolved_context.read_text(encoding="utf-8-sig"))
+    subject_anchor = str(resolved_context.get("subject", "")).strip()
+    if not subject_anchor:
+        raise ValueError(f"No subject anchor found in {state.context.resolved_context}")
     app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
@@ -635,7 +641,10 @@ def _run_relay_compact_stage(state: PipelineRunState) -> None:
         max_concurrent_requests=app_config.llm.max_concurrent_requests,
         chat_template_kwargs=app_config.llm.chat_template_kwargs,
     )
-    state.plan_for_next_step = RelayDirectionBuilder(llm=llm).compact_render_plan_file(
+    state.plan_for_next_step = RelayDirectionBuilder(
+        llm=llm,
+        subject_anchor=subject_anchor,
+    ).compact_render_plan_file(
         input_render_plan=state.plan_for_next_step,
         output_render_plan=state.context.compact_plan,
     )
@@ -1971,6 +1980,7 @@ def _assemble_declared_cutless_groups(
 
 
 def _run_concat_video_only_stage(state: PipelineRunState) -> None:
+    from feverslop.domain.scene_recovery import require_ready_scenes
     from .config_loader import (
         collect_render_plan_scene_clips,
         collect_render_plan_scene_raw_clips,
@@ -1986,6 +1996,7 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
     render_plan = RenderPlan.from_dicts(render_plan).select(
         scene_numbers=selected_scenes,
     ).to_dicts()
+    require_ready_scenes(render_plan)
     scene_numbers = [int(entry["scene"]) for entry in render_plan]
     canonical_clips = [layout.scene_final_video(scene_number) for scene_number in scene_numbers]
     canonical_available = [clip for clip in canonical_clips if clip.is_file()]
@@ -2011,10 +2022,10 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
         render_plan,
         clips,
         output_dir=layout.final_dir,
-        postprocessor=VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k"),
+        postprocessor=final_video_postprocessor(),
     )
     rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
-    postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+    postprocessor = final_video_postprocessor()
     console.print(f"Concatenating base variant: {len(clips)} scene clips")
     state.video_only_path = postprocessor.concat_clips(
         concat_list=state.context.concat_list,
@@ -2074,6 +2085,9 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
 
 
 def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
+    from feverslop.domain.scene_recovery import require_ready_scenes
+    if getattr(state, "plan_for_next_step", None):
+        require_ready_scenes(json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig")))
     layout = getattr(state.context, "artifact_layout", None)
     variants = getattr(state, "video_only_variants", None)
     if layout is not None and not variants:
@@ -2103,7 +2117,7 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
             "facefix": layout.movie_facefix,
             "upscaled": layout.movie_upscaled,
         }
-        postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+        postprocessor = final_video_postprocessor()
         results: dict[str, Path] = {}
         for variant in ("base", "facefix", "upscaled"):
             video_file = variants.get(variant)
@@ -2121,7 +2135,7 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
     video_only_path = state.video_only_path or state.context.final_concat_video
     if state.video_only_path is None and not Path(video_only_path).exists():
         raise FileNotFoundError(f"Video-only concat not found: {video_only_path}")
-    postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+    postprocessor = final_video_postprocessor()
     output_file = state.context.final_concat
     if Path(video_only_path).name == "video_only_upscaled.mp4":
         output_file = Path(state.context.final_concat).with_name("movie_upscaled.mp4")
@@ -2168,7 +2182,7 @@ def _run_upscale_stage(state: PipelineRunState) -> None:
 
 
 def _run_diagnostic_scene_audio_concat_stage(state: PipelineRunState) -> None:
-    postprocessor = VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+    postprocessor = final_video_postprocessor()
     postprocessor.concat_clips(
         concat_list=state.context.concat_list,
         output_file=state.context.final_concat_scene_audio_debug,

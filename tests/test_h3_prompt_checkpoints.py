@@ -295,6 +295,26 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         self.assertEqual(saved.input_fingerprint, role["generated"]["provenance"]["input_fingerprint"])
         self.assertEqual("human approved", scene["h3"]["prompt"])
 
+    def test_blocked_checkpoint_never_projects_invalid_prompt(self):
+        base = self.project / "output/render/plans/base.json"
+        base.parent.mkdir(parents=True)
+        canonical = build_canonical_scene(
+            segment_id="segment-a", generated_roles={PromptRole.H3_VIDEO: "keep"},
+        )
+        base.write_text(json.dumps([{"scene": 1, "canonical": canonical}]), encoding="utf-8")
+        before = base.read_bytes()
+        self.store.save(self.request(), {
+            "prompt": "invalid", "readiness": {"status": "blocked"},
+            "prompt_judge": {"verdict": "good"},
+        })
+        updated = json.loads(base.read_text(encoding="utf-8"))[0]
+        self.assertEqual(json.loads(before)[0]["canonical"], updated["canonical"])
+        self.assertEqual({"status": "blocked"}, updated["readiness"])
+        self.assertEqual("blocked", self.store.load_for_resume(self.request()).status)
+        self.store.save(self.request(), {"prompt": "valid", "readiness": {"status": "ready"}})
+        updated = json.loads(base.read_text(encoding="utf-8"))[0]
+        self.assertEqual({"status": "ready"}, updated["readiness"])
+
     def test_save_populates_previously_empty_canonical_h3_role(self):
         base = self.project / "output/render/plans/base.json"
         base.parent.mkdir(parents=True)
@@ -352,6 +372,27 @@ class H3PromptCheckpointStoreTests(unittest.TestCase):
         self.assertIn("generated", combined)
         self.assertIn("reused", combined)
         self.assertNotIn("SECRET PROMPT BODY", combined)
+
+    def test_reporting_explains_unjudged_audio_contract_recovery(self):
+        messages = []
+
+        class Reporter:
+            def message(self, message):
+                messages.append(message)
+
+        store = H3PromptCheckpointStore(self.project, reporter=Reporter())
+        store.save(self.request(), {
+            "prompt": "compiled fallback prompt",
+            "dspy_error": "prompt contract validation failed: h3.audio.missing",
+            "prompt_contract": {"valid": True, "compiler_version": 8, "prompt_sha256": "sha256:wrong"},
+            "prompt_provenance": {"compiler_version": 8},
+        })
+
+        combined = "\n".join(messages)
+        self.assertIn("quality check did not run", combined)
+        self.assertIn("No action is needed", combined)
+        self.assertIn("<Audio N>", combined)
+        self.assertIn("h3.audio.missing", combined)
 
     def test_canonical_sync_rejects_duplicate_scene_identity(self):
         base = self.project / "output/render/plans/base.json"

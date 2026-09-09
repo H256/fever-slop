@@ -179,6 +179,19 @@ class ConfiguredAudioPathTests(unittest.TestCase):
 
         self.assertEqual(24, result[0]["fps"])
         self.assertEqual(76, result[0]["ltx"]["prompt_relay"][0]["frame_end"])
+
+    def test_semantic_stage1_intervals_reach_h3_with_relative_times_and_binding(self):
+        from feverslop.prompting.dspy_h3_prompt_builder import _normalize_relay_segments
+        phase = dict(performance_phase=True, start=10.5, end=11, state="singing", lyrics="Hi",
+                     vocal_events=[dict(lyrics="Hi")])
+        segments = [dict(segment_id="s1", scene=1, start=10, end=12, duration=2,
+                         references={"actor_ids": ["lead"]}, performance_intervals=[phase])]
+        result = _attach_subject_directives(segments, [dict(segment_id="s1",
+            vocal_performers=[dict(subject_id="lead", speaker_id="S1")])])
+        normalized = _normalize_relay_segments(result[0])
+        self.assertEqual(0.5, normalized[0]["start_seconds"])
+        self.assertEqual(1, normalized[0]["end_seconds"])
+        self.assertEqual("S1", normalized[0]["speaker_id"])
     def test_selects_configured_stems_in_configured_order(self):
         config = SimpleNamespace(
             minimax_h3_audio_refs=SimpleNamespace(stems=["vocals", "full_mix"]),
@@ -311,7 +324,7 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
 
         self.assertEqual("short_film", captured["video_type"])
 
-    def test_run_reuses_checkpoints_for_a_complete_scene_selection(self):
+    def test_explicit_complete_scene_selection_can_replan_single_scene_project(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 
         captured = {}
@@ -355,7 +368,7 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
 
         pipeline.run(context)
 
-        self.assertTrue(captured["reuse_checkpoints"])
+        self.assertFalse(captured["reuse_checkpoints"])
 
     def test_minimax_reports_compiler_revision_and_recompile_status(self):
         from feverslop.application.h3_prompt_pipeline import H3PromptPipeline

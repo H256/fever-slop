@@ -5,6 +5,8 @@ from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
 from feverslop.prompting.relay_signatures import build_relay_signature_bundle
 
+SUBJECT_ANCHOR = "a test subject"
+
 
 class RelayDirectionDspyContractTests(unittest.TestCase):
     def test_relay_contract_has_typed_output_and_editable_guide(self):
@@ -34,7 +36,7 @@ class RelayDirectionDspyContractTests(unittest.TestCase):
             model = "fake-model"
             client = object()
 
-        builder = RelayDirectionBuilder(LLM(), dspy_runtime=Runtime(), max_words=28)
+        builder = RelayDirectionBuilder(LLM(), subject_anchor=SUBJECT_ANCHOR, dspy_runtime=Runtime(), max_words=28)
         scene = {
             "metadata": {"type": "instrumental"},
             "ltx": {"base_prompt": "A dark road."},
@@ -62,7 +64,7 @@ class RelayDirectionDspyContractTests(unittest.TestCase):
             model = "fake-model"
             client = object()
 
-        builder = RelayDirectionBuilder(LLM(), dspy_runtime=Runtime(), max_words=4)
+        builder = RelayDirectionBuilder(LLM(), subject_anchor=SUBJECT_ANCHOR, dspy_runtime=Runtime(), max_words=4)
         scene = {
             "metadata": {"type": "instrumental"},
             "ltx": {"base_prompt": "A dark road."},
@@ -79,7 +81,7 @@ class RelayDirectionDspyContractTests(unittest.TestCase):
             def complete_prompt(self, **kwargs):
                 raise AssertionError("legacy text completion must not be used")
 
-        builder = RelayDirectionBuilder(LLM())
+        builder = RelayDirectionBuilder(LLM(), subject_anchor=SUBJECT_ANCHOR)
         scene = {
             "metadata": {"type": "instrumental", "character_motion": "The warrior turns."},
             "ltx": {"base_prompt": "A dark road."},
@@ -94,7 +96,7 @@ class RelayDirectionDspyContractTests(unittest.TestCase):
         class LLM:
             pass
 
-        builder = RelayDirectionBuilder(LLM(), max_words=28)
+        builder = RelayDirectionBuilder(LLM(), subject_anchor=SUBJECT_ANCHOR, max_words=28)
         scene = {
             "metadata": {
                 "type": "vocals",
@@ -128,7 +130,7 @@ class RelayDirectionDspyContractTests(unittest.TestCase):
             model = "fake-model"
             client = object()
 
-        builder = RelayDirectionBuilder(LLM(), dspy_runtime=Runtime(), max_words=28)
+        builder = RelayDirectionBuilder(LLM(), subject_anchor=SUBJECT_ANCHOR, dspy_runtime=Runtime(), max_words=28)
         scene = {
             "metadata": {"type": "vocals"},
             "ltx": {"base_prompt": "A dark road."},

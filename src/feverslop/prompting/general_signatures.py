@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+import re
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 
 class SongBriefResult(BaseModel):
@@ -36,6 +38,91 @@ class StoryboardPromptResult(PromptResult):
     """Transport model; the transformer applies the configured word limit."""
 
 
+def parse_prompt_result(value: Any) -> PromptResult:
+    """Validate an LLM prompt result without treating optional performer hints as fatal."""
+    value = _normalize_prompt_result(_unwrap_prompt_result(value))
+    try:
+        return PromptResult.model_validate(value)
+    except ValidationError as error:
+        if not isinstance(value, Mapping) or not _only_vocal_performer_errors(error):
+            raise
+        sanitized = dict(value)
+        sanitized["vocal_performers"] = _valid_vocal_performers(value.get("vocal_performers"))
+        return PromptResult.model_validate(sanitized)
+
+
+def _unwrap_prompt_result(value: Any) -> Any:
+    """Accept the result envelope emitted by some DSPy-compatible backends."""
+    if not isinstance(value, Mapping) or "prompt" in value:
+        return value
+    nested = value.get("result")
+    return nested if isinstance(nested, Mapping) else value
+
+
+def _normalize_prompt_result(value: Any) -> Any:
+    """Normalize supported DSPy prompt aliases into the public prompt contract."""
+    if not isinstance(value, Mapping):
+        return value
+    normalized = dict(value)
+    if "prompt" not in normalized and isinstance(normalized.get("video_prompt"), str):
+        normalized["prompt"] = normalized["video_prompt"]
+    if "prompt" not in normalized:
+        text_values = [
+            item for key, item in normalized.items()
+            if key != "vocal_performers" and isinstance(item, str) and item.strip()
+        ]
+        if len(text_values) == 1:
+            normalized["prompt"] = text_values[0]
+    performers = normalized.get("vocal_performers")
+    if isinstance(performers, list):
+        normalized["vocal_performers"] = _normalize_subject_performers(performers)
+    return normalized
+
+
+def _normalize_subject_performers(performers: list[Any]) -> list[Any]:
+    """Give subject-only performer selections deterministic scene-local speaker IDs."""
+    normalized = []
+    for performer in performers:
+        if isinstance(performer, str) and performer.strip():
+            normalized.append({
+                "subject_id": performer.strip(),
+                "speaker_id": f"S{len(normalized) + 1}",
+            })
+        elif (
+            isinstance(performer, Mapping)
+            and str(performer.get("subject_id") or "").strip()
+            and not str(performer.get("speaker_id") or "").strip()
+        ):
+            normalized.append({
+                **performer,
+                "speaker_id": f"S{len(normalized) + 1}",
+            })
+        else:
+            normalized.append(performer)
+    return normalized
+
+
+def _only_vocal_performer_errors(error: ValidationError) -> bool:
+    return all(
+        issue.get("loc", ())[0:1] == ("vocal_performers",)
+        for issue in error.errors()
+    )
+
+
+def _valid_vocal_performers(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    performers = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        subject_id = str(item.get("subject_id") or "").strip()
+        match = re.fullmatch(r"[sS]([1-9][0-9]*)", str(item.get("speaker_id") or "").strip())
+        if subject_id and match:
+            performers.append({"subject_id": subject_id, "speaker_id": f"S{match.group(1)}"})
+    return performers
+
+
 def build_general_signature_bundle(dspy_module: Any | None = None):
     if dspy_module is None:
         import dspy as dspy_module
@@ -66,7 +153,7 @@ def build_general_signature_bundle(dspy_module: Any | None = None):
 
         guide: str = dspy_module.InputField()
         payload: dict[str, Any] = dspy_module.InputField()
-        result: PromptResult = dspy_module.OutputField()
+        result: dict[str, Any] = dspy_module.OutputField()
 
     class StoryboardTransform(dspy_module.Signature):
         """Transform a storyboard prompt using the supplied editable template."""

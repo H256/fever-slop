@@ -20,6 +20,127 @@ from feverslop.prompting.dspy_h3_models import (
 
 
 class DeterministicH3CompilerTests(unittest.TestCase):
+    def test_copied_instruments_remain_audible_without_an_audience_score(self):
+        from feverslop.prompting.prompt_contract_validation import validate_h3_prompt_contract
+        plan = ResolvedPromptPlan(creative_intent="A drummer performs", subjects=[], reference_usage=[],
+            shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=4,
+                               description="A drummer plays. The camera dollies left.")],
+            overall_soundscape="Quiet room tone.", music_intent=MusicIntent.NONE)
+        references = [dict(label="<Audio 1>", kind="audio", name="drums",
+                           description="isolated drums", copy_mode="partially_copy")]
+        prompt = DeterministicH3Compiler().compile(mode="r2v", plan=plan, facts=self.facts,
+            shots=creative_shots_from_plan(plan), shot_windows={"shot-01": (0, 4)},
+            prepared_reference_labels=["<Audio 1>"], reference_metadata=references)
+        issues = validate_h3_prompt_contract(prompt, mode="r2v", plan=plan, reference_metadata=references)
+        self.assertNotIn("h3.audio.missing", [i.code for i in issues])
+        self.assertIn("non_diegetic_music: N/A", prompt)
+        self.assertIn("camera dollies left", prompt)
+        soundscape = prompt.split("overall_soundscape:", 1)[1].split("non_diegetic_music:", 1)[0]
+        self.assertIn("<Audio 1>", soundscape)
+
+    def test_creative_cut_assigns_individual_words_and_clips_intervals(self):
+        from feverslop.prompting.deterministic_h3_compiler import _performance_phases_for_shot
+        phase = dict(performance_phase=True, start_seconds=0, end_seconds=4,
+                     state="singing", lyrics="one two", word_time_origin=10,
+                     word_timestamps=[dict(word="one", start=10, end=12, word_id="w1", text_assigned=True),
+                                      dict(word="two", start=12, end=14, word_id="w2", text_assigned=True)])
+        for start, end, expected in ((0, 2, "one"), (2, 4, "two")):
+            shot = PlannedShot(shot_number=1, start_seconds=start, end_seconds=end, description="Orbit")
+            projected = _performance_phases_for_shot(shot, [phase])[0]
+            self.assertEqual(expected, projected["lyrics"])
+            self.assertEqual(1, len(projected["word_timestamps"]))
+            self.assertEqual(start + 10, projected["word_timestamps"][0]["start"])
+
+    def test_offscreen_event_retains_explicit_voice_identity(self):
+        event = _insert_authoritative_vocal_event("", dict(state="singing", lyrics="Echo",
+                                                          offscreen=True, speaker_id="voice2"))
+        self.assertIn("(voice2)", event)
+        self.assertIn("sings offscreen", event)
+
+    def test_offscreen_cut_continuation_retains_voice_without_repeating_word(self):
+        from feverslop.prompting.deterministic_h3_compiler import _render_performance_phases
+        result = _render_performance_phases("Orbit", [dict(performance_phase=True,
+            start_seconds=0, end_seconds=1, state="singing", lyrics="",
+            offscreen=True, speaker_id="S2")], {})
+        self.assertIn("offscreen voice (S2)", result)
+        self.assertNotIn("<d>", result)
+
+    def test_performance_phases_preserve_one_camera_shot_and_all_events(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A performance", subjects=[], reference_usage=[],
+            shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=6,
+                               description="The camera circles slowly.", camera_behavior="dolly left past a pillar")],
+            overall_soundscape="Wind", music_intent=MusicIntent.NONE,
+        )
+        phases = [
+            dict(performance_phase=True, start_seconds=0, end_seconds=2, state="instrumental"),
+            dict(performance_phase=True, start_seconds=2, end_seconds=3, state="singing", lyrics="First"),
+            dict(performance_phase=True, start_seconds=3, end_seconds=4, state="instrumental"),
+            dict(performance_phase=True, start_seconds=4, end_seconds=6, state="singing", lyrics="Second"),
+        ]
+        result = plan_with_authoritative_relay(plan, phases)
+        self.assertEqual(1, len(result.shots))
+        self.assertIn("camera circles slowly", result.shots[0].description)
+        self.assertIn("First", result.shots[0].description)
+        self.assertIn("Second", result.shots[0].description)
+        self.assertIn("2.000-3.000", result.shots[0].description)
+        self.assertIn("3.000-4.000", result.shots[0].description)
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=result, facts=LockedSceneFacts.create(scene_id="x", facts=[]),
+            shots=creative_shots_from_plan(result), shot_windows={"shot-01": (0, 6)},
+            relay_segments=phases, duration_seconds=6,
+        )
+        detailed = prompt.split("detailed_description:", 1)[1].split("non_diegetic_music:", 1)[0]
+        self.assertEqual(2, detailed.count("<d>"))
+        self.assertEqual(1, detailed.count("Within this continuous camera shot"))
+        self.assertNotIn("[Shot 2]", detailed)
+        self.assertIn("dolly left past a pillar", detailed.casefold())
+
+    def test_singer_closed_mouth_conflict_does_not_remove_other_silent_actor(self):
+        from feverslop.prompting.deterministic_h3_compiler import _remove_authored_vocal_claims
+        result = _remove_authored_vocal_claims(
+            "[Shot 1] <Subject 1> keeps her mouth closed. <Subject 2> keeps his mouth closed.",
+            {"state": "singing", "subject_label": "<Subject 1>"},
+        )
+        self.assertNotIn("her mouth closed", result)
+        self.assertIn("<Subject 2> keeps his mouth closed", result)
+
+    def test_performance_phases_do_not_require_one_creative_shot_each(self):
+        from feverslop.prompting.dspy_h3_generator_core import _authoritative_shot_windows
+        from feverslop.prompting.dspy_h3_models import VideoPromptRequest, PromptMode
+        request = VideoPromptRequest(mode=PromptMode.T2V, user_prompt="A camera orbit", duration_seconds=6,
+            relay_segments=[dict(performance_phase=True, start_seconds=0, end_seconds=2),
+                            dict(performance_phase=True, start_seconds=2, end_seconds=6)])
+        self.assertEqual([(0, 6, False)], _authoritative_shot_windows(request, 1))
+
+    def test_uncertain_performance_is_a_hard_contract_issue(self):
+        from feverslop.prompting.prompt_contract_validation import validate_performance_phases
+        issues = validate_performance_phases([dict(performance_phase=True, start_seconds=0,
+            end_seconds=2, state="singing", acoustically_verified=False,
+            performance_conflicts=[{"reason_code": "unresolved_lyric_alignment"}])])
+        self.assertIn("h3.performance.unresolved_lyric_alignment", [i.code for i in issues])
+
+    def test_projected_two_voices_keep_separate_dialogue_and_offscreen_performance(self):
+        from feverslop.domain.performance_timeline import project_performance
+        from feverslop.prompting.dspy_h3_prompt_builder import _normalize_relay_segments
+        timeline = [{"start": 0, "end": 4, "type": "vocals", "word_timestamps": [
+            dict(word="Hello", start=1, end=2, source="whisper", word_id="w1", subject_id="lead", speaker_id="S1"),
+            dict(word="Echo", start=2, end=3, source="whisper", word_id="w2", offscreen=True),
+        ]}]
+        phases = project_performance(timeline, 0, 4)
+        relay = [dict(p, frame_start=round(p["start"] * 24), frame_end=round(p["end"] * 24)) for p in phases]
+        normalized = _normalize_relay_segments(dict(fps=24, duration=4, prompt_relay=relay,
+                                                  references={"actor_ids": ["lead"]}))
+        plan = ResolvedPromptPlan(creative_intent="Performance", subjects=[SubjectDefinition(
+            label="<Subject 1>", name="Lead", description="a singer", source_references=[])],
+            reference_usage=[], shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=4,
+                description="The camera circles Lead.")], overall_soundscape="Air", music_intent=MusicIntent.NONE)
+        result = plan_with_authoritative_relay(plan, normalized)
+        self.assertIn("<Subject 1> (S1)", result.shots[0].description)
+        self.assertIn("sings offscreen", result.shots[0].description)
+        self.assertEqual(1, result.shots[0].description.count("Hello"))
+        self.assertEqual(1, result.shots[0].description.count("Echo"))
+
     def setUp(self):
         self.facts = LockedSceneFacts.create(
             scene_id="scene-01",
@@ -163,6 +284,113 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertNotIn("The camera maintains a slow orbit around the musicians.", prompt)
         self.assertNotIn("Red petals swirl around the musicians.", prompt)
 
+    def test_r2v_compiler_keeps_missing_camera_behavior_for_description_owned_shot(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A reference-guided performance.",
+            shots=[PlannedShot(
+                shot_number=1,
+                prose_owner="description",
+                description="<Subject 1> reaches toward the flowers.",
+                camera_behavior="Slowly tracking inward toward the vocalist.",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Vocalist",
+                description="a vocalist", source_references=["<Picture 1>"],
+            )],
+            overall_soundscape="Quiet wind.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 2.0)},
+        )
+
+        self.assertIn("The camera slowly tracks inward toward <Subject 1>.", prompt)
+
+    def test_r2v_compiler_replaces_reference_ids_with_subject_labels(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A reference-guided performance.",
+            subjects=[
+                SubjectDefinition(
+                    label="<Subject 1>", name="Male Vocalist",
+                    description="a vocalist", source_references=["<Picture 1>"],
+                ),
+                SubjectDefinition(
+                    label="<Subject 2>", name="Crimson Field",
+                    description="a battlefield", source_references=["<Picture 2>"],
+                ),
+            ],
+            shots=[PlannedShot(
+                shot_number=1,
+                description=(
+                    "actor_vocalist stands in loc_crimson_bloom_field beneath moonlight."
+                ),
+                start_seconds=0,
+                end_seconds=2,
+                reference_labels=["<Picture 1>", "<Picture 2>"],
+            )],
+            overall_soundscape="Quiet wind.",
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 2.0)},
+            reference_metadata=[
+                {"label": "<Picture 1>", "kind": "picture", "id": "actor_vocalist"},
+                {
+                    "label": "<Picture 2>", "kind": "picture",
+                    "source": "references/locations/loc_crimson_bloom_field/sheet.png",
+                },
+            ],
+        )
+
+        self.assertIn("<Subject 1> stands in <Subject 2>", prompt)
+        self.assertNotIn("actor_vocalist", prompt)
+        self.assertNotIn("loc_crimson_bloom_field", prompt)
+
+    def test_r2v_compiler_preserves_diegetic_vocal_soundscape(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A reference-guided performance.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Male Vocalist",
+                description="a vocalist", source_references=["<Picture 1>"],
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="The performer braces against the wind.",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            overall_soundscape=(
+                "The diegetic sound of a powerful male vocal belt, accompanied by "
+                "the low roar of distant fires."
+            ),
+            music_intent=MusicIntent.NONE,
+        )
+
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 2.0)},
+            relay_segments=[{
+                "state": "singing", "lyrics": "Churning",
+                "subject_label": "<Subject 1>", "speaker_id": "S1",
+            }],
+            speaker_bindings=[{"subject_label": "<Subject 1>", "speaker_id": "S1"}],
+        )
+
+        self.assertIn(
+            "overall_soundscape: The diegetic sound of a powerful male vocal belt, "
+            "accompanied by the low roar of distant fires.",
+            prompt,
+        )
+
     def test_legacy_shot_without_prose_owner_keeps_component_rendering(self):
         plan = ResolvedPromptPlan.model_validate({
             "creative_intent": "A legacy performance.",
@@ -186,10 +414,13 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertIn("The performer faces the camera.", prompt)
         self.assertIn("The camera slowly pushes forward.", prompt)
 
-    def test_r2v_compiler_replaces_subject_names_in_style_opening(self):
+    def test_r2v_compiler_keeps_subject_labels_out_of_style_opening(self):
         plan = ResolvedPromptPlan(
             creative_intent="A reference-guided performance.",
-            style_opening="Dark Entity 1 is framed in severe blue light.",
+            style_opening=(
+                "Dark Entity 1 is framed in severe blue light. "
+                "High-contrast cinematography uses a cold cobalt palette."
+            ),
             subjects=[SubjectDefinition(
                 label="<Subject 1>",
                 name="Dark Entity 1",
@@ -199,7 +430,7 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             reference_usage=[],
             shots=[PlannedShot(
                 shot_number=1,
-                description="The figure holds a rigid pose.",
+                description="Dark Entity 1 holds a rigid pose.",
                 start_seconds=0,
                 end_seconds=2,
             )],
@@ -218,8 +449,11 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         detailed = prompt.split("detailed_description:", 1)[1].split(
             "overall_soundscape:", 1,
         )[0]
-        self.assertIn("<Subject 1> is framed in severe blue light.", detailed)
-        self.assertNotIn("Dark Entity 1", detailed)
+        opening, first_shot = detailed.split("[Shot 1]", 1)
+        self.assertIn("High-contrast cinematography uses a cold cobalt palette.", opening)
+        self.assertNotIn("<Subject 1>", opening)
+        self.assertNotIn("Dark Entity 1", opening)
+        self.assertIn("<Subject 1> holds a rigid pose.", first_shot)
 
     def test_r2v_compiler_removes_reference_description_placeholders(self):
         plan = ResolvedPromptPlan(

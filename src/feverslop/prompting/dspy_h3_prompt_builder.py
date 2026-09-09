@@ -16,10 +16,6 @@ from feverslop.prompting.dspy_h3_models import (
     AudioSubjectBinding,
     H3PromptSections,
     MusicIntent,
-    PlannedShot,
-    ReferenceUsage,
-    ResolvedPromptPlan,
-    SubjectDefinition,
 )
 from feverslop.prompting.deterministic_h3_compiler import (
     H3_COMPILER_NAME,
@@ -29,10 +25,14 @@ from feverslop.prompting.deterministic_h3_compiler import (
     creative_shots_from_plan,
 )
 from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.planning_payload import compact_planning_payload
 from feverslop.prompting.prompt_contract_validation import (
     PromptContractError,
+    PromptContractIssue,
+    validate_prompt_contract,
     validate_h3_prompt_contract,
     validate_h3_prompt_shape,
+    validate_performance_phases,
 )
 from feverslop.prompting.subject_directive_planning import (
     project_directives_to_prompt,
@@ -158,11 +158,15 @@ def _speaker_bindings_for_compile(
         for stem, binding in raw.items()
         if stem in audio_references and binding.get("speaker_id")
     ]
-    relay = (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    relay = segment.get("performance_intervals") or (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    relay = [event for phase in relay for event in phase.get("vocal_events") or [phase]]
+    labels = {actor: f"<Subject {i}>" for i, actor in enumerate((segment.get("references") or {}).get("actor_ids") or [], 1)}
     for item in relay:
         if not isinstance(item, dict):
             continue
-        subject_label = str(item.get("subject_label") or "").strip()
+        if item.get("offscreen"):
+            continue
+        subject_label = str(item.get("subject_label") or labels.get(item.get("subject_id")) or "").strip()
         speaker_id = str(item.get("speaker_id") or "").strip()
         if subject_label and speaker_id and not any(
             binding["subject_label"] == subject_label
@@ -326,7 +330,7 @@ def _scene_references(
         if audio_paths
         else {}
     )
-    relay = (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    relay = segment.get("performance_intervals") or (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
     fully_instrumental = bool(relay) and all(
         str(item.get("state") or "").strip().lower() == "instrumental"
         for item in relay
@@ -526,7 +530,7 @@ def _safe_error_message(error: BaseException) -> str:
 
 def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
     """Convert LTX frame relays into bounded, model-neutral timed shots."""
-    relay = (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
+    relay = segment.get("performance_intervals") or (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
     if not relay:
         return []
     fps = float(segment.get("fps") or 24)
@@ -534,8 +538,14 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
     duration = float(duration_value) if duration_value is not None else None
     shots = []
     for index, item in enumerate(relay, start=1):
-        start = float(item["frame_start"]) / fps
-        end = float(item["frame_end"]) / fps
+        if item.get("performance_phase") and "start_seconds" in item and "end_seconds" in item:
+            start, end = float(item["start_seconds"]), float(item["end_seconds"])
+        elif item.get("performance_phase") and "start" in item and "end" in item:
+            origin = float(segment.get("abs_start_seconds", segment.get("start")) or 0)
+            start, end = float(item["start"]) - origin, float(item["end"]) - origin
+        else:
+            start = float(item["frame_start"]) / fps
+            end = float(item["frame_end"]) / fps
         if duration is not None:
             start = min(start, duration)
             end = min(end, duration)
@@ -548,6 +558,11 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
             "state": str(item.get("state") or "").strip(),
             "prompt": str(item.get("prompt") or "").strip(),
         }
+        for key in ("performance_phase", "performance_intervals_version", "word_timestamps", "vocal_sources", "acoustically_verified", "reason_codes", "performance_conflicts"):
+            if key in item:
+                shot[key] = item[key]
+        if item.get("performance_phase"):
+            shot["word_time_origin"] = float(segment.get("abs_start_seconds", segment.get("start")) or 0)
         source_prompt = str(item.get("source_prompt") or "").strip()
         if source_prompt:
             shot["source_prompt"] = source_prompt
@@ -558,7 +573,22 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
             value = str(item.get(key) or "").strip()
             if value:
                 shot[key] = value
-        shots.append(shot)
+        events = item.get("vocal_events") or []
+        if events:
+            labels = {actor: f"<Subject {i}>" for i, actor in enumerate((segment.get("references") or {}).get("actor_ids") or [], 1)}
+            for event in events:
+                resolved = dict(shot)
+                for key in ("lyrics", "word_timestamps", "subject_id", "subject_label", "speaker_id", "offscreen"):
+                    resolved.pop(key, None)
+                    if key in event:
+                        resolved[key] = event[key]
+                if resolved.get("subject_id") in labels:
+                    resolved.setdefault("subject_label", labels[resolved["subject_id"]])
+                shots.append(resolved)
+        else:
+            if "offscreen" in item:
+                shot["offscreen"] = item["offscreen"]
+            shots.append(shot)
     return shots
 
 
@@ -589,6 +619,8 @@ def _stamp_relay_speaker_binding(
     if not subject_label or not speaker_id:
         return
     for shot in relay_segments:
+        if shot.get("offscreen"):
+            continue
         if str(shot.get("state") or "").strip().casefold() not in _SING_RELAY_STATES:
             continue
         if not str(shot.get("subject_label") or "").strip():
@@ -597,14 +629,34 @@ def _stamp_relay_speaker_binding(
             shot["speaker_id"] = speaker_id
 
 
+def _relay_vocal_binding(
+    relay_segments: list[dict[str, Any]],
+    raw_bindings: dict[str, dict[str, str]],
+) -> tuple[int, str | None]:
+    """Return the sung relay-event count and bound vocal subject label."""
+    relay_vocal_events = sum(
+        1
+        for shot in relay_segments
+        if str(shot.get("state") or "").strip().casefold() in _SING_RELAY_STATES
+        and (not shot.get("performance_phase") or str(shot.get("lyrics") or "").strip())
+    )
+    bound_vocal_subject = (
+        str((raw_bindings.get("vocals") or {}).get("subject_label") or "").strip() or None
+    )
+    if any(shot.get("offscreen") for shot in relay_segments) or len({shot.get("subject_label") for shot in relay_segments if shot.get("subject_label")}) > 1:
+        bound_vocal_subject = None
+    return relay_vocal_events, bound_vocal_subject
+
+
 def _format_relay_shots(shots: list[dict[str, Any]]) -> str:
     if not shots:
         return ""
-    lines = ["Temporal shot directions:"]
+    performance = any(shot.get("performance_phase") for shot in shots)
+    lines = ["Performance timing within one continuous camera shot:" if performance else "Temporal shot directions:"]
     for shot in shots:
         state = f" ({shot['state']})" if shot.get("state") else ""
         lines.append(
-            f"[Shot {shot['shot']}, {shot['start_seconds']:.2f}-{shot['end_seconds']:.2f}sec]"
+            f"[{'Performance phase' if performance else 'Shot'} {shot['shot']}, {shot['start_seconds']:.2f}-{shot['end_seconds']:.2f}sec]"
             f"{state} {shot['prompt']}",
         )
         source_prompt = shot.get("source_prompt")
@@ -624,10 +676,49 @@ class DspyH3PromptBuilder:
         # Compatibility callers may retain concept-only fallback; production
         # construction must pass False so DSPy failures are surfaced.
         allow_fallback: bool = True,
+        reporter: Any = None,
     ):
         self.generator = generator
         self.reference_root = reference_root
         self.allow_fallback = allow_fallback
+        self.reporter = reporter
+
+    def set_reporter(self, reporter: Any) -> None:
+        self.reporter = reporter
+
+    def _resolve_audio_delivery(self, references, delivery, segment, reference_root=None):
+        if not delivery.workflow_path:
+            return references
+        from feverslop.domain.h3_audio_delivery import resolve_h3_audio_sources, h3_audio_timing_window
+        audio = []
+        for reference in references:
+            if reference.get("kind") == "audio":
+                source = Path(reference["source"])
+                if not source.is_absolute() and (reference_root or self.reference_root):
+                    source = Path(reference_root or self.reference_root) / source
+                audio.append({**reference, "source": str(source)})
+        timing_scene = {**segment, "abs_start_seconds": segment.get("abs_start_seconds", segment.get("start", 0))}
+        if "abs_end_seconds" not in timing_scene and "end" in segment:
+            timing_scene["abs_end_seconds"] = segment["end"]
+        duration = segment.get("duration_seconds", segment.get("duration"))
+        if self.reporter is not None:
+            self.reporter.message("Resolving H3 audio source roles before prompt compilation")
+        sources = resolve_h3_audio_sources(delivery, audio, h3_audio_timing_window(timing_scene, duration))
+        by_label = {source["label"]: source for source in sources}
+        result = []
+        for reference in references:
+            item = dict(reference)
+            if item.get("kind") == "audio":
+                source = by_label[item["label"]]
+                item["audio_delivery"] = source
+                item["delivery_roles"] = source["roles"]
+                item["copy_mode"] = (
+                    "fully_copy" if source["name"] == "full_mix" else "partially_copy"
+                ) if "output_copy" in source["roles"] else "reference"
+            result.append(item)
+        if self.reporter is not None:
+            self.reporter.message(f"Validated H3 audio roles for {len(sources)} sources")
+        return result
 
     def checkpoint_revision(self) -> dict[str, Any]:
         revision: dict[str, Any] = {
@@ -644,7 +735,79 @@ class DspyH3PromptBuilder:
                 revision[f"{name}_sha256"] = hashlib.sha256(guide.encode("utf-8")).hexdigest()
         return revision
 
-    def build_h3_prompt(
+    def build_h3_prompt(self, *, recovery: Any = None, **kwargs: Any) -> dict[str, Any]:
+        result = {}
+        try:
+            result = self._build_h3_prompt(recovery=recovery, **kwargs)
+            self._validate_final_result(result, segment=kwargs["segment"], mode=kwargs.get("mode", "ref"))
+        except PromptContractError as exc:
+            if not self.allow_fallback:
+                exc.candidate_result = result or getattr(exc, "candidate_result", {})
+                raise
+            result = result or getattr(exc, "candidate_result", {}) or {}
+            reasons = [issue.code for issue in exc.issues]
+            result.setdefault("prompt", "")
+            result["prompt_contract"] = {"valid": False}
+            result["validation_audio_delivery"] = (kwargs.get("global_context") or {}).get("h3_audio_delivery")
+            result["dspy_error"] = "; ".join(reasons)
+            result["readiness"] = recovery.finish("blocked", reasons, stage="validation") if recovery is not None else {
+                "status": "blocked", "stage": "validation", "reason_codes": reasons,
+                "policy_version": 1, "attempt_revision": 0, "attempts": []}
+            return result
+        result["prompt_contract"] = _valid_prompt_contract(result["prompt"])
+        result["validation_audio_delivery"] = (kwargs.get("global_context") or {}).get("h3_audio_delivery")
+        result["readiness"] = recovery.finish("ready", [], stage="validation") if recovery is not None else {
+            "status": "ready", "stage": "validation", "reason_codes": [], "policy_version": 1,
+            "attempt_revision": 0, "attempts": [],
+        }
+        return result
+
+    @staticmethod
+    def _reserve(recovery: Any, stage: str) -> None:
+        if recovery is not None and not recovery.reserve(stage):
+            raise PromptContractError([PromptContractIssue(
+                "h3.recovery.exhausted", stage, "This input revision has already reserved this attempt")])
+
+    @staticmethod
+    def _validate_final_result(result: dict, *, segment: dict, mode: str) -> None:
+        sections = result.get("sections") or {}
+        prompt = str(result.get("prompt") or "")
+        if sections.get("h3_sections") is not None:
+            plan = H3PromptSections.model_validate(sections["h3_sections"]).to_plan()
+            phases = _normalize_relay_segments(segment)
+            references = result.get("references") or []
+            bindings = _audio_subject_bindings(segment.get("references") or {}, available_stems={
+                str(ref.get("name") or "") for ref in references if ref.get("kind") == "audio"})
+            _stamp_relay_speaker_binding(phases, bindings)
+            count, subject = _relay_vocal_binding(phases, bindings)
+            issues = validate_h3_prompt_contract(prompt, mode=mode, plan=plan, reference_metadata=references,
+                duration_seconds=segment.get("duration_seconds", segment.get("duration")),
+                expected_vocal_events=count if phases else None, bound_vocal_subject=subject)
+            issues.extend(validate_performance_phases(phases, prompt))
+            if phases:
+                def words(value):
+                    return re.findall(r"\w+", value.casefold())
+                from feverslop.prompting.deterministic_h3_compiler import _relay_vocal_content
+                expected = [words(_relay_vocal_content(p)) for p in phases if _relay_vocal_content(p)]
+                actual = [words(re.sub(r"^\[[^]]+\]\s*", "", text.strip()))
+                          for text in re.findall(r"<d>(.*?)</d>", prompt, re.DOTALL)]
+                if [word for event in actual for word in event] != [word for event in expected for word in event]:
+                    issues.append(PromptContractIssue("h3.performance.lyrics_mismatch", "dialogue", "Final words differ from performance evidence"))
+            for index, fact in enumerate(segment.get("locked_facts") or []):
+                if str(fact.get("value") or "") not in prompt:
+                    issues.append(PromptContractIssue("h3.fact.missing", f"locked_facts[{index}]", "Explicit locked fact is absent"))
+        elif sections.get("shots") and sections.get("facts"):
+            from feverslop.prompting.dspy_h3_models import CreativeShotPayload
+            raw_facts = sections["facts"]
+            issues = validate_prompt_contract(prompt, facts=raw_facts if isinstance(raw_facts, LockedSceneFacts) else LockedSceneFacts.from_dict(raw_facts),
+                shots=[CreativeShotPayload.model_validate(s) for s in sections["shots"]],
+                shot_windows=sections.get("shot_windows") or {}, references=sections.get("references") or {})
+        else:
+            issues = [PromptContractIssue("h3.plan.missing", "sections", "A structured creative plan is required for semantic validation")]
+        if issues:
+            raise PromptContractError(issues)
+
+    def _build_h3_prompt(
         self,
         *,
         segment: dict[str, Any],
@@ -656,6 +819,7 @@ class DspyH3PromptBuilder:
         audio_paths: dict[str, Path] | None = None,
         reference_root: Path | None = None,
         structured_sections: dict[str, Any] | None = None,
+        recovery: Any = None,
     ) -> dict[str, Any]:
         if structured_sections is not None:
             return self._build_structured_prompt(
@@ -675,6 +839,7 @@ class DspyH3PromptBuilder:
             mode=mode,
             audio_delivery=audio_delivery,
         )
+        references = self._resolve_audio_delivery(references, audio_delivery, segment, reference_root)
         raw_bindings = _audio_subject_bindings(
             segment.get("references") or {},
             available_stems={str(reference["name"]) for reference in references if reference["kind"] == "audio"},
@@ -690,6 +855,9 @@ class DspyH3PromptBuilder:
         ]
         relay_segments = _normalize_relay_segments(segment)
         _stamp_relay_speaker_binding(relay_segments, raw_bindings)
+        performance_issues = validate_performance_phases(relay_segments)
+        if performance_issues:
+            raise PromptContractError(performance_issues)
         directive_plan = subject_directives_from_scene(segment)
         generator_references = [dict(reference) for reference in references]
         directing_lines = [
@@ -723,7 +891,7 @@ class DspyH3PromptBuilder:
             "duration_seconds": segment.get("duration") or segment.get("duration_seconds"),
             "user_prompt": user_prompt,
             "source_language": str(global_context.get("language") or "").strip(),
-            "notes": json.dumps({
+            "notes": json.dumps(compact_planning_payload({
                 "scene": segment,
                 "scene_details": scene_details,
                 "global_context": global_context,
@@ -733,7 +901,7 @@ class DspyH3PromptBuilder:
                     "Preserve lyric text verbatim and do not infer language from proper names, "
                     "fantasy names, or isolated tokens."
                 ),
-            }, ensure_ascii=False),
+            }), ensure_ascii=False),
             "references": generator_references,
             "images": images,
             "relay_segments": relay_segments,
@@ -761,6 +929,8 @@ class DspyH3PromptBuilder:
         # may add actions, but it must not be the authority for scene facts.
         facts = locked_scene_facts_from_scene(segment)
         generated = None
+        current_plan = None
+        self._reserve(recovery, "generate")
         try:
             generated = self.generator(request)
             if hasattr(generated, "plan"):
@@ -783,14 +953,7 @@ class DspyH3PromptBuilder:
                 # and the compiler emits exactly one dialogue event per sung
                 # window. Both counts must agree, and a bound vocal stem must be
                 # anchored to its visible subject rather than an audible voice.
-                relay_vocal_events = sum(
-                    1
-                    for shot in relay_segments
-                    if str(shot.get("state") or "").strip().casefold() in _SING_RELAY_STATES
-                )
-                bound_vocal_subject = (
-                    str((raw_bindings.get("vocals") or {}).get("subject_label") or "").strip() or None
-                )
+                relay_vocal_events, bound_vocal_subject = _relay_vocal_binding(relay_segments, raw_bindings)
                 for attempt in range(max_attempts):
                     normalized_plan = _normalize_plan_audio_usage(
                         current_plan,
@@ -815,27 +978,22 @@ class DspyH3PromptBuilder:
                             end = start + 1.0
                         windows[creative.shot_id] = (start, end)
                         references_by_shot[creative.shot_id] = list(shot.reference_labels)
-                    prompt = DeterministicH3Compiler().compile(
-                        mode=mode, plan=plan, facts=facts, shots=shots,
-                        shot_windows=windows, references=references_by_shot,
-                        prepared_reference_labels=[reference["label"] for reference in references],
-                        reference_metadata=references,
-                        duration_seconds=float(segment.get("duration") or segment.get("duration_seconds") or 0) or None,
-                        dialogue_language=str(request.get("source_language") or "English"),
-                        relay_segments=request.get("relay_segments") or (),
-                        speaker_bindings=speaker_bindings,
-                    )
-                    shape_issues = validate_h3_prompt_contract(
-                        prompt,
-                        mode=mode,
-                        plan=plan,
-                        reference_metadata=references,
-                        duration_seconds=float(
-                            segment.get("duration") or segment.get("duration_seconds") or 0
-                        ) or None,
-                        expected_vocal_events=relay_vocal_events,
-                        bound_vocal_subject=bound_vocal_subject,
-                    )
+                    try:
+                        prompt = DeterministicH3Compiler().compile(
+                            mode=mode, plan=plan, facts=facts, shots=shots,
+                            shot_windows=windows, references=references_by_shot,
+                            prepared_reference_labels=[reference["label"] for reference in references],
+                            reference_metadata=references,
+                            duration_seconds=float(segment.get("duration") or segment.get("duration_seconds") or 0) or None,
+                            dialogue_language=str(request.get("source_language") or "English"),
+                            relay_segments=request.get("relay_segments") or (),
+                            speaker_bindings=speaker_bindings,
+                        )
+                        self._validate_final_result({"prompt": prompt, "references": references,
+                            "sections": {"h3_sections": sections.model_dump()}}, segment=segment, mode=mode)
+                        shape_issues = []
+                    except PromptContractError as exc:
+                        shape_issues = list(exc.issues)
                     if shape_issues:
                         if attempt + 1 < max_attempts:
                             repair_request = dict(request)
@@ -846,6 +1004,7 @@ class DspyH3PromptBuilder:
                                 + ", ".join(issue.code for issue in shape_issues)
                                 + ". Preserve all locked facts, references, relay timing, and bindings."
                             )
+                            self._reserve(recovery, "repair")
                             repaired = self.generator(repair_request)
                             repaired_plan = getattr(repaired, "plan", None)
                             if repaired_plan is not None:
@@ -856,6 +1015,7 @@ class DspyH3PromptBuilder:
                     result = {
                         "prompt": prompt,
                         "references": references,
+                        "h3_audio_sources": [ref["audio_delivery"] for ref in references if "audio_delivery" in ref],
                         "prompt_contract": _valid_prompt_contract(prompt),
                         "sections": {
                             "h3_sections": sections.model_dump(),
@@ -897,28 +1057,28 @@ class DspyH3PromptBuilder:
             safe_error = _safe_error_message(exc)
             if not self.allow_fallback:
                 raise RuntimeError(f"DSPy H3 generation failed: {safe_error}") from exc
-            prompt = self._deterministic_fallback(
-                mode=mode,
-                segment=segment,
-                concept=concept,
-                facts=facts,
-                references=references,
-                relay_segments=relay_segments,
-                language=str(request.get("source_language") or "English"),
-            )
-            if isinstance(generated, dict):
-                generated.setdefault("dspy_error", safe_error)
-            else:
-                generated = {"dspy_error": safe_error}
+            self._reserve(recovery, "fallback")
+            try:
+                result = self._deterministic_fallback(
+                    mode=mode, segment=segment, concept=concept, facts=facts,
+                    references=references, plan=current_plan, global_context=global_context,
+                )
+            except Exception as fallback_error:
+                if current_plan is not None:
+                    fallback_error.candidate_result = {"references": references, "sections": {
+                        "h3_sections": H3PromptSections.from_plan(current_plan).model_dump(), "facts": facts.to_dict()}}
+                raise
+            result["dspy_error"] = safe_error
+            return result
         # DSPy is solely responsible for the guide-conformant prompt. Do not
         # append or repair deterministic prose after generation.
         prompt_parts = [str(prompt).strip()]
-        # The final prompt is judged by the DSPy prompt judge. Do not apply a
-        # second deterministic semantic gate here: a rejected prompt must be
-        # persisted with the judge result so a long batch can continue.
+        # Preserve raw legacy output for diagnostics; the shared final validator
+        # blocks it when no structured plan supports semantic verification.
         result = {
             "prompt": "\n\n".join(part for part in prompt_parts if part),
             "references": references,
+            "h3_audio_sources": [ref["audio_delivery"] for ref in references if "audio_delivery" in ref],
         }
         if directive_plan is not None:
             result["subject_directives"] = directive_plan.to_dict()
@@ -946,89 +1106,24 @@ class DspyH3PromptBuilder:
             result["prompt_judge_attempts"] = [item.model_dump() for item in judge_attempts]
         return result
 
-    @staticmethod
     def _deterministic_fallback(
-        *,
-        mode: str,
-        segment: dict[str, Any],
-        concept: str,
-        facts: LockedSceneFacts,
-        references: list[dict[str, Any]],
-        relay_segments: list[dict[str, Any]],
-        language: str,
-    ) -> str:
-        """Produce a guide-shaped prompt from planned facts when DSPy is unavailable."""
-        duration = float(segment.get("duration") or segment.get("duration_seconds") or 1.0)
-        description = str(
-            concept or segment.get("h3_creative_prompt") or "The planned scene continues."
-        ).strip()
-        picture_references = [
-            reference for reference in references
-            if str(reference.get("kind") or "").casefold() == "picture"
-        ]
-        subjects = [
-            SubjectDefinition(
-                label=f"<Subject {index}>",
-                name=str(reference.get("name") or f"referenced subject {index}").strip(),
-                description=str(reference.get("description") or "the referenced appearance").strip(),
-                source_references=[str(reference["label"])],
-            )
-            for index, reference in enumerate(picture_references, start=1)
-        ]
-        reference_labels = [str(reference["label"]) for reference in references]
-        count = max(1, len(relay_segments))
-        shots = [
-            PlannedShot(
-                shot_number=index,
-                start_seconds=duration * (index - 1) / count,
-                end_seconds=duration * index / count,
-                description=description,
-                involved_subjects=[subject.name for subject in subjects],
-                reference_labels=reference_labels,
-            )
-            for index in range(1, count + 1)
-        ]
-        plan = ResolvedPromptPlan(
-            creative_intent=description,
-            style_opening="Live-action cinematic imagery preserves the planned composition and scene facts.",
-            subjects=subjects,
-            reference_usage=[
-                ReferenceUsage(
-                    reference_label=str(reference["label"]),
-                    purpose=str(reference.get("role") or "reference"),
-                    details=str(reference.get("description") or reference.get("name") or "reference"),
-                )
-                for reference in references
-            ],
-            shots=shots,
-            overall_soundscape="The planned ambient and physical sounds continue through the scene.",
-            music_intent=MusicIntent.NONE,
-        )
-        plan = plan_with_authoritative_relay(
-            plan,
-            relay_segments,
-            language=language,
-        )
-        creative_shots = creative_shots_from_plan(plan)
-        windows = {
-            creative.shot_id: (
-                float(shot.start_seconds or 0.0),
-                float(shot.end_seconds or duration),
-            )
-            for shot, creative in zip(plan.shots, creative_shots, strict=True)
-        }
-        return DeterministicH3Compiler().compile(
-            mode=mode,
-            plan=plan,
-            facts=facts,
-            shots=creative_shots,
-            shot_windows=windows,
-            reference_metadata=references,
-            prepared_reference_labels=[str(reference["label"]) for reference in references],
-            duration_seconds=duration,
-            dialogue_language=language,
-            relay_segments=relay_segments,
-        )
+        self, *, mode, segment, concept, facts, references, plan, global_context,
+    ) -> dict[str, Any]:
+        """Repair only deterministic fields of the last structured creative plan."""
+        if plan is None:
+            raise PromptContractError([PromptContractIssue(
+                "h3.fallback.plan_missing", "fallback", "No structured creative plan survived generation")])
+        if not str(plan.style_opening or "").strip():
+            plan = plan.model_copy(update={
+                "style_opening": "Live-action cinematic imagery preserves the planned composition and scene facts.",
+            })
+        result = self._build_structured_prompt(mode=mode, segment=segment, concept=concept,
+            global_context=global_context, judge=False, sections={
+                "facts": facts.to_dict(), "h3_sections": H3PromptSections.from_plan(plan).model_dump(),
+                "resolved_references": references,
+            })
+        result["prompt_provenance"]["source"] = "deterministic_fallback"
+        return result
 
     def _report_warning(self, message: str, *, title: str) -> None:
         warning = getattr(self.generator, "_warning", None)
@@ -1043,6 +1138,7 @@ class DspyH3PromptBuilder:
         concept: str,
         global_context: dict[str, Any],
         sections: dict[str, Any],
+        judge: bool = True,
     ) -> dict[str, Any]:
         """Compile planner-owned sections without invoking the legacy prose generator.
 
@@ -1067,6 +1163,7 @@ class DspyH3PromptBuilder:
                 list(sections.get("resolved_references") or []),
                 audio_delivery=audio_delivery,
             )
+            resolved_references = self._resolve_audio_delivery(resolved_references, audio_delivery, segment)
             plan = _normalize_plan_audio_usage(
                 plan,
                 resolved_references,
@@ -1088,14 +1185,7 @@ class DspyH3PromptBuilder:
             )
             relay_segments = _normalize_relay_segments(segment)
             _stamp_relay_speaker_binding(relay_segments, raw_bindings)
-            relay_vocal_events = sum(
-                1
-                for shot in relay_segments
-                if str(shot.get("state") or "").strip().casefold() in _SING_RELAY_STATES
-            )
-            bound_vocal_subject = (
-                str((raw_bindings.get("vocals") or {}).get("subject_label") or "").strip() or None
-            )
+            relay_vocal_events, bound_vocal_subject = _relay_vocal_binding(relay_segments, raw_bindings)
             plan = plan_with_authoritative_relay(
                 plan,
                 relay_segments,
@@ -1160,6 +1250,7 @@ class DspyH3PromptBuilder:
             result = {
                 "prompt": prompt,
                 "references": resolved_references,
+                "h3_audio_sources": [ref["audio_delivery"] for ref in resolved_references if "audio_delivery" in ref],
                 "prompt_contract": _valid_prompt_contract(prompt),
                 "segment_id": segment.get("segment_id"),
                 "sections": sections,
@@ -1173,7 +1264,7 @@ class DspyH3PromptBuilder:
                 },
             }
             judge_compiled = getattr(self.generator, "judge_compiled_prompt", None)
-            if callable(judge_compiled):
+            if judge and callable(judge_compiled):
                 judged = judge_compiled(
                     request={
                         "mode": mode,
@@ -1218,6 +1309,80 @@ class DspyH3PromptBuilder:
             },
         }
 
+    def _prepare_recoverable_scene(
+        self, *, segment, concept, details, global_context, mode, video_type, audio_paths,
+        reference_root, structured_sections, checkpoint_store, checkpoint_input,
+        recovery, cached, reuse_checkpoints,
+    ):
+        override = _h3_prompt_override(segment)
+        stale_loader = getattr(checkpoint_store, "load_for_resume", None)
+        stale = stale_loader(checkpoint_input) if callable(stale_loader) else None
+        if cached is None and recovery is None and reuse_checkpoints and checkpoint_store is not None:
+            loader = getattr(checkpoint_store, "load_advisory", checkpoint_store.load)
+            checkpoint = loader(checkpoint_input)
+            cached = checkpoint.generated if checkpoint is not None else None
+        classifier = getattr(checkpoint_store, "invalidated_stages", None)
+        if (cached is None and reuse_checkpoints and stale is not None
+                and not stale.generated.get("readiness") and callable(classifier)
+                and not classifier(checkpoint_input, stale)):
+            cached = stale.generated
+        if cached is not None and not override:
+            try:
+                self._validate_final_result(cached, segment=segment, mode=mode)
+            except PromptContractError:
+                pass
+            else:
+                result = dict(cached)
+                if recovery is not None:
+                    result["readiness"] = recovery.finish("ready", [], stage="validation")
+                return result, "reused"
+        status = "completed"
+        stale_facts = (stale.generated.get("sections") or {}).get("facts") if stale is not None else None
+        can_reuse_override_plan = (
+            stale is not None and bool(stale.generated.get("sections"))
+            and stale_facts == locked_scene_facts_from_scene(segment).to_dict()
+            and callable(classifier)
+            and not (classifier(checkpoint_input, stale) & {"locked_facts", "workflow", "all"})
+            and stale.generated.get("validation_audio_delivery") == global_context.get("h3_audio_delivery")
+        )
+        if override and can_reuse_override_plan:
+            result = dict(stale.generated)
+        else:
+            classifier = getattr(checkpoint_store, "invalidated_stages", None)
+            if (structured_sections is None and stale is not None and reuse_checkpoints and callable(classifier)
+                    and classifier(checkpoint_input, stale) == frozenset({"compiler"})
+                    and stale.generated.get("sections")):
+                structured_sections = {**stale.generated["sections"], "resolved_references": stale.generated.get("references") or []}
+                status = "recompiled"
+            build_kwargs = dict(segment=segment, concept=concept, scene_details=details,
+                global_context=global_context, mode=mode, video_type=video_type,
+                audio_paths=audio_paths, reference_root=reference_root, recovery=recovery)
+            try:
+                result = self.build_h3_prompt(**build_kwargs, structured_sections=structured_sections)
+            except PromptContractError:
+                if status != "recompiled":
+                    raise
+                result = self.build_h3_prompt(**build_kwargs)
+                status = "regenerating"
+            else:
+                if status == "recompiled" and (result.get("readiness") or {}).get("status") == "blocked":
+                    result = self.build_h3_prompt(**build_kwargs)
+                    status = "regenerating"
+        if override:
+            result = {**result, "prompt": override, "prompt_provenance": {
+                "source": "user_override", "compiler": H3_COMPILER_NAME, "compiler_version": H3_COMPILER_VERSION}}
+            try:
+                self._validate_final_result(result, segment=segment, mode=mode)
+            except PromptContractError as exc:
+                exc.candidate_result = result
+                raise
+            result["prompt_contract"] = _valid_prompt_contract(override)
+            result["readiness"] = recovery.finish("ready", [], stage="validation") if recovery is not None else {"status": "ready", "reason_codes": []}
+            status = "override"
+        if (result.get("readiness") or {}).get("status") == "blocked":
+            status = "blocked"
+        return result, status
+
     def build_all_h3_prompts(
         self,
         *,
@@ -1245,120 +1410,60 @@ class DspyH3PromptBuilder:
             set_warning_callback(warning_callback)
         results = []
         total = len(stage1_segments)
+        from contextlib import nullcontext
         for current, segment in enumerate(stage1_segments, start=1):
             segment_id = segment["segment_id"]
-            override = _h3_prompt_override(segment)
-            if override:
-                result = {
-                    "prompt": override,
-                    "segment_id": segment_id,
-                    "prompt_provenance": {"source": "user_override"},
-                }
-                results.append({"segment_id": segment_id, **result})
-                if progress_callback is not None:
-                    progress_callback(current, total)
-                if status_callback is not None:
-                    status_callback(current, total, "override")
-                continue
             concept = concept_prompts.get(segment_id, "")
             if isinstance(concept, dict):
                 concept = concept.get("concept", "")
             details = scene_details.get(segment_id, {})
-            checkpoint_input = None
-            checkpoint = None
-            if checkpoint_store is not None:
-                checkpoint_input = H3PromptCheckpointInput(
-                    scene_number=int(segment.get("scene") or segment.get("scene_number") or current),
-                    segment_id=str(segment_id),
-                    segment=segment,
-                    concept=str(concept),
-                    scene_details=details,
-                    global_context=global_context,
-                    mode=mode,
-                    video_type=video_type,
-                    audio_paths=audio_paths or {},
-                    generator_revision=generator_revision or {},
-                )
-                if reuse_checkpoints:
-                    advisory_loader = getattr(checkpoint_store, "load_advisory", None)
-                    if callable(advisory_loader):
-                        checkpoint = advisory_loader(checkpoint_input)
-                    else:
-                        checkpoint = checkpoint_store.load(checkpoint_input)
-            if checkpoint is not None:
-                if status_callback is not None:
-                    status_callback(current, total, "reused")
-                result = checkpoint.generated
-            else:
-                stale_loader = getattr(checkpoint_store, "load_for_resume", None)
-                stage_classifier = getattr(checkpoint_store, "invalidated_stages", None)
-                stale_checkpoint = (
-                    stale_loader(checkpoint_input)
-                    if callable(stale_loader) and checkpoint_input is not None and reuse_checkpoints
-                    else None
-                )
-                if (
-                    stale_checkpoint is not None
-                    and callable(stage_classifier)
-                    and stage_classifier(checkpoint_input, stale_checkpoint) == frozenset({"compiler"})
-                    and isinstance(stale_checkpoint.generated.get("sections"), dict)
-                ):
+            checkpoint_input = H3PromptCheckpointInput(
+                scene_number=int(segment.get("scene") or segment.get("scene_number") or current),
+                segment_id=str(segment_id), segment=segment, concept=str(concept), scene_details=details,
+                global_context=global_context, mode=mode, video_type=video_type,
+                audio_paths=audio_paths or {}, generator_revision=generator_revision or self.checkpoint_revision())
+            session_factory = getattr(checkpoint_store, "recovery_session", None)
+            if status_callback is not None:
+                status_callback(current, total, "started")
+            session_context = session_factory(checkpoint_input, replan=not reuse_checkpoints) if callable(session_factory) else nullcontext(None)
+            with session_context as recovery:
+                cached = recovery.saved_result if recovery is not None else None
+                if cached is not None and (cached.get("readiness") or {}).get("status") == "blocked":
+                    result = cached
+                    status = "blocked"
+                else:
                     try:
-                        result = self.build_h3_prompt(
-                            segment=segment,
-                            concept=str(concept),
-                            scene_details=details,
-                            global_context=global_context,
-                            mode=mode,
-                            video_type=video_type,
-                            audio_paths=audio_paths,
-                            reference_root=reference_root,
-                            structured_sections={
-                                **stale_checkpoint.generated["sections"],
-                                "resolved_references": stale_checkpoint.generated.get("references") or [],
-                            },
-                        )
-                    except PromptContractError as exc:
-                        feedback = "; ".join(issue.code for issue in exc.issues)
-                        if warning_callback is not None:
-                            warning_callback(
-                                "Saved H3 structured plan fails the current deterministic "
-                                f"guide contract ({feedback}); regenerating creative fields.",
-                                title="H3 resume regeneration",
-                            )
-                        if status_callback is not None:
-                            status_callback(current, total, "regenerating")
-                    else:
-                        if checkpoint_store is not None and checkpoint_input is not None:
-                            checkpoint_store.save(checkpoint_input, result)
-                        if status_callback is not None:
-                            status_callback(current, total, "recompiled")
-                        results.append({"segment_id": segment_id, **result})
-                        if progress_callback is not None:
-                            progress_callback(current, total)
-                        if status_callback is not None:
-                            status_callback(current, total, "completed")
-                        continue
-                if status_callback is not None:
-                    status_callback(current, total, "started")
-                result = self.build_h3_prompt(
-                    segment=segment,
-                    concept=str(concept),
-                    scene_details=details,
-                    global_context=global_context,
-                    mode=mode,
-                    video_type=video_type,
-                    audio_paths=audio_paths,
-                    reference_root=reference_root,
-                    structured_sections=(structured_sections_by_segment or {}).get(segment_id),
-                )
-                if checkpoint_store is not None and checkpoint_input is not None:
-                    checkpoint_store.save(checkpoint_input, result)
-            results.append({"segment_id": segment_id, **result})
+                        result, status = self._prepare_recoverable_scene(
+                            segment=segment, concept=str(concept), details=details, global_context=global_context,
+                            mode=mode, video_type=video_type, audio_paths=audio_paths, reference_root=reference_root,
+                            structured_sections=(structured_sections_by_segment or {}).get(segment_id),
+                            checkpoint_store=checkpoint_store, checkpoint_input=checkpoint_input,
+                            recovery=recovery, cached=cached, reuse_checkpoints=reuse_checkpoints)
+                    except Exception as exc:
+                        reasons = ([issue.code for issue in exc.issues] if isinstance(exc, PromptContractError)
+                                   else [str(getattr(exc, "code", "h3.preparation.failed"))])
+                        result = dict(getattr(exc, "candidate_result", {}) or {})
+                        result.update(prompt="", prompt_contract={"valid": False},
+                            prompt_provenance={"compiler": H3_COMPILER_NAME, "compiler_version": H3_COMPILER_VERSION,
+                                               "source": "blocked"})
+                        result["readiness"] = recovery.finish("blocked", reasons, stage="preparation") if recovery is not None else {
+                            "status": "blocked", "stage": "preparation", "reason_codes": reasons,
+                            "policy_version": 1, "attempt_revision": 0, "attempts": []}
+                        status = "blocked"
+                    if checkpoint_store is not None:
+                        checkpoint_store.save(checkpoint_input, result)
+                if status == "blocked" and warning_callback is not None:
+                    readiness = result.get("readiness") or {}
+                    reasons = ", ".join(readiness.get("reason_codes") or ["h3.preparation.failed"])
+                    attempts = ", ".join(a["stage"] for a in readiness.get("attempts") or []) or "none"
+                    warning_callback(f"Scene {checkpoint_input.scene_number} blocked: {reasons}; reserved attempts: {attempts}. "
+                        "Correct its inputs or explicitly replan this scene; unchanged resume spends no new attempts.",
+                        title="H3 scene readiness")
+                results.append({"segment_id": segment_id, **result})
             if progress_callback is not None:
                 progress_callback(current, total)
             if status_callback is not None:
-                status_callback(current, total, "completed")
+                status_callback(current, total, status)
         if preserve_existing_aggregate and Path(output_json_path).is_file():
             existing = artifact_store.read_json(output_json_path)
             if not isinstance(existing, list) or any(not isinstance(item, dict) for item in existing):

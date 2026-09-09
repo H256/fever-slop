@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from pathlib import Path
 
+from feverslop.domain.artifact_hash import fingerprint_json, is_sha256_hex
 from feverslop.domain.visual_consistency import SceneConsistencyContract
 
 CONTINUITY_ANCHOR_HEADER = "Continuity anchors (keep unchanged):"
@@ -61,13 +60,7 @@ def ingredients_sheet_signature(
             for reference in references
         ],
     }
-    canonical = json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return fingerprint_json(payload, ensure_ascii=True)
 
 
 def bind_continuity_anchors(
@@ -196,11 +189,7 @@ def _validate_ingredients_signature(
         raise ValueError("Ingredients signature source path is missing")
     for reference in references:
         value = reference.get("sha256") if isinstance(reference, dict) else None
-        if (
-            not isinstance(value, str)
-            or len(value) != 64
-            or any(character not in "0123456789abcdef" for character in value)
-        ):
+        if not is_sha256_hex(value):
             raise ValueError("Ingredients signature reference hash is invalid")
     if len(size) != 2:
         raise ValueError("Ingredients signature size is missing")

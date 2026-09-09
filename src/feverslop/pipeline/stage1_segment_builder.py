@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from feverslop.pipeline.prompt_relay_builder import (
-    lyrics_for_time_range,
-    overlap,
-    parse_scene_dicts,
-)
+from feverslop.domain.performance_timeline import project_performance
+from feverslop.pipeline.prompt_relay_builder import parse_scene_dicts
 from feverslop.ports.artifacts import ArtifactStore
+from feverslop.ports.reporting import Reporter
+from feverslop.utils.sub_step_progress import SubStepProgress
 
 
 def build_stage1_segment_json(
@@ -18,49 +17,23 @@ def build_stage1_segment_json(
     min_vocal_ratio_for_mixed: float = 0.10,
     *,
     artifact_store: ArtifactStore,
+    reporter: Reporter | None = None,
 ) -> Path:
     scenes = parse_scene_dicts(scene_srt_file)
     timeline = artifact_store.read_json(vocal_timeline_json)
 
     result = []
 
-    for scene in scenes:
+    progress = SubStepProgress(reporter, "Stage 1 performance mapping", len(scenes))
+    progress.update(0, force=True)
+    for current, scene in enumerate(scenes, start=1):
         scene_start = float(scene["start"])
         scene_end = float(scene["end"])
         scene_duration = max(scene_end - scene_start, 1e-6)
 
-        vocal_time = 0.0
-        lyrics = []
-
-        for seg in timeline:
-            seg_type = seg.get("type") or seg.get("kind")
-            seg_lyrics = seg.get("lyrics") or seg.get("text") or ""
-
-            ov = overlap(
-                scene_start,
-                scene_end,
-                float(seg["start"]),
-                float(seg["end"]),
-            )
-
-            if ov is None:
-                continue
-
-            ov_start, ov_end = ov
-            ov_duration = ov_end - ov_start
-
-            if seg_type == "vocals" and seg_lyrics.strip():
-                vocal_time += ov_duration
-                lyric_text = lyrics_for_time_range(
-                    seg_lyrics,
-                    float(seg["start"]),
-                    float(seg["end"]),
-                    ov_start,
-                    ov_end,
-                    seg.get("word_timestamps") or (),
-                )
-                if lyric_text:
-                    lyrics.append(lyric_text)
+        performance = project_performance(timeline, scene_start, scene_end)
+        vocal_time = sum(phase["end"] - phase["start"] for phase in performance if phase["state"] == "singing")
+        lyrics = [phase["lyrics"] for phase in performance if phase["lyrics"]]
 
         vocal_ratio = vocal_time / scene_duration
 
@@ -78,11 +51,16 @@ def build_stage1_segment_json(
             "end": round(scene_end, 2),
             "duration": round(scene_duration, 2),
             "type": segment_type,
+            "performance_intervals": performance,
+            "word_timestamps": [word for phase in performance for word in phase["word_timestamps"]],
+            "reason_codes": list(dict.fromkeys(reason for phase in performance for reason in phase["reason_codes"])),
+            "performance_conflicts": [conflict for phase in performance for conflict in phase["performance_conflicts"]],
         }
 
         if lyrics:
             item["lyrics"] = " ".join(lyrics)
 
         result.append(item)
+        progress.update(current)
 
     return artifact_store.write_json(output_json_file, result)

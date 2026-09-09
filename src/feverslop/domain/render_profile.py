@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-import hashlib
-import json
 from math import isfinite
 from numbers import Real
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Mapping
 
+from feverslop.domain.artifact_hash import is_sha256_hex
 from feverslop.domain.duration_capability import DurationCapability
+from feverslop.domain.artifact_hash import fingerprint_json
 
 
 class RenderProfileSchemaError(ValueError):
@@ -224,7 +224,7 @@ class RenderProfileResolution:
         if not requested:
             raise RenderProfileSchemaError("requested_profile_id is required")
         digest = str(workflow_sha256).strip().lower()
-        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        if not is_sha256_hex(digest):
             raise RenderProfileSchemaError("workflow_sha256 must be a SHA-256 hex digest")
         if not isinstance(entry, RegisteredRenderProfile):
             raise RenderProfileSchemaError("entry must be a RegisteredRenderProfile")
@@ -241,9 +241,7 @@ class RenderProfileResolution:
             "workflow_sha256": digest,
             "model_assets": list(assets),
         }
-        fingerprint = hashlib.sha256(
-            json.dumps(semantic, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
+        fingerprint = fingerprint_json(semantic, ensure_ascii=False)
         return cls(
             requested_profile_id=requested,
             entry=entry,

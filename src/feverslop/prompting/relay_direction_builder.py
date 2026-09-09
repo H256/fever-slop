@@ -67,21 +67,36 @@ def _limit_words(text: str, max_words: int) -> str:
     return " ".join(text.split()[:max(1, max_words)])
 
 
+_ANCHOR_STOPWORDS = frozenset({
+    "the", "a", "an", "and", "with", "of", "in", "on", "for", "is", "are", "has", "have",
+})
+
+
+def _subject_identity_tokens(anchor: str) -> frozenset[str]:
+    """Identifying words from a subject anchor phrase.
+
+    Generic connector words are dropped so the remaining tokens identify the
+    subject. The literal token "subject" is checked separately by callers
+    because fallback text uses the phrase '...around the subject'. If the
+    anchor yields no tokens (only stop words), callers rely on "subject" alone.
+    """
+    words = re.findall(r"[a-z0-9]+", anchor.lower())
+    return frozenset(word for word in words if word not in _ANCHOR_STOPWORDS)
+
+
 class RelayDirectionBuilder:
     def __init__(
         self,
         llm: LLMPort,
         max_words: int = 28,
-        subject_anchor: str = (
-            "the old weary warrior man with weathered scarred face, "
-            "salt-and-pepper beard, tattered leather armor, and heavy frayed cloak"
-        ),
         *,
+        subject_anchor: str,
         dspy_runtime: Any | None = None,
     ):
         self.llm = llm
         self.max_words = max_words
         self.subject_anchor = subject_anchor
+        self._subject_tokens = _subject_identity_tokens(subject_anchor)
         self._modules = None
         if isinstance(getattr(llm, "model", None), str) and getattr(llm, "client", None) is not None:
             try:
@@ -195,17 +210,19 @@ class RelayDirectionBuilder:
         if any(pattern in p.lower() for pattern in bad_patterns):
             return self._fallback_direction(scene, relay, has_vocals)
 
+        lower = p.lower()
+        lower_words = set(re.findall(r"[a-z0-9]+", lower))
+        mentions_subject = "subject" in lower_words or bool(lower_words & self._subject_tokens)
+
         # If singing but no explicit visible subject/lip-sync intent, repair.
         if state == "singing":
-            lower = p.lower()
             if "sing" not in lower and "lip sync" not in lower and "lip-sync" not in lower:
                 return self._fallback_direction(scene, relay, has_vocals)
-            if "warrior" not in lower and "man" not in lower and "subject" not in lower:
+            if not mentions_subject:
                 return self._fallback_direction(scene, relay, has_vocals)
 
         if has_vocals and state != "singing":
-            lower = p.lower()
-            if "warrior" not in lower and "subject" not in lower and "man" not in lower:
+            if not mentions_subject:
                 p = f"{self.subject_anchor} remains visible and silent, {p}"
 
         return _clean_direction(p)

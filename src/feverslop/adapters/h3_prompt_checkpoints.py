@@ -3,9 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 from copy import deepcopy
+from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import TYPE_CHECKING, Any, Iterator, Mapping
 
+from feverslop.adapters.scene_recovery_store import PersistentSceneRecovery, scene_file_lock
+from feverslop.domain.scene_recovery import RECOVERY_POLICY_VERSION
 from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
 from feverslop.domain.canonical_render_plan import (
     PromptRole,
@@ -20,6 +23,7 @@ from feverslop.domain.h3_prompt_checkpoint import (
     checkpoint_status,
 )
 from feverslop.errors import FeverSlopDataError
+from feverslop.prompting.h3_user_messages import checkpoint_unjudged_message
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.utils.io import atomic_write_json, read_json_document
 
@@ -33,6 +37,45 @@ class H3PromptCheckpointStore:
         self.layout = SceneArtifactLayout(self.project_dir)
         self._asset_hashes: dict[Path, tuple[tuple[int, int] | None, dict[str, Any]]] = {}
         self.reporter = reporter
+
+    @contextmanager
+    def recovery_session(
+        self, request: H3PromptCheckpointInput, *, replan: bool = False,
+    ) -> Iterator[PersistentSceneRecovery]:
+        path = self.layout.scene_h3_prompt(request.scene_number)
+        def waiting() -> None:
+            if self.reporter is not None:
+                self.reporter.message(f"Waiting for scene {request.scene_number} recovery lock")
+
+        if self.reporter is not None:
+            self.reporter.message(f"Opening scene {request.scene_number} recovery session")
+        with scene_file_lock(path.with_suffix('.recovery.lock'), waiting=waiting):
+            # A budget identity depends on content, even when file stats are preserved.
+            self._asset_hashes.clear()
+            fingerprint = _fingerprint_value({
+                'policy_version': RECOVERY_POLICY_VERSION,
+                'input': _recovery_material({
+                    'segment': request.segment, 'concept': request.concept,
+                    'scene_details': request.scene_details, 'global_context': request.global_context,
+                    'segment_id': request.segment_id, 'mode': request.mode,
+                    'video_type': request.video_type,
+                    'generator_revision': self._checkpoint_generator_revision(request.generator_revision),
+                    'assets': self._asset_evidence(request),
+                }),
+            })
+            session = PersistentSceneRecovery(path.with_suffix('.recovery.json'), fingerprint, replan=replan)
+            checkpoint = self.load_for_resume(request)
+            if checkpoint is not None:
+                readiness = checkpoint.generated.get('readiness')
+                if (isinstance(readiness, Mapping)
+                        and readiness.get('input_fingerprint') == fingerprint
+                        and readiness.get('attempt_revision') == session.attempt_revision):
+                    session.saved_result = deepcopy(checkpoint.generated)
+            try:
+                yield session
+            finally:
+                if self.reporter is not None:
+                    self.reporter.message(f"Scene {request.scene_number} recovery session closed")
 
     def load(self, request: H3PromptCheckpointInput) -> H3PromptCheckpoint | None:
         checkpoint = self.load_for_resume(request)
@@ -145,15 +188,20 @@ class H3PromptCheckpointStore:
     def _report(self, action: str, checkpoint: H3PromptCheckpoint) -> None:
         if self.reporter is None:
             return
-        verdict = {
-            "good": "GOOD",
-            "advisory_bad": "BAD",
-            "unjudged": "UNJUDGED",
-        }[checkpoint.status]
-        message = (
-            f"H3 prompt checkpoint {action}: scene {checkpoint.scene_number}, "
-            f"judge {verdict}, status {checkpoint.status}, path {checkpoint.path}"
-        )
+        if checkpoint.status == "blocked":
+            self.reporter.message(f"H3 prompt checkpoint {action}: scene {checkpoint.scene_number}, blocked, path {checkpoint.path}")
+            return
+        if checkpoint.status == "unjudged":
+            message = (
+                f"H3 prompt checkpoint {action}: scene {checkpoint.scene_number}, "
+                f"quality check NOT RUN, path {checkpoint.path}"
+            )
+        else:
+            verdict = {"good": "GOOD", "advisory_bad": "BAD"}[checkpoint.status]
+            message = (
+                f"H3 prompt checkpoint {action}: scene {checkpoint.scene_number}, "
+                f"judge {verdict}, status {checkpoint.status}, path {checkpoint.path}"
+            )
         if checkpoint.status == "advisory_bad":
             judge = checkpoint.generated.get("prompt_judge")
             issues = judge.get("issues") if isinstance(judge, dict) else None
@@ -163,6 +211,8 @@ class H3PromptCheckpointStore:
                     message += f"; issues: {summary[:500]}"
                     if len(summary) > 500:
                         message += "..."
+        elif checkpoint.status == "unjudged":
+            message += "; " + checkpoint_unjudged_message(checkpoint.generated)
         self.reporter.message(message)
 
     def _sync_canonical(self, checkpoint: H3PromptCheckpoint) -> None:
@@ -180,6 +230,14 @@ class H3PromptCheckpointStore:
                 raise FeverSlopDataError(
                     "H3 checkpoint canonical identity conflict: matching scene_id has a different segment_id",
                 )
+            readiness = checkpoint.generated.get("readiness")
+            readiness_changed = isinstance(readiness, Mapping) and scene.get("readiness") != readiness
+            if isinstance(readiness, Mapping):
+                scene["readiness"] = deepcopy(dict(readiness))
+            if checkpoint.status == "blocked":
+                if readiness_changed:
+                    store.commit_regeneration(snapshot, scenes)
+                return
             roles = canonical.get("roles")
             if not isinstance(roles, dict):
                 raise FeverSlopDataError("H3 checkpoint canonical roles must be an object")
@@ -198,6 +256,8 @@ class H3PromptCheckpointStore:
             if role.get("generated") == generated:
                 current_effective = resolve_effective_role(scene, PromptRole.H3_VIDEO)
                 if current_prompt == current_effective:
+                    if readiness_changed:
+                        store.commit_regeneration(snapshot, scenes)
                     return
             role["generated"] = generated
             h3 = scene.setdefault("h3", {})
@@ -313,12 +373,17 @@ class H3PromptCheckpointStore:
         if not isinstance(value, Mapping) or value.get("schema") != H3_CHECKPOINT_SCHEMA:
             raise FeverSlopDataError(f"Invalid H3 prompt checkpoint schema: {path}")
         generated = value.get("generated")
-        if not isinstance(generated, dict) or not str(generated.get("prompt") or "").strip():
+        if not isinstance(generated, dict) or (
+            not str(generated.get("prompt") or "").strip()
+            and checkpoint_status(generated) != "blocked"
+        ):
             raise FeverSlopDataError(f"Invalid H3 prompt checkpoint generated payload: {path}")
         status = value.get("status")
         if status == "bad_exhausted":
             status = "advisory_bad"
-        if status not in {"good", "advisory_bad", "unjudged"}:
+        if checkpoint_status(generated) == "blocked":
+            status = "blocked"
+        if status not in {"good", "advisory_bad", "unjudged", "blocked"}:
             raise FeverSlopDataError(f"Invalid H3 prompt checkpoint status: {path}")
         try:
             return H3PromptCheckpoint(
@@ -429,3 +494,15 @@ def _project_path(path: Path, project_dir: Path) -> str:
         return path.relative_to(project_dir.resolve(strict=False)).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def _recovery_material(value: Any) -> Any:
+    ignored = {'seed', 'random_seed', 'mtime', 'mtime_ns', 'output_path', 'output_paths',
+               'generated', 'h3', 'prompt_judge', 'prompt_judge_attempts', 'readiness',
+               'api_key', 'base_url', 'endpoint', 'transport', 'model_profile'}
+    if isinstance(value, Mapping):
+        return {str(key): _recovery_material(item) for key, item in value.items()
+                if str(key).lower() not in ignored}
+    if isinstance(value, (list, tuple)):
+        return [_recovery_material(item) for item in value]
+    return value

@@ -9,9 +9,11 @@ from feverslop.prompting.general_signatures import (
     SongBriefResult,
     StoryboardPromptResult,
     build_general_signature_bundle,
+    parse_prompt_result,
 )
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.llm_policy import lyric_alignment_max_tokens, policy_for
+from feverslop.prompting.planning_payload import compact_planning_payload
 
 
 def _value(result: Any, name: str) -> Any:
@@ -48,16 +50,21 @@ class GeneralPromptModules:
         *,
         timeout=None,
         max_tokens: int | None = None,
+        compact: bool = True,
         **extra,
     ):
         guide = load_markdown_guide(guide_name)
         kwargs = {"guide": guide, **payload, **extra}
+        if compact:
+            kwargs = compact_planning_payload(kwargs)
         config = {"max_tokens": max_tokens or policy_for(name).max_tokens}
         if timeout is not None:
             config["timeout"] = timeout
         kwargs["config"] = config
         with self._context(lm=self._lm):
             result = _value(self._predictors[name](**kwargs), "result")
+        if output_type is PromptResult:
+            return parse_prompt_result(result)
         return output_type.model_validate(result)
 
     def song_brief(self, request: dict[str, Any], *, timeout=None) -> SongBriefResult:
@@ -72,19 +79,20 @@ class GeneralPromptModules:
             LyricCorrections,
             timeout=timeout,
             max_tokens=lyric_alignment_max_tokens(segment_count),
+            compact=False,
         )
 
     def zimage_prompt(self, payload: dict[str, Any], *, timeout=None) -> PromptResult:
         return self._call("zimage_prompt", "music-video-t2i", {"payload": payload}, PromptResult, timeout=timeout)
 
     def i2v_prompt(self, payload: dict[str, Any], *, guide: str, timeout=None) -> PromptResult:
-        kwargs = {"guide": guide, "payload": payload}
+        kwargs = {"guide": guide, "payload": compact_planning_payload(payload)}
         config = {"max_tokens": policy_for("i2v_prompt").max_tokens}
         if timeout is not None:
             config["timeout"] = timeout
         kwargs["config"] = config
         with self._context(lm=self._lm):
-            return PromptResult.model_validate(_value(self._predictors["i2v_prompt"](**kwargs), "result"))
+            return parse_prompt_result(_value(self._predictors["i2v_prompt"](**kwargs), "result"))
 
     def storyboard_transform(self, payload: dict[str, Any], *, timeout=None) -> StoryboardPromptResult:
         return self._call(

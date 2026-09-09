@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from feverslop.domain.timeline import TimelineSegment
+from feverslop.domain.vocal_evidence import merge_evidence
+from feverslop.domain.word_alignment import merge_alignment, raw_word_rows
 
 
 def normalize_empty_vocals(
@@ -9,7 +11,8 @@ def normalize_empty_vocals(
 ) -> list[TimelineSegment]:
     result = []
     for seg in timeline:
-        if seg.kind == "vocals" and len(seg.text.strip()) < min_text_chars:
+        if (seg.kind == "vocals" and seg.evidence is None and seg.alignment is None
+                and len(seg.text.strip()) < min_text_chars):
             result.append(
                 TimelineSegment(
                     start=seg.start,
@@ -17,6 +20,7 @@ def normalize_empty_vocals(
                     kind="instrumental",
                     text="",
                     word_timestamps=(),
+                    alignment=seg.alignment,
                 ),
             )
         else:
@@ -41,7 +45,9 @@ def merge_same_kind_segments(
         if same_kind and close_enough:
             new_end = max(current.end, seg.end)
             new_text = current.text
-            new_word_timestamps = current.word_timestamps + seg.word_timestamps
+            new_word_timestamps = tuple(raw_word_rows(
+                current.word_timestamps, start=current.start, end=current.end)) + tuple(raw_word_rows(
+                    seg.word_timestamps, start=seg.start, end=seg.end))
             if seg.text.strip():
                 if new_text:
                     new_text = (new_text + " " + seg.text).strip()
@@ -53,6 +59,8 @@ def merge_same_kind_segments(
                 kind=current.kind,
                 text=new_text,
                 word_timestamps=new_word_timestamps,
+                evidence=merge_evidence(current.evidence, seg.evidence),
+                alignment=merge_alignment(current, seg),
             )
         else:
             merged.append(current)

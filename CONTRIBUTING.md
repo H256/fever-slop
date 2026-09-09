@@ -1,6 +1,6 @@
 # Contributing to FeverSlop
 
-Contributions are welcome through GitHub issues and pull requests.
+Contributions are welcome through the repository's issue tracker and pull requests.
 
 This project has no bug bounty program and does not provide monetary rewards
 or guaranteed compensation for bug reports, security reports, or other

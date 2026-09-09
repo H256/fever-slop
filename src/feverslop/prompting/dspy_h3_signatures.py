@@ -34,7 +34,10 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         Do not define subjects, assign references, write retention analysis, create final
         section headers, or emit backend labels, shot labels, or formatted timestamps. The
         application owns all reference mappings and final mode-specific prompt assembly.
-        Return one creative shot for each supplied relay segment, in the same order. When
+        If relay entries have performance_phase=true, return exactly one continuous
+        creative camera shot for the scene. These entries specify vocal timing within
+        the shot and must not create camera cuts. Otherwise,
+        return one creative shot for each supplied relay segment, in the same order. When
         no relay segments are supplied, return exactly one creative shot. Never choose
         shot numbers, timestamps, durations, or hard-cut flags; the application derives them
         from the authoritative scene and relay timeline.

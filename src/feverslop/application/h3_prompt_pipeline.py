@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import deepcopy
 from typing import Any
 
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.domain.vocal_assignments import infer_vocal_performers
+from feverslop.domain.scene_recovery import require_ready_scenes
 from feverslop.ports.generate_pipeline import H3PromptBuilderFactory
 from feverslop.prompting.dspy_h3_models import PromptMode
 from feverslop.prompting.model_types import resolve_model_type
@@ -33,6 +35,8 @@ def _attach_relay_segments(stage1_segments: list[dict], relay_scenes: list[dict]
         if relay_scene:
             result.setdefault("fps", relay_scene.get("fps"))
             result.setdefault("duration_seconds", relay_scene.get("duration_seconds"))
+            if "performance_intervals" in relay_scene:
+                result["performance_intervals"] = deepcopy(relay_scene["performance_intervals"])
             relay = relay_scene.get("prompt_relay") or (relay_scene.get("ltx") or {}).get("prompt_relay")
             if relay:
                 ltx = dict(result.get("ltx") or {})
@@ -100,6 +104,23 @@ def _attach_subject_directives(
         relay = (result.get("ltx") or {}).get("prompt_relay") or []
         actor_ids = list((result.get("references") or {}).get("actor_ids") or [])
         labels = {actor_id: f"<Subject {index}>" for index, actor_id in enumerate(actor_ids, start=1)}
+        if result.get("performance_intervals"):
+            intervals = deepcopy(result["performance_intervals"])
+            for phase in intervals:
+                events = phase.get("vocal_events") or [phase]
+                if len(events) != 1 or len(performers) != 1 or phase.get("state") not in {"singing", "vocals", "vocal"}:
+                    continue
+                event = events[0]
+                if event.get("offscreen"):
+                    continue
+                performer = performers[0]
+                subject_id = str(event.get("subject_id") or performer.get("subject_id") or "")
+                if subject_id in labels:
+                    event.setdefault("subject_id", subject_id)
+                    event.setdefault("subject_label", labels[subject_id])
+                    if subject_id == performer.get("subject_id"):
+                        event.setdefault("speaker_id", performer.get("speaker_id"))
+            result["performance_intervals"] = intervals
         if isinstance(performers, list) and relay:
             stamped_relay = []
             for item in relay:
@@ -357,11 +378,6 @@ class H3PromptPipeline:
             if "selected_scene_numbers" in context.keys()
             else None
         )
-        selected_scene_selection_complete = bool(
-            context["selected_scene_selection_complete"]
-            if "selected_scene_selection_complete" in context.keys()
-            else False
-        )
         request = context["request"] if "request" in context.keys() else None
         resume_requested = bool(getattr(request, "resume", False))
 
@@ -376,6 +392,9 @@ class H3PromptPipeline:
                     audio_paths["full_mix"] = config.input_audio
 
         progress = SubStepProgress(reporter, "H3 prompts", len(stage1_segments))
+        set_reporter = getattr(builder, "set_reporter", None)
+        if callable(set_reporter):
+            set_reporter(reporter)
         video_type = str(
             global_context.get("video_type")
             or getattr(config, "video_type", "")
@@ -415,12 +434,12 @@ class H3PromptPipeline:
             preserve_existing_aggregate=selected_scene_numbers is not None,
             reuse_checkpoints=(
                 selected_scene_numbers is None
-                or selected_scene_selection_complete
                 or resume_requested
             ),
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
+        require_ready_scenes(context["h3_prompts"])
         # H3 quality diagnostics are advisory. A valid scene must keep moving
         # to rendering even when the creative planner, compiler diagnostics, or
         # judge report an imperfect prompt. The builder records whether it used
@@ -445,7 +464,7 @@ class H3PromptPipeline:
                     + "[/yellow]",
                 )
             else:
-                reporter.message("[green]H3 prompt judge summary: all generated prompts marked GOOD.[/green]")
+                reporter.message("[green]H3 prompt preparation complete; no advisory BAD verdicts recorded.[/green]")
         return context
 
 
@@ -488,7 +507,7 @@ def _h3_prompt_status_message(
         version_suffix = f"; using v{compiler_version}" if compiler_version is not None else ""
         label = f"recompiled (compiler checkpoint invalidated{version_suffix})"
     elif status == "override":
-        label = "user override (compiler, DSPy, and judge skipped)"
+        label = "user override (semantic contract validated)"
     elif status == "regenerating":
         label = "regenerating (saved structured plan fails current guide contract)"
     elif status == "completed":

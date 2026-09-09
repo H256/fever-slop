@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
+from feverslop.domain.artifact_hash import is_sha256_hex
 from feverslop.domain.canonical_render_plan import (
     PromptRole,
     resolve_effective_role,
     validate_canonical_plan,
 )
+from feverslop.domain.artifact_hash import fingerprint_json
 from feverslop.errors import FeverSlopDataError
 
 PROJECTION_SCHEMA = "feverslop.canonical-projection/v1"
@@ -83,7 +83,7 @@ class CanonicalSceneDependencies:
                 )
         for field in ("source_revision", "workflow_fingerprint", "reference_fingerprint"):
             value = values[field]
-            if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+            if not is_sha256_hex(value):
                 raise FeverSlopDataError(
                     f"canonical dependencies {field} must be a SHA-256 hex digest",
                 )
@@ -115,13 +115,7 @@ def canonical_plan_revision(scenes: Sequence[Mapping[str, Any]]) -> str:
     canonical_scenes.sort(
         key=lambda item: str((item.get("canonical") or {}).get("scene_id") or ""),
     )
-    payload = json.dumps(
-        canonical_scenes,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
+    return fingerprint_json(canonical_scenes, ensure_ascii=False)
 
 
 def canonical_scene_dependencies(
@@ -339,10 +333,4 @@ def _is_derived_reference_key(key: Any) -> bool:
 
 
 def _fingerprint(value: Any) -> str:
-    payload = json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
+    return fingerprint_json(value, ensure_ascii=False)

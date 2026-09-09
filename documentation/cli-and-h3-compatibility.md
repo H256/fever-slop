@@ -64,7 +64,7 @@ then the full suite when practical:
 
 ```powershell
 uv run python -m unittest tests.test_public_compatibility tests.test_scene_cast tests.test_comfyui_minimax_h3_r2v_backend
-uv run python -m unittest discover -s tests
+uv run python -m tests.suites.unit
 ruff check .
 ```
 

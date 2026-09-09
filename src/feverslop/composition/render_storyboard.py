@@ -9,7 +9,7 @@ from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.application.render_storyboard import RenderStoryboardUseCase
 from feverslop.config.app_config import AppConfig, StoryboardPromptTransformConfig
-from feverslop.path_utils import coerce_local_path
+from feverslop.path_utils import coerce_local_path, workflow_path_matches
 from feverslop.prompting.storyboard_prompt_transformer import (
     TemplateStoryboardPromptTransformer,
 )
@@ -73,13 +73,7 @@ def matching_storyboard_prompt_transform(
     app_config: AppConfig,
     workflow_path: str | Path,
 ) -> StoryboardPromptTransformConfig | None:
-    normalized_path = normalize_workflow_path(str(workflow_path))
     for transform in app_config.storyboard_prompt_transforms:
-        transform_path = normalize_workflow_path(transform.workflow)
-        if normalized_path == transform_path or normalized_path.endswith(f"/{transform_path}"):
+        if workflow_path_matches(transform.workflow, workflow_path):
             return transform
     return None
-
-
-def normalize_workflow_path(value: str) -> str:
-    return value.replace("\\", "/").casefold()

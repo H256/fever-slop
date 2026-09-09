@@ -35,6 +35,8 @@ from feverslop.prompting.dspy_h3_models import (
 )
 from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
+from feverslop.prompting.planning_payload import compact_planning_payload
+from feverslop.prompting.h3_user_messages import renderer_recovery_message
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +75,7 @@ def _authoritative_shot_windows(
     if shot_count == 0:
         return []
     relay = list(request.relay_segments)
-    if relay:
+    if relay and not any(item.get("performance_phase") for item in relay):
         if len(relay) != shot_count:
             raise ValueError(
                 "creative plan must contain exactly one shot per authoritative relay segment",
@@ -150,6 +152,14 @@ def _normalize_judge_payload(value: Any) -> Any:
     if not isinstance(value, Mapping):
         return value
     payload = dict(value)
+    for key, default in (
+        ("suggested_prompt", ""),
+        ("repair_instruction", ""),
+        ("issues", []),
+        ("field_issues", []),
+    ):
+        if payload.get(key) is None:
+            payload[key] = default
     raw_verdict = str(payload.get("verdict") or "").strip().lower()
     if raw_verdict in {"good", "pass", "passed", "accept", "accepted"}:
         payload["verdict"] = "good"
@@ -423,7 +433,7 @@ class VideoPromptGenerator:
             notes=request.notes or "",
             strict_fidelity=request.strict_fidelity,
             requested_music_intent=request.music_intent.value if request.music_intent else "",
-            relay_segments=request.relay_segments,
+            relay_segments=compact_planning_payload(request.relay_segments),
         )
         creative = prediction.plan
         music_intent = request.music_intent or creative.music_intent
@@ -442,7 +452,10 @@ class VideoPromptGenerator:
         ]
         subject_names = [subject.name for subject in subjects]
         authored_shots = list(creative.shots)
-        authoritative_count = len(request.relay_segments) or 1
+        authoritative_count = (
+            1 if any(item.get("performance_phase") for item in request.relay_segments)
+            else len(request.relay_segments) or 1
+        )
         if len(authored_shots) != authoritative_count:
             raise ValueError(
                 "creative plan shot count does not match authoritative scene structure",
@@ -509,7 +522,7 @@ class VideoPromptGenerator:
                 notes=notes,
                 strict_fidelity=request.strict_fidelity,
                 music_intent=plan.music_intent.value,
-                relay_segments=request.relay_segments,
+                relay_segments=compact_planning_payload(request.relay_segments),
             )
             rendered_fields = "\n".join(str(getattr(output, field, "") or "") for field in (
                 "summary",
@@ -558,10 +571,7 @@ class VideoPromptGenerator:
                 f"active_vocal_language={active_vocal_language!r}",
             ))
             if attempt == 1:
-                self._warning(
-                    "H3 renderer contract warning; continuing with deterministic recovery: "
-                    f"{error}",
-                )
+                self._warning(renderer_recovery_message(error))
                 return output
         raise AssertionError("unreachable")
 
@@ -591,7 +601,7 @@ class VideoPromptGenerator:
                 ).strip(),
                 strict_fidelity=request.strict_fidelity,
                 requested_music_intent=request.music_intent.value if request.music_intent else "",
-                relay_segments=request.relay_segments,
+                relay_segments=compact_planning_payload(request.relay_segments),
             )
             candidate_plan = prediction.plan
             current_payloads = creative_shots_from_plan(plan)
@@ -681,7 +691,7 @@ class VideoPromptGenerator:
                         references=refs, notes=effective_request.notes or "",
                         strict_fidelity=request.strict_fidelity,
                         music_intent=plan.music_intent.value,
-                        relay_segments=request.relay_segments,
+                        relay_segments=compact_planning_payload(request.relay_segments),
                     )
                     prompt = output.result
                 if plan.music_intent == MusicIntent.NONE:

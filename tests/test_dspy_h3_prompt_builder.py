@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from copy import deepcopy
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -41,12 +42,14 @@ from feverslop.prompting.dspy_h3_prompt_builder import (
     _format_relay_shots,
     _normalize_resolved_scene_references,
     _normalize_relay_segments,
+    _relay_vocal_binding,
     _scene_references,
     _speaker_bindings_for_compile,
     _stamp_relay_speaker_binding,
 )
 from feverslop.prompting.scene_prompt_builder import normalize_scene_references
 from feverslop.prompting.dspy_h3_signatures import build_dspy_signatures, build_h3_signature_bundle
+from feverslop.prompting.planning_payload import _EVIDENCE_FIELDS
 
 
 class FakeGeneratedPrompt:
@@ -69,6 +72,19 @@ class CallbackGenerator(FakeGenerator):
         self.warning_callback = callback
 
 
+def _collect_keys(value: Any) -> set[str]:
+    keys: set[str] = set()
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str):
+                keys.add(key)
+            keys.update(_collect_keys(item))
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            keys.update(_collect_keys(item))
+    return keys
+
+
 class IncompleteAudioPrompt:
     rendered_prompt = """subject_definitions:
 <Subject 1> is a singer.
@@ -86,6 +102,21 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_fallback_preserves_last_structured_camera_and_timing(self):
+        from types import SimpleNamespace
+        plan = ResolvedPromptPlan(creative_intent="A performer waits.", style_opening="",
+            shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=2,
+                               description="A performer folds a letter.", camera_behavior="slow dolly left")],
+            overall_soundscape="Quiet room tone.", music_intent=MusicIntent.NONE)
+        generator = FakeGenerator(SimpleNamespace(plan=plan))
+        result = DspyH3PromptBuilder(generator).build_h3_prompt(segment={"segment_id": "s1", "duration": 2},
+            concept="A different generic concept", scene_details={}, global_context={}, mode="r2v")
+        self.assertEqual(2, len(generator.requests))
+        self.assertEqual("ready", result["readiness"]["status"])
+        self.assertIn("folds a letter", result["prompt"])
+        self.assertIn("dolly left", result["prompt"])
+        self.assertEqual(2, result["sections"]["h3_sections"]["shots"][0]["end_seconds"])
+
     def test_audio_latent_delivery_marks_full_mix_as_copied_not_score_reference(self):
         references, _ = _scene_references(
             {"segment_id": "seg-1", "references": {}},
@@ -268,7 +299,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         revision = DspyH3PromptBuilder(generator).checkpoint_revision()
 
         self.assertEqual(3, revision["contract"])
-        self.assertEqual(39, revision["compiler_version"])
+        self.assertEqual(44, revision["compiler_version"])
         self.assertEqual(5, revision["judge_attempts"])
         self.assertRegex(revision["base_guide_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(revision["reference_guide_sha256"], r"^[0-9a-f]{64}$")
@@ -310,10 +341,10 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 nonlocal calls
                 calls += 1
                 if calls == 4:
-                    raise RuntimeError("provider interrupted")
+                    raise KeyboardInterrupt("provider interrupted")
                 return FakeGeneratedPrompt()
 
-            with self.assertRaisesRegex(RuntimeError, "provider interrupted"):
+            with self.assertRaisesRegex(KeyboardInterrupt, "provider interrupted"):
                 DspyH3PromptBuilder(generate, allow_fallback=False).build_all_h3_prompts(
                     stage1_segments=[
                         {"scene": number, "segment_id": f"seg-{number}"}
@@ -435,7 +466,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertIsNotNone(generator.warning_callback)
 
-    def test_user_override_skips_checkpoint_generator_and_judge(self):
+    def test_unstructured_user_override_cannot_bypass_validation(self):
         class FailingGenerator:
             def __call__(self, _request):
                 raise AssertionError("override must bypass DSPy")
@@ -453,8 +484,8 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             output_json_path="prompts.json", artifact_store=Store(),
         )
 
-        self.assertEqual("free-form MiniMax debugging prompt", result[0]["prompt"])
-        self.assertEqual("user_override", result[0]["prompt_provenance"]["source"])
+        self.assertEqual("blocked", result[0]["readiness"]["status"])
+        self.assertFalse(result[0]["prompt_contract"]["valid"])
         self.assertNotIn("prompt_judge", result[0])
 
     def test_preserves_valid_prompt_when_judge_marks_it_bad(self):
@@ -973,6 +1004,25 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual("<Subject 2>", shots[0]["subject_label"])
         self.assertEqual("S2", shots[0]["speaker_id"])
 
+    def test_relay_vocal_binding_counts_singing_states_and_reads_subject(self):
+        self.assertEqual(
+            (2, "<Subject 1>"),
+            _relay_vocal_binding(
+                [
+                    {"state": "singing"},
+                    {"state": " VOCALS "},
+                    {"state": "dialogue"},
+                ],
+                {"vocals": {"subject_label": " <Subject 1> "}},
+            ),
+        )
+
+    def test_relay_vocal_binding_returns_no_subject_without_vocal_binding(self):
+        self.assertEqual(
+            (1, None),
+            _relay_vocal_binding([{"state": "vocal"}], {}),
+        )
+
     def test_passes_relay_segments_to_generator_without_appending_non_guide_sections(self):
         generator = FakeGenerator()
         builder = DspyH3PromptBuilder(generator)
@@ -997,6 +1047,70 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertNotIn("Temporal shot directions:", result["prompt"])
         self.assertNotIn("[Shot 1, 0.00-6.40sec]", result["prompt"])
         self.assertIn("actor.png", " ".join(reference["source"] for reference in result["references"]))
+
+    def test_h3_request_notes_strip_evidence_while_relay_segments_stay_full_for_compiler(self):
+        generator = FakeGenerator()
+        builder = DspyH3PromptBuilder(generator)
+        marker = "x" * 100000
+        segment = {
+            "segment_id": "seg-1",
+            "type": "vocals",
+            "duration_seconds": 6.4,
+            "fps": 24,
+            "lyrics": "Mara sings into the rain",
+            "references": {"actor_ids": ["mara"]},
+            "performance_intervals": [
+                {
+                    "frame_start": 0,
+                    "frame_end": 154,
+                    "state": "singing",
+                    "prompt": "The singer turns.",
+                    "lyrics": "Mara sings into the rain",
+                    "word_timestamps": [
+                        {"word": "Mara", "start": 0.0, "end": 0.4},
+                        {"word": "sings", "start": 0.4, "end": 0.9},
+                    ],
+                    "vocal_sources": [
+                        {"subject_id": "mara", "alignment": {"raw_text": marker}},
+                    ],
+                    "vocal_events": [
+                        {
+                            "word": "Mara",
+                            "start": 0.0,
+                            "end": 0.4,
+                            "subject_id": "mara",
+                            "word_timestamps": [{"word": "Mara", "start": 0.0, "end": 0.4}],
+                        },
+                    ],
+                    "performance_conflicts": ["unresolved phase overlap"],
+                }
+            ],
+        }
+        original = deepcopy(segment)
+
+        builder.build_h3_prompt(
+            segment=segment,
+            concept="A singer performs.",
+            scene_details={},
+            global_context={},
+            mode="ref",
+        )
+
+        request = generator.requests[0]
+        notes = json.loads(request["notes"])
+        self.assertEqual(
+            {"scene", "scene_details", "global_context", "source_language", "language_policy"},
+            set(notes),
+        )
+        self.assertFalse(_collect_keys(notes) & _EVIDENCE_FIELDS)
+        self.assertNotIn(marker, request["notes"])
+        self.assertEqual("Mara sings into the rain", notes["scene"]["lyrics"])
+        # The compiler consumes exactly request["relay_segments"], so the
+        # word-level timing evidence must survive there untouched.
+        self.assertIn(marker, json.dumps(request["relay_segments"]))
+        self.assertTrue(any("word_timestamps" in item for item in request["relay_segments"]))
+        self.assertTrue(any("vocal_sources" in item for item in request["relay_segments"]))
+        self.assertEqual(original, segment)
 
     def test_keeps_complete_audio_references_unchanged(self):
         complete = IncompleteAudioPrompt.rendered_prompt.replace(
@@ -1517,6 +1631,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
     def test_reference_renderer_keeps_single_unknown_subject_attempt_advisory(self):
         generator = object.__new__(CoreVideoPromptGenerator)
         calls = []
+        warnings = []
 
         def renderer(**kwargs):
             calls.append(kwargs)
@@ -1533,6 +1648,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         generator.reference_renderer = renderer
         generator.reference_guide_path = "minimax-h3-references.md"
+        generator.warning_callback = lambda message, **_kwargs: warnings.append(message)
         plan = ResolvedPromptPlan(
             creative_intent="Performance",
             subjects=[SubjectDefinition(
@@ -1552,6 +1668,9 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual(1, len(calls))
         self.assertEqual("<Subject 3> performs.", output.summary)
+        self.assertIn("automatically repairing", warnings[0])
+        self.assertIn("No action is needed", warnings[0])
+        self.assertIn("undefined_subjects", warnings[0])
 
     def test_reference_renderer_keeps_single_instrumental_contract_attempt_advisory(self):
         generator = object.__new__(CoreVideoPromptGenerator)
@@ -1867,7 +1986,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual([(1, 2), (2, 2)], progress)
         self.assertEqual(
-            [(1, 2, "started"), (1, 2, "completed"), (2, 2, "started"), (2, 2, "completed")],
+            [(1, 2, "started"), (1, 2, "blocked"), (2, 2, "started"), (2, 2, "blocked")],
             statuses,
         )
 
@@ -2046,7 +2165,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual(generator.requests[-1]["references"][0]["source"], str(picture))
         self.assertEqual(result["references"][0]["source"], "output/actor.png")
 
-    def test_falls_back_to_guide_shaped_prompt_when_generator_fails(self):
+    def test_blocks_without_a_structured_plan_when_generator_fails(self):
         class BrokenGenerator:
             def __call__(self, request):
                 raise RuntimeError("DSPy unavailable")
@@ -2060,14 +2179,12 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             mode="ref",
         )
 
-        self.assertIn("subject_definitions:", result["prompt"])
-        self.assertIn("detailed_description:", result["prompt"])
-        self.assertIn("fallback scene", result["prompt"])
-        self.assertEqual("deterministic_fallback", result["prompt_provenance"]["source"])
-        self.assertEqual(result["dspy_error"], "DSPy unavailable")
-        self.assertTrue(result["prompt_contract"]["valid"])
+        self.assertEqual("", result["prompt"])
+        self.assertEqual("blocked", result["readiness"]["status"])
+        self.assertEqual(["h3.fallback.plan_missing"], result["readiness"]["reason_codes"])
+        self.assertFalse(result["prompt_contract"]["valid"])
 
-    def test_fallback_binds_each_picture_reference_as_a_defined_subject(self):
+    def test_references_alone_do_not_allow_inventing_a_fallback_plan(self):
         class BrokenGenerator:
             def __call__(self, request):
                 raise RuntimeError("DSPy unavailable")
@@ -2089,9 +2206,8 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             mode="ref",
         )
 
-        definitions = result["prompt"].split("summary:", 1)[0]
-        self.assertIn("<Subject 1>", definitions)
-        self.assertIn("<Picture 1>", definitions)
+        self.assertEqual("blocked", result["readiness"]["status"])
+        self.assertFalse(result["prompt_contract"]["valid"])
 
     def test_retries_dspy_plan_once_after_a_prompt_contract_failure(self):
         from types import SimpleNamespace
@@ -2128,6 +2244,66 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertTrue(result["prompt_contract"]["valid"])
         self.assertEqual("dspy_contract_repair", result["prompt_provenance"]["source"])
 
+    def test_instrumental_audio_with_no_score_keeps_creative_plan_without_repair(self):
+        from types import SimpleNamespace
+        plan = ResolvedPromptPlan(creative_intent="A drummer performs.",
+            style_opening="Live-action cinematic imagery uses cool practical lighting.",
+            shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=2,
+                               description="The drummer performs.", camera_behavior="slow dolly left")],
+            overall_soundscape="Room tone.", music_intent=MusicIntent.NONE)
+        generator = FakeGenerator(SimpleNamespace(plan=plan))
+        result = DspyH3PromptBuilder(generator, allow_fallback=False).build_h3_prompt(
+            segment={"segment_id": "seg-1", "duration": 2, "type": "instrumental",
+                     "metadata": {"base_concept": "A drummer performs."}},
+            concept="A drummer performs.", scene_details={}, global_context={}, mode="r2v",
+            audio_paths={"drums": Path("drums.wav"), "full_mix": Path("song.wav")})
+        self.assertEqual(1, len(generator.requests))
+        self.assertEqual("dspy_section_plan", result["prompt_provenance"]["source"])
+        self.assertIn("non_diegetic_music: N/A", result["prompt"])
+        self.assertIn("dolly left", result["prompt"])
+        self.assertTrue(result["prompt_contract"]["valid"])
+
+    def test_graph_audio_roles_reach_compiler_and_resume_without_swapping_sources(self):
+        from types import SimpleNamespace
+        from feverslop.domain.h3_audio_delivery import load_h3_audio_delivery
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            graph = {
+                "1": dict(class_type="LoadAudio", _meta={"title": "#AUDIO_1"}, inputs={"audio": "old.wav"}),
+                "2": dict(class_type="TrimAudioDuration", _meta={"title": "#TRIM_AUDIO_1"}, inputs={"audio": ["1", 0]}),
+                "3": dict(class_type="LoadAudio", _meta={"title": "#AUDIO_2"}, inputs={"audio": "old.wav"}),
+                "4": dict(class_type="TrimAudioDuration", _meta={"title": "#TRIM_AUDIO_2"}, inputs={"audio": ["3", 0]}),
+                "5": dict(class_type="MiniMaxH3AddGuide", inputs={"audio": ["2", 0]}),
+                "6": dict(class_type="MiniMaxH3ReferenceToVideo", inputs={}),
+                "7": dict(class_type="CreateVideo", inputs={"audio": ["2", 0]}),
+            }
+            workflow = root / "workflow.json"
+            workflow.write_text(json.dumps(graph))
+            workflow.with_suffix(".profile.json").write_text(json.dumps({"conditioning_source": "full_mix"}))
+            for name in ("drums", "full_mix"):
+                (root / f"{name}.wav").write_bytes(name.encode())
+            plan = ResolvedPromptPlan(creative_intent="A drummer performs.",
+                style_opening="Live-action cinematic imagery uses cool practical lighting.",
+                shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=2, description="A drummer performs.")],
+                overall_soundscape="Air.", music_intent=MusicIntent.NONE)
+            generator = FakeGenerator(SimpleNamespace(plan=plan))
+            builder = DspyH3PromptBuilder(generator, reference_root=root, allow_fallback=False)
+            segment = dict(segment_id="s1", start=10, end=12, duration=2, type="instrumental", metadata={"base_concept": "A drummer performs"})
+            context = {"h3_audio_delivery": load_h3_audio_delivery(workflow).to_context()}
+            result = builder.build_h3_prompt(segment=segment, concept="A drummer performs", scene_details={},
+                global_context=context, mode="r2v", audio_paths={n: root / f"{n}.wav" for n in ("drums", "full_mix")})
+            sources = {source["name"]: source for source in result["h3_audio_sources"]}
+            self.assertIn("conditioning", sources["full_mix"]["roles"])
+            self.assertNotIn("conditioning", sources["drums"]["roles"])
+            self.assertIn("output_copy", sources["drums"]["roles"])
+            self.assertEqual({"start_seconds": 10, "end_seconds": 12}, sources["full_mix"]["audio_timing_window"])
+            self.assertIn("<Audio 2> conditions generation", result["prompt"])
+            self.assertIn("non_diegetic_music: N/A", result["prompt"])
+            resumed = builder.build_h3_prompt(segment=segment, concept="A drummer performs", scene_details={},
+                global_context=context, mode="r2v", structured_sections={**result["sections"], "resolved_references": result["references"]})
+            self.assertEqual(result["h3_audio_sources"], resumed["h3_audio_sources"])
+            self.assertEqual(1, len(generator.requests))
+
     def test_sanitizes_embedded_image_data_in_fallback_error(self):
         payload = "data:image/png;base64," + ("A" * 400)
 
@@ -2144,7 +2320,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertNotIn("data:image", result["dspy_error"])
         self.assertNotIn("A" * 100, result["dspy_error"])
-        self.assertIn("embedded image omitted", result["dspy_error"])
+        self.assertEqual("h3.fallback.plan_missing", result["dspy_error"])
 
     def test_production_mode_does_not_hide_dspy_failure(self):
         class BrokenGenerator:

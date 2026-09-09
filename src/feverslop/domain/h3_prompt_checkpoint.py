@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal, Mapping
 
 H3_CHECKPOINT_SCHEMA = "feverslop.h3-prompt-checkpoint.v1"
-H3CheckpointStatus = Literal["good", "advisory_bad", "unjudged"]
+H3CheckpointStatus = Literal["good", "advisory_bad", "unjudged", "blocked"]
 
 
 @dataclass(frozen=True)
@@ -35,36 +35,10 @@ class H3PromptCheckpoint:
     stage_fingerprints: Mapping[str, str] = field(default_factory=dict, repr=False)
 
 
-def checkpoint_status(generated: Mapping[str, Any]) -> H3CheckpointStatus:
-    provenance = generated.get("prompt_provenance")
-    compiler_version = (
-        int(provenance.get("compiler_version") or 0)
-        if isinstance(provenance, Mapping)
-        else 0
-    )
-    if compiler_version >= 8:
-        contract = generated.get("prompt_contract")
-        if not isinstance(contract, Mapping):
-            return "unjudged"
-        if contract.get("valid") is not True:
-            return "unjudged"
-        if int(contract.get("compiler_version") or 0) != compiler_version:
-            return "unjudged"
-        expected_hash = "sha256:" + hashlib.sha256(
-            str(generated.get("prompt") or "").encode("utf-8"),
-        ).hexdigest()
-        if contract.get("prompt_sha256") != expected_hash:
-            return "unjudged"
-    judge = generated.get("prompt_judge")
-    verdict = str(judge.get("verdict") or "").strip().lower() if isinstance(judge, Mapping) else ""
-    if verdict == "good":
-        return "good"
-    if verdict == "bad":
-        return "advisory_bad"
-    return "unjudged"
-
-
-def valid_h3_prompt_contract(generated: Mapping[str, Any]) -> bool:
+def _contract_matches(generated: Mapping[str, Any]) -> bool:
+    readiness = generated.get("readiness")
+    if isinstance(readiness, Mapping) and readiness.get("status") == "blocked":
+        return False
     provenance = generated.get("prompt_provenance")
     contract = generated.get("prompt_contract")
     if not isinstance(provenance, Mapping) or not isinstance(contract, Mapping):
@@ -79,3 +53,32 @@ def valid_h3_prompt_contract(generated: Mapping[str, Any]) -> bool:
         and int(contract.get("compiler_version") or 0) == compiler_version
         and contract.get("prompt_sha256") == expected_hash
     )
+
+
+def checkpoint_status(generated: Mapping[str, Any]) -> H3CheckpointStatus:
+    readiness = generated.get("readiness")
+    if isinstance(readiness, Mapping) and readiness.get("status") == "blocked":
+        return "blocked"
+    provenance = generated.get("prompt_provenance")
+    compiler_version = (
+        int(provenance.get("compiler_version") or 0)
+        if isinstance(provenance, Mapping)
+        else 0
+    )
+    if compiler_version >= 8:
+        contract = generated.get("prompt_contract")
+        if not isinstance(contract, Mapping):
+            return "unjudged"
+        if not _contract_matches(generated):
+            return "unjudged"
+    judge = generated.get("prompt_judge")
+    verdict = str(judge.get("verdict") or "").strip().lower() if isinstance(judge, Mapping) else ""
+    if verdict == "good":
+        return "good"
+    if verdict == "bad":
+        return "advisory_bad"
+    return "unjudged"
+
+
+def valid_h3_prompt_contract(generated: Mapping[str, Any]) -> bool:
+    return _contract_matches(generated)

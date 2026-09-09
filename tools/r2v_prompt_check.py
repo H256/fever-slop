@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""r2v_prompt_check.py — Validate R2V prompt generation against a real LLM.
+"""Legacy R2V prompt comparison tool for manual H3 migration checks.
+
+Production H3 generation uses the canonical DSPy builder and deterministic
+compiler. This script intentionally remains on the legacy prompt path because
+it is a standalone diagnostic for comparing an LLM response with the former
+MiniMax structured-output contract; it is not part of the production pipeline.
 
 Usage:
     uv run python tools/r2v_prompt_check.py
@@ -51,6 +56,8 @@ def main():
     from feverslop.adapters.llm_client import LocalOpenAIClient
     from feverslop.domain.llm_parsing import extract_json_object
     from feverslop.prompting.h3_prompt_builder import build_references_from_segment
+    # This is deliberately the legacy style module; production code uses the
+    # canonical DSPy builder and deterministic compiler instead.
     from feverslop.prompting.minimax_h3_prompt_style import build_h3_video_system_prompt
 
     llm = LocalOpenAIClient(base_url=base_url, model=model, api_key=api_key, max_tokens=2048)

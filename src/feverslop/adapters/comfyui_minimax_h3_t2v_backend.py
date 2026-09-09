@@ -285,7 +285,8 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
 
     def _validate_scene(self, scene: dict) -> None:
         """T2V has no actor reference requirement."""
-        # Always valid -- T2V is text-driven
+        from feverslop.domain.scene_recovery import require_ready_scenes
+        require_ready_scenes([scene])
 
     # -----------------------------------------------------------------------
     # Internals

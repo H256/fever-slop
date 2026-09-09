@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from pathlib import PurePosixPath
 import re
 from typing import Any
 
@@ -8,11 +9,79 @@ from feverslop.domain.locked_scene_facts import LockedSceneFacts
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload
 from feverslop.prompting.dspy_h3_models import MusicIntent, PromptMode
 from feverslop.prompting.dspy_h3_models import ResolvedPromptPlan
-from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_prompt_contract
+from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_prompt_contract, validate_performance_phases
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 39
+H3_COMPILER_VERSION = 44
+
+
+def _performance_phases_for_shot(shot, phases):
+    start = float(shot.start_seconds or 0)
+    end = float(shot.end_seconds or max(float(p["end_seconds"]) for p in phases))
+    result = []
+    for phase in phases:
+        begin, stop = float(phase["start_seconds"]), float(phase["end_seconds"])
+        if begin >= end or stop <= start:
+            continue
+        clipped = dict(phase, start_seconds=max(start, begin), end_seconds=min(end, stop))
+        words = phase.get("word_timestamps") or []
+        if words:
+            origin = float(phase.get("word_time_origin") or 0)
+            selected = []
+            for word in words:
+                left, right = float(word["start"]), float(word["end"])
+                if left >= end + origin or right <= start + origin:
+                    continue
+                source_start = float(word.get("source_start", left))
+                source_end = float(word.get("source_end", right))
+                row = dict(word, start=max(left, start + origin), end=min(right, end + origin))
+                row["text_assigned"] = bool(word.get("text_assigned", True)) and start + origin <= (source_start + source_end) / 2 < end + origin
+                if row["start"] > source_start or row["end"] < source_end:
+                    row["continuation_of_word"] = word.get("word_id")
+                selected.append(row)
+            clipped["word_timestamps"] = selected
+            clipped.update(lyrics=" ".join(str(w["word"]).strip() for w in selected if w["text_assigned"]), dialogue="", text="", prompt="")
+        elif not start <= (begin + stop) / 2 < end:
+            clipped.update(lyrics="", dialogue="", text="", prompt="")
+        result.append(clipped)
+    return result
+
+
+def _render_performance_phases(text, phases, speaker_ids):
+    text = text.split(" Within this continuous camera shot, ", 1)[0]
+    # Remove authored claims before inserting any events, so later phases cannot
+    # remove the compiler-owned dialogue from an earlier phase.
+    for phase in phases:
+        content = _relay_vocal_content(phase)
+        if content:
+            text = re.sub(r"(?<!\w)" + re.escape(content) + r"(?!\w)", "", text, flags=re.IGNORECASE)
+        text = _remove_authored_vocal_claims(text, phase)
+    events = []
+    for phase in phases:
+        window = f"From {float(phase['start_seconds']):.3f}-{float(phase['end_seconds']):.3f} seconds"
+        state = str(phase.get("state") or "").casefold()
+        subject = str(phase.get("subject_label") or "").strip()
+        if state in {"singing", "vocals", "vocal", "spoken", "speech", "dialogue"}:
+            event = _insert_authoritative_vocal_event("", phase, bound_speaker_ids=speaker_ids).strip()
+            if not event:
+                source = subject or "The audible vocal performance"
+                if phase.get("offscreen"):
+                    source = "The offscreen voice"
+                speaker_id = str(phase.get("speaker_id") or speaker_ids.get(subject) or "").strip()
+                if speaker_id:
+                    source += f" ({speaker_id})"
+                event = (
+                    f"{source} continues only the clipped vocal interval "
+                    "in the synchronized audio; do not restart or add words."
+                )
+        else:
+            event = (
+                f"{subject + ' remains silent with no singing mouth movement' if subject else 'No sung vocal performance occurs'}; "
+                "continue the established camera movement."
+            )
+        events.append(f"{window}, {event}")
+    return (text.strip() + " Within this continuous camera shot, " + " ".join(events)).strip() if events else text
 
 
 def plan_with_authoritative_relay(
@@ -26,6 +95,22 @@ def plan_with_authoritative_relay(
     if not relay_segments:
         return plan
     speaker_ids = _validated_speaker_ids(speaker_bindings)
+    if any(phase.get("performance_phase") for phase in relay_segments):
+        speaker_ids = _validated_speaker_ids([*speaker_bindings, *(p for p in relay_segments if not p.get("offscreen"))])
+        shots = []
+        for shot in plan.shots:
+            phases = _performance_phases_for_shot(shot, relay_segments)
+            values = {}
+            for field in ("description", "visible_action", "performance", "camera_behavior", "environmental_motion", "transition_intent"):
+                value = getattr(shot, field)
+                if value is not None:
+                    value = _replace_subject_names(_strip_authored_dialogue_markup(value), plan)
+                    for phase in phases:
+                        value = _remove_authored_vocal_claims(value, phase)
+                    values[field] = value or None
+            values["description"] = _render_performance_phases(values.get("description") or "The scene continues.", phases, speaker_ids)
+            shots.append(shot.model_copy(update=values))
+        return plan.model_copy(update={"shots": shots})
     shots = []
     fields = (
         "description", "visible_action", "performance", "camera_behavior",
@@ -100,6 +185,9 @@ class DeterministicH3Compiler:
         speaker_bindings: Sequence[Mapping[str, Any]] | None = None,
     ) -> str:
         normalized_mode = str(mode).strip().lower()
+        performance_issues = validate_performance_phases(relay_segments or ())
+        if performance_issues:
+            raise PromptContractError(performance_issues)
         if normalized_mode not in {"base", "reference", "ref", *(item.value for item in PromptMode)}:
             raise ValueError("mode must be base, reference, or a PromptMode value")
         if plan is not None:
@@ -309,13 +397,16 @@ class DeterministicH3Compiler:
                 )
                 retention_lines.append(f"{label}: {marker} - reference is applied in the target video.")
             retention_lines.extend(usage_retention_lines)
-            detailed_parts = [_replace_subject_names(
-                _remove_authored_dialogue_blocks(plan.style_opening or ""), plan,
+            detailed_parts = [_render_style_opening(
+                plan.style_opening,
+                plan,
+                reference_metadata=metadata_by_label,
             )]
             rendered_shots = [
                 _render_shot_with_references(
                     index,
-                    shot,
+                    shot.model_copy(update={"description": (shot.description or "").split(" Within this continuous camera shot, ", 1)[0]})
+                    if any(p.get("performance_phase") for p in relay_segments or ()) else shot,
                     plan,
                     reference_metadata=metadata_by_label,
                     final_shot=index == len(plan.shots),
@@ -332,7 +423,13 @@ class DeterministicH3Compiler:
                     )
                     for shot_text in rendered_shots
                 ]
-            for index, relay in enumerate(relay_segments or ()):
+            performance_phases = any(p.get("performance_phase") for p in relay_segments or ())
+            if performance_phases:
+                rendered_shots = [
+                    _render_performance_phases(text, _performance_phases_for_shot(shot, relay_segments), speaker_ids)
+                    for text, shot in zip(rendered_shots, plan.shots, strict=True)
+                ]
+            for index, relay in enumerate(() if performance_phases else relay_segments or ()):
                 if index >= len(rendered_shots):
                     break
                 content = _relay_vocal_content(relay)
@@ -392,22 +489,25 @@ class DeterministicH3Compiler:
                         label, copy_mode, "vocal layer",
                     )
             soundscape = _replace_subject_names(
-                _remove_authored_dialogue_blocks(plan.overall_soundscape), plan,
+                _remove_authored_dialogue_blocks(plan.overall_soundscape),
+                plan,
+                reference_metadata=metadata_by_label,
             )
             for lyric in _dialogue_contents(detailed):
                 soundscape = _remove_sentence_containing(soundscape, lyric)
-            soundscape = _remove_authored_vocal_claims(soundscape, {})
             soundscape = _remove_music_sentences(soundscape)
             for label, metadata in sorted(metadata_by_label.items()):
                 copy_mode = _effective_audio_copy_mode(metadata)
                 if (
                     str(metadata.get("kind") or "").casefold() == "audio"
                     and copy_mode in {"fully_copy", "partially_copy"}
-                    and _audio_layer_kind(metadata) == "ambience"
+                    and (_audio_layer_kind(metadata) == "ambience" or
+                         (_audio_layer_kind(metadata) == "music" and not _is_audience_score(metadata, plan)))
                     and label not in soundscape
                 ):
                     soundscape += " " + _copied_audio_layer_sentence(
-                        label, copy_mode, "ambience and sound-effects layer",
+                        label, copy_mode, ("ambience and sound-effects layer" if _audio_layer_kind(metadata) == "ambience"
+                                           else "synchronized instrumental audio layer"),
                     )
             if not soundscape.strip():
                 soundscape = "No additional diegetic ambience or physical sound effects are specified."
@@ -454,6 +554,9 @@ class DeterministicH3Compiler:
             if instruction:
                 sections.insert(0, instruction)
         result = "\n\n".join(section.strip() for section in sections)
+        performance_issues = validate_performance_phases(relay_segments or (), result)
+        if performance_issues:
+            raise PromptContractError(performance_issues)
         if self.max_words is not None and len(result.split()) > self.max_words:
             raise ValueError(f"compiled prompt exceeds word budget ({self.max_words})")
         return result
@@ -510,7 +613,11 @@ def _render_shot_with_references(
     final_shot: bool = False,
 ) -> str:
     labels = _shot_reference_labels(shot, plan)
-    description = _render_authored_shot_fields(shot, plan)
+    description = _render_authored_shot_fields(
+        shot,
+        plan,
+        reference_metadata=reference_metadata,
+    )
     subject_sources = {
         label for subject in plan.subjects for label in subject.source_references
     }
@@ -541,22 +648,11 @@ def _replace_subject_names(
     text: str,
     plan: ResolvedPromptPlan,
     labels: Sequence[str] | None = None,
+    reference_metadata: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> str:
-    allowed = set(labels or (subject.label for subject in plan.subjects))
-    replacements = sorted(
-        (
-            phrase,
-            subject.label,
-        )
-        for subject in plan.subjects
-        if subject.label in allowed
-        for phrase in (subject.name,)
-        if phrase.strip()
-    )
-    for phrase, label in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
-        normalized_phrase = re.sub(r"^(?:the\s+)", "", phrase.strip(), flags=re.IGNORECASE)
+    for phrase, label in _subject_replacements(plan, labels, reference_metadata):
         text = re.sub(
-            rf"(?<![\w>])(?:the\s+)?{re.escape(normalized_phrase)}(?=\b|'s\b)",
+            _reference_phrase_pattern(phrase),
             label,
             text,
             flags=re.IGNORECASE,
@@ -564,8 +660,66 @@ def _replace_subject_names(
     return text
 
 
+def _render_style_opening(
+    value: str | None,
+    plan: ResolvedPromptPlan,
+    *,
+    reference_metadata: Mapping[str, Mapping[str, Any]] | None = None,
+) -> str:
+    """Keep the guide's pre-shot style opening free of cast and reference content."""
+    text = _remove_authored_dialogue_blocks(value or "")
+    replacements = _subject_replacements(plan, None, reference_metadata)
+    kept = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        if re.search(r"<(?:Subject|Picture|Video|Audio)\s+\d+>", sentence, re.IGNORECASE):
+            continue
+        if any(
+            re.search(_reference_phrase_pattern(phrase), sentence, re.IGNORECASE)
+            for phrase, _label in replacements
+        ):
+            continue
+        if sentence.strip():
+            kept.append(sentence.strip())
+    return " ".join(kept) or "Live-action cinematic imagery establishes the requested visual treatment."
+
+
+def _subject_replacements(
+    plan: ResolvedPromptPlan,
+    labels: Sequence[str] | None,
+    reference_metadata: Mapping[str, Mapping[str, Any]] | None,
+) -> list[tuple[str, str]]:
+    allowed = set(labels or (subject.label for subject in plan.subjects))
+    replacements: list[tuple[str, str]] = []
+    for subject in plan.subjects:
+        if subject.label not in allowed:
+            continue
+        replacements.append((subject.name, subject.label))
+        for reference_label in subject.source_references:
+            metadata = (reference_metadata or {}).get(reference_label, {})
+            reference_id = str(metadata.get("id") or "").strip()
+            if reference_id:
+                replacements.append((reference_id, subject.label))
+            source = str(metadata.get("source") or "").replace("\\", "/")
+            if source:
+                parent = PurePosixPath(source).parent.name.strip()
+                if parent and parent not in {"actors", "locations", "references"}:
+                    replacements.append((parent, subject.label))
+    return sorted(replacements, key=lambda item: len(item[0]), reverse=True)
+
+
+def _reference_phrase_pattern(phrase: str) -> str:
+    normalized_phrase = re.sub(r"^(?:the\s+)", "", phrase.strip(), flags=re.IGNORECASE)
+    return rf"(?<![\w>])(?:the\s+)?{re.escape(normalized_phrase)}(?=\b|'s\b)"
+
+
 def _audio_relationship_phrase(label: str, metadata: Mapping[str, Any]) -> str:
     copy_mode = _effective_audio_copy_mode(metadata)
+    if "conditioning" in metadata.get("delivery_roles", ()):
+        relationship = f"{label} conditions generation through the synchronized audio guide"
+        return relationship + (
+            " and its signal is copied into the target audio" if copy_mode in {"fully_copy", "partially_copy"}
+            else "; it is referenced without copying its signal into the output"
+        )
     if copy_mode == "fully_copy":
         return f"{label} is fully copied as the complete soundtrack and timing reference"
     if copy_mode == "partially_copy":
@@ -583,7 +737,7 @@ def _effective_audio_copy_mode(metadata: Mapping[str, Any]) -> str:
         str(metadata.get("name") or ""),
         str(metadata.get("description") or ""),
     )).casefold()
-    if "full_mix" in identity and re.search(r"\b(?:original song|beat|rhythm)\b", identity):
+    if "delivery_roles" not in metadata and "full_mix" in identity and re.search(r"\b(?:original song|beat|rhythm)\b", identity):
         return "reference"
     return raw if raw in {"fully_copy", "partially_copy", "reference", "weak_reference"} else "reference"
 
@@ -598,6 +752,12 @@ def _audio_layer_kind(metadata: Mapping[str, Any]) -> str:
     if re.search(r"\b(?:ambience|ambient|sound effect|sfx|foley|room tone)\b", identity):
         return "ambience"
     return "music"
+
+
+def _is_audience_score(metadata: Mapping[str, Any], plan: ResolvedPromptPlan) -> bool:
+    if "delivery_roles" in metadata:
+        return "audience_score" in metadata["delivery_roles"]
+    return plan.music_intent is not MusicIntent.NONE
 
 
 def _copied_audio_layer_sentence(label: str, copy_mode: str, layer: str) -> str:
@@ -696,6 +856,8 @@ def _render_non_diegetic_music(
             continue
         if _audio_layer_kind(metadata) != "music":
             continue
+        if not _is_audience_score(metadata, plan):
+            continue
         copy_mode = _effective_audio_copy_mode(metadata)
         if copy_mode in {"reference", "weak_reference"} and plan.music_intent.value == "none":
             continue
@@ -740,10 +902,26 @@ def _lower_initial(value: str) -> str:
     return value[:1].lower() + value[1:] if value else value
 
 
-def _render_authored_shot_fields(shot: Any, plan: ResolvedPromptPlan) -> str:
+def _render_authored_shot_fields(
+    shot: Any,
+    plan: ResolvedPromptPlan,
+    *,
+    reference_metadata: Mapping[str, Mapping[str, Any]] | None = None,
+) -> str:
     """Compose typed creative fields as complete sentences, never fragments."""
-    primary = _replace_subject_names(str(shot.description or "").strip(), plan)
+    primary = _replace_subject_names(
+        str(shot.description or "").strip(),
+        plan,
+        reference_metadata=reference_metadata,
+    )
     if str(getattr(shot, "prose_owner", "description")) == "description" and primary:
+        camera = _replace_subject_names(
+            _render_camera_behavior(shot.camera_behavior) if shot.camera_behavior else "",
+            plan,
+            reference_metadata=reference_metadata,
+        )
+        if camera and not _camera_behavior_is_represented(primary, camera):
+            primary = f"{_with_terminal_punctuation(primary)} {camera}"
         return _with_terminal_punctuation(primary)
     values = (
         ("description", primary),
@@ -756,7 +934,11 @@ def _render_authored_shot_fields(shot: Any, plan: ResolvedPromptPlan) -> str:
     parts: list[str] = []
     seen: set[str] = set()
     for field, value in values:
-        text = _replace_subject_names(str(value or "").strip(), plan)
+        text = _replace_subject_names(
+            str(value or "").strip(),
+            plan,
+            reference_metadata=reference_metadata,
+        )
         if field == "visible_action" and re.match(r"^[^.!?]{1,80}['’]s\s", text):
             text = f"The shot shows {text}"
         key = re.sub(r"\W+", " ", text, flags=re.UNICODE).strip().casefold()
@@ -765,6 +947,24 @@ def _render_authored_shot_fields(shot: Any, plan: ResolvedPromptPlan) -> str:
         seen.add(key)
         parts.append(_with_terminal_punctuation(text))
     return " ".join(parts) or "The shot holds a clear cinematic composition."
+
+
+def _camera_behavior_is_represented(description: str, camera_behavior: str) -> bool:
+    """Avoid duplicating a camera instruction already expressed in shot prose."""
+    ignored = frozenset({
+        "the", "camera", "with", "from", "toward", "around", "slow", "slowly",
+        "quick", "quickly", "gently", "steadily", "into", "through", "that",
+    })
+
+    def words(value: str) -> set[str]:
+        normalized: set[str] = set()
+        for word in re.findall(r"[A-Za-z]{4,}", value.casefold()):
+            stem = re.sub(r"(?:ing|ed|es|s)$", "", word)
+            if stem and stem not in ignored:
+                normalized.add(stem)
+        return normalized
+
+    return len(words(description).intersection(words(camera_behavior))) >= 2
 
 
 def _with_terminal_punctuation(value: str) -> str:
@@ -907,12 +1107,15 @@ def _insert_authoritative_vocal_event(
     if speaker and not speaker_id:
         speaker_id = str((bound_speaker_ids or {}).get(speaker) or "").strip()
     verb = (
-        "sings with visible mouth movements precisely synchronized to the vocal"
+        ("sings offscreen in synchronization with the vocal audio" if relay.get("offscreen") else
+         "sings with visible mouth movements precisely synchronized to the vocal")
         if state in {"singing", "vocals", "vocal"}
         else "says"
     )
     source = f"{speaker} ({speaker_id})" if speaker and speaker_id else speaker
     source = source or "The audible voice"
+    if relay.get("offscreen") and speaker_id:
+        source = f"The offscreen voice ({speaker_id})"
     return f"{normalized.rstrip()} {source} {verb}, {tagged}"
 
 
@@ -929,7 +1132,17 @@ def _remove_authored_vocal_claims(
     marker = marker_match.group(1) if marker_match else ""
     body = marker_match.group(2) if marker_match else shot_text.strip()
     parts = re.split(r"(?<=[.!?])\s+", body)
-    kept = [cleaned for part in parts if (cleaned := _remove_vocal_clause(part))]
+    singing = str(relay.get("state") or "").casefold() in {"singing", "vocals", "vocal"}
+    subject = str(relay.get("subject_label") or "").strip()
+    kept = []
+    for part in parts:
+        labels = set(re.findall(r"<Subject\s+\d+>", part))
+        closed = re.search(r"(?i)\b(?:mouth|lips)\b.{0,24}\b(?:closed|still|shut)\b|\b(?:not|never)\s+sing", part)
+        if singing and subject and labels == {subject} and closed:
+            continue
+        cleaned = _remove_vocal_clause(part)
+        if cleaned:
+            kept.append(cleaned)
     retained = " ".join(kept).strip()
     return " ".join(part for part in (marker, retained) if part).strip()
 
@@ -1012,6 +1225,11 @@ def _remove_authored_dialogue_blocks(text: str) -> str:
 
 
 def _relay_vocal_content(relay: Mapping[str, Any]) -> str:
+    if relay.get("performance_phase"):
+        if str(relay.get("state") or "").casefold() == "instrumental":
+            return ""
+        if "lyrics" in relay:
+            return str(relay.get("lyrics") or "").strip()
     for key in ("lyrics", "dialogue", "text"):
         value = str(relay.get(key) or "").strip()
         if value:
@@ -1034,6 +1252,8 @@ def _relay_speaker_label(
     *,
     bound_subject_labels: set[str],
 ) -> str:
+    if relay.get("offscreen"):
+        return ""
     subject_label = str(relay.get("subject_label") or "").strip()
     return subject_label if subject_label in bound_subject_labels else ""
 
@@ -1078,35 +1298,31 @@ def _dialogue_contents(text: str) -> tuple[str, ...]:
 
 
 def _remove_sentence_containing(text: str, phrase: str) -> str:
-    if not phrase:
+    normalized_phrase = phrase.strip().rstrip(".?!")
+    if not normalized_phrase:
         return text
     parts = re.split(r"(?<=[.!?])\s+", text.strip())
-    kept = [part for part in parts if phrase.casefold() not in part.casefold()]
+    kept = [
+        part for part in parts
+        if normalized_phrase.casefold() not in part.casefold()
+    ]
     return " ".join(kept).strip()
 
 
 def _remove_music_sentences(text: str) -> str:
-    text = re.sub(
-        r"(?:,\s*)?\b(?:featuring|with)\b[^.;]*?\bvocals?\b[^,.;]*(?:,\s*)?",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    ).strip()
-    text = re.sub(
-        r"(?:,\s*)?while\s+[^,.;]*\bvocals?\b[^,.;]*[.;]?",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    ).strip()
-    text = re.sub(
-        r"(?:^|(?<=[.;]))\s*[^,.;]*\bvocals?\b[^,.;]*[.;]?",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    ).strip()
-    parts = re.split(r"(?<=[.!?;])\s+", text.strip())
-    music = re.compile(r"\b(?:musical track|full mix|song|background music)\b", re.IGNORECASE)
-    retained = " ".join(part for part in parts if not music.search(part)).strip(" ;")
+    """Remove only explicit source-track claims, never diegetic vocal prose."""
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    track = re.compile(r"\b(?:musical track|full[ _-]?mix(?:\s+song)?|background music)\b", re.IGNORECASE)
+    retained: list[str] = []
+    for part in parts:
+        if not track.search(part):
+            retained.append(part)
+            continue
+        if ";" in part:
+            ambience = part.split(";", 1)[1].strip()
+            if ambience:
+                retained.append(ambience)
+    retained = " ".join(retained).strip(" ;")
     return retained[:1].upper() + retained[1:] if retained else ""
 
 

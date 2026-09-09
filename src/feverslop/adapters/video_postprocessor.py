@@ -13,6 +13,10 @@ FFMPEG_TIMEOUT_SECONDS = 120
 FFPROBE_TIMEOUT_SECONDS = 30
 
 
+def final_video_postprocessor() -> "VideoPostProcessor":
+    return VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+
+
 class VideoPostProcessor:
     def __init__(
         self,

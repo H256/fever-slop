@@ -1769,7 +1769,7 @@ non_diegetic_music: N/A"""},
 
         with self.assertRaisesRegex(
             Exception,
-            r"Scene 2 H3 reference contract mismatch.*undefined_subjects=.*<Subject 3>.*unbound_pictures=.*<Picture 2>",
+            r"Scene 2 cannot be sent to MiniMax.*clear the override.*undefined_subjects=.*<Subject 3>.*unbound_pictures=.*<Picture 2>",
         ):
             backend._validate_scene(scene)
 
@@ -2993,6 +2993,50 @@ class StemAudioTrimRenderVideoIntegrationTests(unittest.TestCase):
                     source_node = build_result.get(source_id, {})
                     # Should be a TrimAudioDuration, not LoadAudio
                     self.assertEqual(source_node.get("class_type"), "TrimAudioDuration")
+
+
+
+
+class AudioGuideContractTests(unittest.TestCase):
+    def test_explicit_full_mix_rewires_guide_and_validates_window(self):
+        from tests.test_h3_audio_delivery import ResolvedAudioSourceTests
+        from feverslop.domain.h3_audio_delivery import H3AudioDelivery, resolve_h3_audio_sources
+        graph = _native_r2v_workflow()
+        guide_graph = ResolvedAudioSourceTests.graph()
+        # Avoid existing template numeric ids and reference anchors.
+        for node in graph.values():
+            if node.get('_meta', {}).get('title', '').startswith(('#AUDIO_', '#TRIM_AUDIO_')):
+                node['_meta']['title'] = 'unused'
+        graph.update(guide_graph)
+        refs = [{'source': 'drums.wav', 'name': 'drums'}, {'source': 'mix.wav', 'name': 'full_mix'}]
+        sources = resolve_h3_audio_sources(H3AudioDelivery(conditioning_source='full_mix'), refs, AudioTimingWindow(12.5, 16.75), workflow=graph)
+        backend = BuildWorkflowTests()._backend(workflow=graph)
+        with patch('feverslop.adapters.comfyui_minimax_h3_r2v_backend.load_h3_audio_delivery', return_value=H3AudioDelivery(conditioning_source='full_mix')):
+            result = backend.build_workflow(
+                {'scene': 1, 'abs_start_seconds': 12.5, 'h3_audio_sources': sources,
+                 'references': {'actor_sheet_paths': ['actor.png']}},
+                prompt='test', duration_seconds=4.25, ref_audio_paths=['drums.wav', 'mix.wav'],
+            )
+        self.assertEqual(['4', 0], result['5']['inputs']['audio'])
+        self.assertEqual(12.5, result['4']['inputs']['start_index'])
+        self.assertEqual(4.25, result['4']['inputs']['duration'])
+
+class AudioPreparedContractTests(unittest.TestCase):
+    def test_prepared_contract_rejects_role_or_source_drift(self):
+        from feverslop.domain.h3_audio_delivery import H3AudioContractError
+        record = {'source_path': 'drums.wav', 'source_hash': None, 'roles': ['reference'], 'bindings': [], 'reference_index': 0,
+                  'audio_timing_window': {'start_seconds': 10, 'end_seconds': 20}}
+        with self.assertRaises(H3AudioContractError):
+            ComfyUIMiniMaxH3R2VBackend._validate_prepared_audio_sources([record], [{**record, 'roles': ['conditioning']}], {})
+
+    def test_child_window_allowed_but_extension_rejected(self):
+        from feverslop.domain.h3_audio_delivery import H3AudioContractError
+        record = {'audio_timing_window': {'start_seconds': 10, 'end_seconds': 20}}
+        child = {'audio_timing_window': {'start_seconds': 15, 'end_seconds': 20}}
+        ComfyUIMiniMaxH3R2VBackend._validate_prepared_audio_sources([record], [child], {})
+        child['audio_timing_window']['end_seconds'] = 21
+        with self.assertRaises(H3AudioContractError):
+            ComfyUIMiniMaxH3R2VBackend._validate_prepared_audio_sources([record], [child], {})
 
 
 if __name__ == "__main__":
