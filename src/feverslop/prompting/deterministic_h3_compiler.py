@@ -10,11 +10,11 @@ from feverslop.domain.prompt_corruption import ensure_no_replacement_character
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload
 from feverslop.prompting.dspy_h3_models import MusicIntent, PromptMode
 from feverslop.prompting.dspy_h3_models import ResolvedPromptPlan
-from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_prompt_contract, validate_performance_phases
+from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_prompt_contract
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
-H3_COMPILER_VERSION = 44
+H3_COMPILER_VERSION = 45
 
 
 def _performance_phases_for_shot(shot, phases):
@@ -186,9 +186,6 @@ class DeterministicH3Compiler:
         speaker_bindings: Sequence[Mapping[str, Any]] | None = None,
     ) -> str:
         normalized_mode = str(mode).strip().lower()
-        performance_issues = validate_performance_phases(relay_segments or ())
-        if performance_issues:
-            raise PromptContractError(performance_issues)
         if normalized_mode not in {"base", "reference", "ref", *(item.value for item in PromptMode)}:
             raise ValueError("mode must be base, reference, or a PromptMode value")
         if plan is not None:
@@ -557,9 +554,6 @@ class DeterministicH3Compiler:
                 sections.insert(0, instruction)
         result = "\n\n".join(section.strip() for section in sections)
         ensure_no_replacement_character(result)
-        performance_issues = validate_performance_phases(relay_segments or (), result)
-        if performance_issues:
-            raise PromptContractError(performance_issues)
         if self.max_words is not None and len(result.split()) > self.max_words:
             raise ValueError(f"compiled prompt exceeds word budget ({self.max_words})")
         return result
