@@ -577,8 +577,9 @@ def build_render_plan(
                 "spatial_relations": scene.get("spatial_relations", ""),
             },
         }
-        if "performance_intervals" in relay_scene:
-            intervals = deepcopy(relay_scene["performance_intervals"])
+        intervals_source = relay_scene.get("performance_intervals") or relay_scene.get("prompt_relay")
+        if intervals_source:
+            intervals = deepcopy(intervals_source)
             for interval in intervals:
                 interval["state"] = _effective_relay_state(interval["state"], scene)
                 if interval["state"] == "singing":
