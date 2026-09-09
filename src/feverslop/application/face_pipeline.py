@@ -54,8 +54,6 @@ class FacePipeline:
     - FaceDetectorPort: detection and embedding
     - FaceIdentityPort: identity verification
     - FaceMaskPort: mask generation and smoothing
-    - FrameSourcePort: frame reading
-    - VideoEncoderPort: frame writing
     - DebugArtifactPort: debug output
 
     Fail-safe behavior:
