@@ -7,12 +7,11 @@ import os
 import shutil
 import tempfile
 from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
-from feverslop.utils.io import atomic_write_json
+from feverslop.utils.io import atomic_write_json, file_lock
 
 
 class GlobalLibraryAdapter:
@@ -38,25 +37,8 @@ class GlobalLibraryAdapter:
         relative = directory.relative_to(self.root)
         return self.root / ".locks" / relative.parent / f"{relative.name}.lock"
 
-    @contextmanager
     def _lock(self, directory: Path, *, shared: bool = False) -> Iterator[None]:
-        lock_path = self._lock_path(directory)
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+b") as handle:
-            if os.name == "nt":
-                import msvcrt
-                # msvcrt has no shared lock mode; shared degrades to exclusive (documented no-op)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(handle.fileno(), fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                if os.name == "nt":
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-                else:
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        return file_lock(self._lock_path(directory), shared=shared)
 
     @staticmethod
     def _write_manifest(path: Path, asset: GlobalAsset) -> None:
