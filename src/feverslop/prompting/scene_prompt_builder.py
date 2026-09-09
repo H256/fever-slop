@@ -25,6 +25,25 @@ def clean_llm_text(text: str) -> str:
     return text.strip()
 
 
+_CLAUSE_BOUNDARY_CHARS = frozenset(".!?;,")
+_TRAILING_QUOTE_CHARS = frozenset("\"'”’")
+
+
+def _ends_on_clause_boundary(word: str) -> bool:
+    """Return True when *word* ends a sentence or clause.
+
+    The last character (after trailing quote characters) must be a clause
+    boundary mark, and the token must contain at least one letter or digit so
+    that bare punctuation tokens (".", "...") never count as boundaries.
+    """
+    tail = word
+    while tail and tail[-1] in _TRAILING_QUOTE_CHARS:
+        tail = tail[:-1]
+    if not tail or tail[-1] not in _CLAUSE_BOUNDARY_CHARS:
+        return False
+    return any(char.isalnum() for char in tail)
+
+
 def limit_scene_prompt_words(
     prompt: str,
     *,
@@ -36,13 +55,20 @@ def limit_scene_prompt_words(
     words = prompt.split()
     if len(words) <= max_words:
         return prompt
+
+    kept = max_words
+    for index in range(max_words, 0, -1):
+        if _ends_on_clause_boundary(words[index - 1]):
+            kept = index
+            break
+
     if status_callback is not None:
         status_callback(
             f"[yellow]Scene {scene_number} {prompt_kind} prompt exceeded the "
             f"{max_words}-word limit ({len(words)} words); "
-            f"trimmed to {max_words} words.[/yellow]",
+            f"trimmed to {kept} words.[/yellow]",
         )
-    return " ".join(words[:max_words])
+    return " ".join(words[:kept])
 
 
 def scene_prompt_word_limit(global_context: dict) -> int:

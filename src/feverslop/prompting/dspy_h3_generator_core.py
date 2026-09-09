@@ -152,6 +152,14 @@ def _normalize_judge_payload(value: Any) -> Any:
     if not isinstance(value, Mapping):
         return value
     payload = dict(value)
+    for key, default in (
+        ("suggested_prompt", ""),
+        ("repair_instruction", ""),
+        ("issues", []),
+        ("field_issues", []),
+    ):
+        if payload.get(key) is None:
+            payload[key] = default
     raw_verdict = str(payload.get("verdict") or "").strip().lower()
     if raw_verdict in {"good", "pass", "passed", "accept", "accepted"}:
         payload["verdict"] = "good"
