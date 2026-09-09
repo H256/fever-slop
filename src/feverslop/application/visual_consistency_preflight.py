@@ -15,6 +15,7 @@ from feverslop.domain.visual_consistency import (
     SceneConsistencyContract,
     can_handoff,
 )
+from feverslop.application.visual_consistency import actor_look_id, location_look_id
 from feverslop.ports.visual_consistency import ReferenceManifestSnapshot
 
 
@@ -393,18 +394,8 @@ def _issue(
 
 
 def _actor_look(scene: Mapping[str, Any], actor_id: str) -> str:
-    look_ids = scene.get("look_ids")
-    actors = look_ids.get("actors") if isinstance(look_ids, Mapping) else None
-    value = actors.get(actor_id) if isinstance(actors, Mapping) else None
-    legacy = scene.get("actor_look_ids")
-    if not isinstance(value, str) or not value.strip():
-        value = legacy.get(actor_id) if isinstance(legacy, Mapping) else None
-    return str(value or "default").strip() or "default"
+    return actor_look_id(scene, actor_id)
 
 
 def _location_look(scene: Mapping[str, Any]) -> str:
-    look_ids = scene.get("look_ids")
-    value = look_ids.get("location") if isinstance(look_ids, Mapping) else None
-    if not isinstance(value, str) or not value.strip():
-        value = scene.get("location_look_id")
-    return str(value or "default").strip() or "default"
+    return location_look_id(scene)
