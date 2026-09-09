@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
-from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
+from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase, movie_project_config
 from feverslop.composition.movie_planner import build_movie_planner
 from feverslop.config.project_config import (
     SCENE_PROMPT_WORD_COUNT_MAX,
@@ -161,7 +161,7 @@ class ProjectRepository:
         atomic_write_json(path, movie_default_config_from_metadata(metadata))
 
 
-def movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
+def _legacy_movie_project_config(request: ProjectCreateRequest) -> dict[str, Any]:
     planner_backend = _movie_planner_backend(request.movie_planner_backend)
     reference_backend = _supported_backend(request.movie_reference_backend, "movie_reference_backend", {"comfyui", "local"}, default="comfyui")
     render_backend = _supported_backend(request.movie_render_backend, "movie_render_backend", {"comfyui", "local"}, default="comfyui")
