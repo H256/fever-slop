@@ -135,6 +135,24 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             performance_conflicts=[{"reason_code": "unresolved_lyric_alignment"}])])
         self.assertIn("h3.performance.unresolved_lyric_alignment", [i.code for i in issues])
 
+    def test_compiler_keeps_prompt_when_performance_evidence_is_uncertain(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A singer performs in a dark room.", subjects=[], reference_usage=[],
+            shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=2,
+                               description="The camera slowly pushes in.")],
+            overall_soundscape="The supplied song plays.", music_intent=MusicIntent.NONE,
+        )
+        prompt = DeterministicH3Compiler().compile(
+            mode="base", plan=plan, facts=self.facts,
+            shots=creative_shots_from_plan(plan), shot_windows={"shot-01": (0, 2)},
+            relay_segments=[dict(
+                performance_phase=True, start_seconds=0, end_seconds=2,
+                state="singing", lyrics="hello", acoustically_verified=False,
+                performance_conflicts=[{"reason_code": "uncertain_vocal_evidence"}],
+            )],
+        )
+        self.assertIn("The camera slowly pushes in.", prompt)
+
     def test_projected_two_voices_keep_separate_dialogue_and_offscreen_performance(self):
         from feverslop.domain.performance_timeline import project_performance
         from feverslop.prompting.dspy_h3_prompt_builder import _normalize_relay_segments
