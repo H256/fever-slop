@@ -341,7 +341,8 @@ class MltExporterTests(unittest.TestCase):
             self.assertEqual(profile.attrib["height"], "672")
             self.assertEqual(profile.attrib["frame_rate_num"], "24")
             video_playlist = root_element.find("playlist[@id='playlist0']")
-            audio_playlist = root_element.find("playlist[@id='playlist1']")
+            clip_audio_playlist = root_element.find("playlist[@id='playlist1']")
+            audio_playlist = root_element.find("playlist[@id='playlist2']")
             children = list(root_element)
             self.assertLess(
                 children.index(root_element.find("chain[@id='video_0001']")),
@@ -355,13 +356,18 @@ class MltExporterTests(unittest.TestCase):
                 [entry.attrib["producer"] for entry in video_playlist.findall("entry")],
                 ["video_0001", "video_0002"],
             )
+            self.assertEqual(
+                [entry.attrib["producer"] for entry in clip_audio_playlist.findall("entry")],
+                ["video_0001", "video_0002"],
+            )
             self.assertEqual(audio_playlist.find("entry").attrib["producer"], "audio_original")
             notes = root_element.find("property[@name='shotcut:projectNotes']").text
             self.assertIn("Project: The Well of Youth", notes)
             self.assertIn("Scenes: 2", notes)
             self.assertIn("Profile: 1216x672 @ 24 fps", notes)
             self.assertIn("Duration: 00:03", notes)
-            self.assertIn("Audio track: A1 - Original audio (dwarfventure.mp3)", notes)
+            self.assertIn("Audio track: A1 - Clip audio (embedded scene audio; removable)", notes)
+            self.assertIn("Audio track: A2 - Original audio (dwarfventure.mp3)", notes)
             self.assertEqual(
                 root_element.find("chain[@id='video_0001']/property[@name='shotcut:caption']").text,
                 "Scene 0001",
@@ -379,10 +385,14 @@ class MltExporterTests(unittest.TestCase):
             self.assertIsNone(root_element.find("tractor/multitrack"))
             self.assertEqual(
                 [track.attrib["producer"] for track in root_element.findall("tractor/track")],
-                ["background", "playlist0", "playlist1"],
+                ["background", "playlist0", "playlist1", "playlist2"],
             )
             self.assertEqual(
-                root_element.find("tractor/track[@producer='playlist1']").attrib["hide"],
+                root_element.find("tractor/track[@producer='playlist0']").attrib["hide"],
+                "audio",
+            )
+            self.assertEqual(
+                root_element.find("tractor/track[@producer='playlist2']").attrib["hide"],
                 "video",
             )
             self.assertEqual([], [p for p in root.rglob("*") if p.name.endswith(".tmp")])

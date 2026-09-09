@@ -62,9 +62,12 @@ def export_render_plan_to_mlt(
     video_playlist = ET.Element("playlist", {"id": "playlist0", "autoclose": "1"})
     ET.SubElement(video_playlist, "property", {"name": "shotcut:video"}).text = "1"
     ET.SubElement(video_playlist, "property", {"name": "shotcut:name"}).text = "V1"
-    audio_playlist = ET.Element("playlist", {"id": "playlist1", "autoclose": "1"})
-    ET.SubElement(audio_playlist, "property", {"name": "shotcut:audio"}).text = "1"
-    ET.SubElement(audio_playlist, "property", {"name": "shotcut:name"}).text = "A1"
+    clip_audio_playlist = ET.Element("playlist", {"id": "playlist1", "autoclose": "1"})
+    ET.SubElement(clip_audio_playlist, "property", {"name": "shotcut:audio"}).text = "1"
+    ET.SubElement(clip_audio_playlist, "property", {"name": "shotcut:name"}).text = "A1 - Clip audio"
+    original_audio_playlist = ET.Element("playlist", {"id": "playlist2", "autoclose": "1"})
+    ET.SubElement(original_audio_playlist, "property", {"name": "shotcut:audio"}).text = "1"
+    ET.SubElement(original_audio_playlist, "property", {"name": "shotcut:name"}).text = "A2 - Original audio"
     total_frames = 0
     timeline_cursor = 0
 
@@ -103,6 +106,11 @@ def export_render_plan_to_mlt(
             "in": "0",
             "out": str(frames - 1),
         })
+        ET.SubElement(clip_audio_playlist, "entry", {
+            "producer": producer_id,
+            "in": "0",
+            "out": str(frames - 1),
+        })
         timeline_cursor = start_frame + frames
         total_frames = max(total_frames, timeline_cursor)
 
@@ -118,14 +126,15 @@ def export_render_plan_to_mlt(
             max(0, total_frames - 1),
             caption="Original audio",
         )
-        ET.SubElement(audio_playlist, "entry", {
+        ET.SubElement(original_audio_playlist, "entry", {
             "producer": "audio_original",
             "in": "0",
             "out": str(max(0, total_frames - 1)),
         })
 
     root.append(video_playlist)
-    root.append(audio_playlist)
+    root.append(clip_audio_playlist)
+    root.append(original_audio_playlist)
     ET.SubElement(root, "property", {"name": "shotcut:projectNotes"}).text = _project_notes(
         project_name=project_name or output.stem,
         scene_count=len(plan),
@@ -161,9 +170,10 @@ def export_render_plan_to_mlt(
     })
     ET.SubElement(tractor, "property", {"name": "shotcut"}).text = "1"
     ET.SubElement(tractor, "track", {"producer": "background"})
-    ET.SubElement(tractor, "track", {"producer": "playlist0"})
+    ET.SubElement(tractor, "track", {"producer": "playlist0", "hide": "audio"})
+    ET.SubElement(tractor, "track", {"producer": "playlist1", "hide": "video"})
     if audio_path is not None:
-        ET.SubElement(tractor, "track", {"producer": "playlist1", "hide": "video"})
+        ET.SubElement(tractor, "track", {"producer": "playlist2", "hide": "video"})
 
     ET.indent(root, space="  ")
     payload = ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
@@ -234,7 +244,8 @@ def _project_notes(
         f"Profile: {int(width)}x{int(height)} @ {int(fps)} fps",
         f"Duration: {minutes:02d}:{seconds:02d}",
         "Video track: V1 - scene clips",
-        f"Audio track: A1 - Original audio ({audio_name})",
+        "Audio track: A1 - Clip audio (embedded scene audio; removable)",
+        f"Audio track: A2 - Original audio ({audio_name})",
         f"Render plan: {Path(render_plan_path).name}",
         "Per-scene story, motion, and seed details are stored in each clip comment.",
         "Regenerate: --stage export_timeline --format mlt",
