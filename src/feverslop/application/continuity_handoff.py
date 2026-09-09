@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.domain.artifact_hash import sha256_file
+from feverslop.application.continuity_boundary import (
+    LAST_FRAME_EXTRACTOR_REVISION,
+    build_boundary_frame_manifest,
+    stored_continuity_path,
+)
 from feverslop.domain.continuity import BoundaryFrameManifest, ContinuityHandoffPayload
 from feverslop.domain.visual_consistency import (
     SceneConsistencyContract,
@@ -60,12 +65,7 @@ class ContinuityHandoffUseCase:
             raise ValueError(f"Continuity handoff previous clip is outside project: {source_clip}")
         if not source_clip.is_file():
             raise ValueError(f"Cannot use last-frame continuity; missing previous movie scene clip: {source_clip}")
-        stored_source_clip = (
-            source_clip.relative_to(resolved_project_dir).as_posix()
-            if resolved_project_dir is not None
-            and source_clip.is_relative_to(resolved_project_dir)
-            else source_clip.as_posix()
-        )
+        stored_source_clip = stored_continuity_path(source_clip, resolved_project_dir)
         requested_frame = Path(output_frame)
         resolved_frame = (
             (resolved_project_dir / requested_frame).resolve()
@@ -99,19 +99,8 @@ class ContinuityHandoffUseCase:
         else:
             extracted = resolved_frame
             frame_index = cached_manifest.frame_index
-        stored_frame = (
-            resolved_frame.relative_to(resolved_project_dir).as_posix()
-            if resolved_project_dir is not None
-            and resolved_frame.is_relative_to(resolved_project_dir)
-            else resolved_frame.as_posix()
-        )
-        manifest = BoundaryFrameManifest.create(
-            source_clip_path=stored_source_clip,
-            source_clip_sha256=source_clip_sha256,
-            frame_index=frame_index,
-            extractor_revision="last-frame-v1",
-            frame_path=stored_frame,
-            frame_sha256=sha256_file(resolved_frame),
+        manifest = build_boundary_frame_manifest(
+            source_clip, resolved_frame, frame_index, project_dir=resolved_project_dir,
         )
         if cached_manifest is None:
             atomic_write_json(manifest_path, manifest.to_dict())
@@ -124,7 +113,7 @@ class ContinuityHandoffUseCase:
             "transition": "continuous",
             "source_clip_path": stored_source_clip,
             "source_clip_sha256": source_clip_sha256,
-            "extractor": "last-frame-v1",
+            "extractor": LAST_FRAME_EXTRACTOR_REVISION,
         }
         keyframes.update(
             {
@@ -134,7 +123,7 @@ class ContinuityHandoffUseCase:
                 "startframe_mode": "last_frame_from_previous",
                 "startframe_source_clip_path": stored_source_clip,
                 "startframe_source_clip_sha256": sha256_file(source_clip),
-                "startframe_extractor": "last-frame-v1",
+                "startframe_extractor": LAST_FRAME_EXTRACTOR_REVISION,
                 "continuity_handoff": handoff,
                 "boundary_frame_manifest": manifest.to_dict(),
             },
