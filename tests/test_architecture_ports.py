@@ -35,7 +35,6 @@ from feverslop.domain.render_plan import (
     RenderScene,
 )
 from feverslop.ports.rendering import ImageRenderRequest, VideoRenderRequest
-from feverslop.ports.workflow import WorkflowBackendPort
 
 
 class FakeImageBackend:
@@ -60,11 +59,6 @@ class FakeVideoBackend:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b"fake mp4")
         return output
-
-
-class FakeWorkflowBackend:
-    def validate_workflow(self, workflow_path: Path, required_titles: list[str]) -> None:
-        self.validated = (workflow_path, required_titles)
 
 
 class FakePromptTransformer:
@@ -186,13 +180,6 @@ class ArchitecturePortsTests(unittest.TestCase):
                 {"scene": 1, "output_path": str(temp / "scene_0001.mp4")},
                 result.as_manifest_entry(),
             )
-
-    def test_workflow_port_is_structural(self):
-        workflow: WorkflowBackendPort = FakeWorkflowBackend()
-        path = Path("workflow.json")
-
-        workflow.validate_workflow(path, ["#PROMPT"])
-        self.assertEqual((path, ["#PROMPT"]), workflow.validated)
 
     def test_main_delegates_pipeline_to_generate_render_plan_composition(self):
         self.assertTrue(hasattr(GenerateRenderPlanUseCase, "execute"))
