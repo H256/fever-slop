@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -122,14 +123,11 @@ class ComfyUIAceStepSongGenerator:
     @staticmethod
     def _ensure_decodable_audio(path: Path) -> bool:
         """Normalize malformed ComfyUI audio before handing it to Demucs."""
-        probe = subprocess.run(
-            ["ffprobe", "-v", "error", "-select_streams", "a:0",
-             "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1", str(path)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if probe.returncode == 0 and probe.stdout.strip():
+        if ComfyUIAceStepSongGenerator._audio_is_decodable(path):
+            if not ComfyUIAceStepSongGenerator._audio_has_signal(path):
+                raise FeverSlopRenderError(
+                    "ComfyUI returned a silent ACE-STEP audio file; refusing to continue to Demucs",
+                )
             return False
 
         original = path.with_name(f"{path.stem}.comfyui-original{path.suffix}")
@@ -148,6 +146,8 @@ class ComfyUIAceStepSongGenerator:
             )
             if not temporary.stat().st_size:
                 raise ValueError("FFmpeg produced an empty normalized audio file")
+            if not ComfyUIAceStepSongGenerator._audio_has_signal(temporary):
+                raise ValueError("FFmpeg produced a silent normalized audio file")
             os.replace(path, original)
             os.replace(temporary, path)
             return True
@@ -157,6 +157,29 @@ class ComfyUIAceStepSongGenerator:
             raise FeverSlopRenderError(
                 f"ComfyUI returned an undecodable audio file and normalization failed: {exc}",
             ) from exc
+
+    @staticmethod
+    def _audio_is_decodable(path: Path) -> bool:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a:0",
+             "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1", str(path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return probe.returncode == 0 and bool(probe.stdout.strip())
+
+    @staticmethod
+    def _audio_has_signal(path: Path) -> bool:
+        result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-i", str(path),
+             "-af", "highpass=f=20,volumedetect", "-f", "null", "-"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        match = re.search(r"mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB", result.stderr)
+        return result.returncode == 0 and match is not None and float(match.group(1)) > -45.0
 
     def _write_debug_workflow(self, *, output_dir: Path, workflow: dict) -> None:
         project_dir = output_dir.parent
