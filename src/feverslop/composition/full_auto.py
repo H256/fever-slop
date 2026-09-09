@@ -37,10 +37,7 @@ def build_full_auto_use_case(
         max_concurrent_requests=app_config.llm.max_concurrent_requests,
         chat_template_kwargs=app_config.llm.chat_template_kwargs,
     )
-    client = ComfyUIClient(
-        base_url=app_config.comfyui.base_url,
-        prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
-    )
+    client = ComfyUIClient.from_app_config(app_config)
     return FullAutoUseCase(
         brief_generator=LLMSongBriefGenerator(llm),
         song_generator=ComfyUIAceStepSongGenerator(
