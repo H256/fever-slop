@@ -49,6 +49,22 @@ class PromptContractValidationTests(unittest.TestCase):
         )
         self.assertEqual([], issues)
 
+    def test_rejects_utf8_replacement_character_with_position(self):
+        issues = validate_h3_prompt_contract(
+            self.prompt.replace("silver coat", "silver\ufffdcoat"),
+            mode="base",
+            plan=ResolvedPromptPlan(
+                creative_intent="A performer waits.",
+                style_opening="A quiet scene.",
+                shots=[],
+                overall_soundscape="N/A",
+                music_intent=MusicIntent.NONE,
+            ),
+        )
+
+        self.assertEqual(["prompt.corrupt_utf8"], [issue.code for issue in issues])
+        self.assertIn("position 53", issues[0].message)
+
     def test_returns_stable_source_addressable_issues_without_fact_values(self):
         issues = validate_prompt_contract(
             self.prompt.replace("silver coat", "missing"),
