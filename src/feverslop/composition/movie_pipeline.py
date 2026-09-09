@@ -12,6 +12,19 @@ from rich.console import Console
 
 from feverslop.adapters.movie_references import LocalMovieImageBackend
 from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
+from feverslop.application.movie_artifacts import (
+    ensure_movie_bible,
+    ensure_movie_continuity_plan,
+    ensure_movie_narrative_plan,
+    ensure_movie_planning_artifacts,
+    ensure_movie_render_plan_matches_bible,
+    ensure_movie_scene_cards,
+    ensure_movie_screenplay,
+    ensure_movie_shot_cards,
+    ensure_movie_story_design,
+    regenerate_movie_bible,
+    write_movie_reference_manifest_from_bible,
+)
 from feverslop.application.openshot_exporter import export_render_plan_to_openshot
 from feverslop.composition.movie_pipeline_jobs import (
     MINIMAX_H3_MOVIE_WORKFLOWS,
@@ -22,6 +35,7 @@ from feverslop.composition.movie_pipeline_jobs import (
     mark_movie_reference_backend,
     movie_references_ready,
 )
+from feverslop.composition.movie_planner import build_movie_planner
 from feverslop.config.app_config import AppConfig
 from feverslop.path_utils import coerce_local_path
 from feverslop.scene_artifacts import SceneArtifactLayout
@@ -344,52 +358,52 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         if args.force_movie_bible:
             planner_backend = args.movie_planner_backend or "llm"
             _log_stage("Movie bible", f"regenerating via {planner_backend}")
-            bible_path = _regenerate_movie_bible_artifact(project_dir, planner_backend, config["app_config_path"])
+            bible_path = regenerate_movie_bible(project_dir, planner=build_movie_planner({"planner_backend": planner_backend, "app_config_path": config["app_config_path"]}))
         elif not args.skip_movie_bible:
             _log_stage("Movie bible", "ensuring artifact")
-            bible_path = _ensure_movie_bible_artifact(project_dir)
+            bible_path = ensure_movie_bible(project_dir)
         elif not bible_path.exists():
             raise FileNotFoundError(f"Movie bible not found: {bible_path}")
         if not args.skip_movie_story_design:
             _log_stage("Movie story design", "ensuring artifact")
-            story_design_path = _ensure_movie_story_design_artifact(project_dir, force=args.force_movie_story_design)
+            story_design_path = ensure_movie_story_design(project_dir, force=args.force_movie_story_design)
         elif not story_design_path.exists():
             raise FileNotFoundError(f"Movie story design not found: {story_design_path}")
         if not args.skip_movie_screenplay:
             _log_stage("Movie screenplay", "ensuring canonical screenplay")
-            screenplay_path = _ensure_movie_screenplay_artifact(project_dir, force=args.force_movie_screenplay)
+            screenplay_path = ensure_movie_screenplay(project_dir, force=args.force_movie_screenplay)
         elif not screenplay_path.exists():
             raise FileNotFoundError(f"Movie screenplay not found: {screenplay_path}")
         if not args.skip_movie_narrative:
             _log_stage("Movie narrative", "ensuring narrative memory")
-            narrative_plan_path = _ensure_movie_narrative_plan_artifact(project_dir)
+            narrative_plan_path = ensure_movie_narrative_plan(project_dir)
         elif not narrative_plan_path.exists():
             raise FileNotFoundError(f"Movie narrative plan not found: {narrative_plan_path}")
         if not args.skip_movie_scene_cards:
             _log_stage("Movie scene cards", "ensuring scene cards")
-            scene_cards_path = _ensure_movie_scene_cards_artifact(project_dir)
+            scene_cards_path = ensure_movie_scene_cards(project_dir)
         elif not scene_cards_path.exists():
             raise FileNotFoundError(f"Movie scene cards not found: {scene_cards_path}")
         if not args.skip_movie_shot_cards:
             _log_stage("Movie shot cards", "ensuring shot cards")
-            shot_cards_path = _ensure_movie_shot_cards_artifact(project_dir)
+            shot_cards_path = ensure_movie_shot_cards(project_dir)
         elif not shot_cards_path.exists():
             raise FileNotFoundError(f"Movie shot cards not found: {shot_cards_path}")
         if not args.skip_movie_continuity:
             _log_stage("Movie continuity", "ensuring continuity plan")
-            continuity_plan_path = _ensure_movie_continuity_plan_artifact(project_dir)
+            continuity_plan_path = ensure_movie_continuity_plan(project_dir)
         elif not continuity_plan_path.exists():
             raise FileNotFoundError(f"Movie continuity plan not found: {continuity_plan_path}")
         if not args.skip_movie_plan:
             _log_stage("Movie render plan", "syncing render plan with bible")
-            _ensure_movie_render_plan_matches_bible_artifact(project_dir)
+            ensure_movie_render_plan_matches_bible(project_dir)
     else:
         if args.force_movie_bible:
             planner_backend = args.movie_planner_backend or "llm"
             _log_stage("Movie bible", f"regenerating via {planner_backend}")
-            bible_path = _regenerate_movie_bible_artifact(project_dir, planner_backend, config["app_config_path"])
+            bible_path = regenerate_movie_bible(project_dir, planner=build_movie_planner({"planner_backend": planner_backend, "app_config_path": config["app_config_path"]}))
         _log_stage("Movie planning", "ensuring bible, screenplay, cards, continuity, and render plan")
-        planning = _ensure_movie_planning_artifacts(project_dir, force_screenplay=args.force_movie_screenplay, force_story_design=args.force_movie_story_design)
+        planning = ensure_movie_planning_artifacts(project_dir, force_screenplay=args.force_movie_screenplay, force_story_design=args.force_movie_story_design)
         bible_path = planning.bible_path
         story_design_path = planning.story_design_path
         screenplay_path = planning.screenplay_path
@@ -402,10 +416,10 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         if args.skip_movie_references:
             raise FileNotFoundError(f"Movie reference manifest not found: {manifest_path}")
         _log_stage("Movie reference manifest", "creating from bible")
-        manifest_path = _write_movie_reference_manifest_from_bible_artifact(project_dir)
+        manifest_path = write_movie_reference_manifest_from_bible(project_dir)
 
     _log_stage("Movie reference manifest", "syncing actor/location ids")
-    _write_movie_reference_manifest_from_bible_artifact(project_dir)
+    write_movie_reference_manifest_from_bible(project_dir)
     reference_manifest_path: Path | None = manifest_path
 
     if not args.skip_movie_references:
@@ -996,75 +1010,6 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, deb
         ).stem,
     )
     return ComfyUIMovieIngredientsVisualAdapter(backend=backend)
-
-
-# --- Artifact delegation (thin wrappers around application layer) ---
-
-def _ensure_movie_planning_artifacts(project_dir, force_screenplay=False, force_story_design=False):
-    from feverslop.application.movie_artifacts import ensure_movie_planning_artifacts
-    return ensure_movie_planning_artifacts(project_dir, force_screenplay=force_screenplay, force_story_design=force_story_design)
-
-
-def _ensure_movie_bible_artifact(project_dir):
-    from feverslop.application.movie_artifacts import ensure_movie_bible
-    return ensure_movie_bible(project_dir)
-
-
-def _regenerate_movie_bible_artifact(project_dir, planner_backend, app_config_path="app_config.json"):
-    from feverslop.application.movie_artifacts import regenerate_movie_bible
-    from feverslop.composition.movie_planner import build_movie_planner
-
-    return regenerate_movie_bible(
-        project_dir,
-        planner=build_movie_planner({
-            "planner_backend": planner_backend,
-            "app_config_path": app_config_path,
-        }),
-    )
-
-
-def _ensure_movie_story_design_artifact(project_dir, force=False):
-    from feverslop.application.movie_artifacts import ensure_movie_story_design
-    return ensure_movie_story_design(project_dir, force=force)
-
-
-def _ensure_movie_screenplay_artifact(project_dir, force=False):
-    from feverslop.application.movie_artifacts import ensure_movie_screenplay
-    return ensure_movie_screenplay(project_dir, force=force)
-
-
-def _ensure_movie_narrative_plan_artifact(project_dir):
-    from feverslop.application.movie_artifacts import ensure_movie_narrative_plan
-    return ensure_movie_narrative_plan(project_dir)
-
-
-def _ensure_movie_scene_cards_artifact(project_dir):
-    from feverslop.application.movie_artifacts import ensure_movie_scene_cards
-    return ensure_movie_scene_cards(project_dir)
-
-
-def _ensure_movie_shot_cards_artifact(project_dir):
-    from feverslop.application.movie_artifacts import ensure_movie_shot_cards
-    return ensure_movie_shot_cards(project_dir)
-
-
-def _ensure_movie_continuity_plan_artifact(project_dir):
-    from feverslop.application.movie_artifacts import ensure_movie_continuity_plan
-    return ensure_movie_continuity_plan(project_dir)
-
-
-def _ensure_movie_render_plan_matches_bible_artifact(project_dir):
-    from feverslop.application.movie_artifacts import (
-        ensure_movie_render_plan_matches_bible,
-    )
-    ensure_movie_render_plan_matches_bible(project_dir)
-
-
-def _write_movie_reference_manifest_from_bible_artifact(project_dir):
-    from feverslop.application.movie_artifacts import (
-        write_movie_reference_manifest_from_bible,
-    )
-    return write_movie_reference_manifest_from_bible(project_dir)
 
 
 # --- Workflow helpers ---
