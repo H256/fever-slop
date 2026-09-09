@@ -1,7 +1,7 @@
 # Workflow model requirements
 
 This document records the model references found in the JSON workflows under
-`workflows/`, including the historical files under `workflows/old/`. The
+`workflows/`. The
 inventory was generated from the workflow node inputs at the current release
 candidate commit and contains 43 distinct model-file references. It describes
 filenames and roles; it does not redistribute any model weights.
@@ -13,7 +13,7 @@ workflows load a UNet/diffusion model, VAE, and text encoder separately.
 
 ## Audio generation
 
-Used by `audio_song_v2.json` and the historical `old/audio_song.json`:
+Used by `audio_song_v2.json`:
 
 | Reference | Loader/input | Role |
 | --- | --- | --- |

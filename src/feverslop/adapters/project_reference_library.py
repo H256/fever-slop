@@ -5,7 +5,6 @@ import os
 import re
 import shutil
 import tempfile
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -25,26 +24,12 @@ from feverslop.ports.reference_library import (
     ReferenceLibraryPort,
     SceneCastPort,
 )
+from feverslop.utils.io import file_lock
 
 
-@contextmanager
 def _assignment_file_lock(lock_path: Path):
     """Serialize revision check and replace across threads/processes."""
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("a+b") as handle:
-        if os.name == "nt":
-            import msvcrt
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            if os.name == "nt":
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    return file_lock(lock_path)
 
 
 class ProjectReferenceLibrary(
