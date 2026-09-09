@@ -31,6 +31,7 @@ from feverslop.domain.face_detection import (
 )
 from feverslop.domain.facefix_rendering import FaceFixConfig
 from feverslop.path_utils import coerce_local_path
+from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.utils.io import file_is_valid
 
 logger = logging.getLogger(__name__)
@@ -173,6 +174,7 @@ def _run_crop_facefix(
 
     scenes_dir = coerce_local_path(options.scenes_dir)
     project_dir = coerce_local_path(options.project_dir) if options.project_dir else None
+    layout = SceneArtifactLayout(project_dir) if project_dir else None
     scene_numbers = options.scene_numbers
     if scene_numbers is None:
         scene_numbers = sorted(
@@ -194,15 +196,7 @@ def _run_crop_facefix(
     # -- Actor sheet discovery (unchanged) --
     actor_sheets = options.reference_images or []
     if not actor_sheets and project_dir:
-        actors_dir = project_dir / "output" / "references" / "actors"
-        if actors_dir.is_dir():
-            for actor_dir in sorted(actors_dir.iterdir()):
-                if not actor_dir.is_dir():
-                    continue
-                views = actor_dir / "views"
-                if views.is_dir():
-                    for sheet in sorted(views.glob("*sheet.png")):
-                        actor_sheets.append(sheet)
+        actor_sheets.extend(layout.actor_sheet_images())
 
     # -- Extract reference embeddings and register identities --
     from feverslop.adapters.insightface_extractor import InsightFaceExtractor
@@ -228,8 +222,8 @@ def _run_crop_facefix(
 
     # -- Per-scene processing --
     for scene_number in scene_numbers:
-        scene_dir = scenes_dir / f"scene_{scene_number:04d}"
-        source = scene_dir / "final.mp4"
+        scene_dir = layout.scene_dir(scene_number) if layout else scenes_dir / f"scene_{scene_number:04d}"
+        source = layout.scene_final_video(scene_number) if layout else scene_dir / "final.mp4"
         if not source.exists():
             record_skip("missing_source")
             if reporter:
@@ -239,7 +233,7 @@ def _run_crop_facefix(
                 )
             continue
 
-        final_facefix = scene_dir / "final_facefix.mp4"
+        final_facefix = layout.scene_final_facefix_video(scene_number) if layout else scene_dir / "final_facefix.mp4"
         if options.skip_existing and file_is_valid(final_facefix):
             results.append(final_facefix)
             if reporter:
@@ -327,11 +321,11 @@ def _run_crop_facefix(
 
         # -- Per-actor crop / render / repair --
         for actor_id, frames_list in actor_frames.items():
-            facefix_dir = scene_dir / "facefix" / actor_id
+            facefix_dir = layout.scene_facefix_dir(scene_number, actor_id) if layout else scene_dir / "facefix" / actor_id
             repaired_dir = facefix_dir / "repaired"
             repaired_mp4 = facefix_dir / f"repaired_{actor_id}.mp4"
-            crop_frames_dir = facefix_dir / "crops"
-            anchor_dir = facefix_dir / "anchors"
+            crop_frames_dir = layout.scene_face_crops_dir(scene_number, actor_id) if layout else facefix_dir / "crops"
+            anchor_dir = layout.scene_face_anchors_dir(scene_number, actor_id) if layout else facefix_dir / "anchors"
 
             if options.skip_existing and repaired_mp4.exists():
                 if reporter:
@@ -425,7 +419,7 @@ def _run_crop_facefix(
                 continue
 
             # --- Encode crop MP4 ---
-            crop_mp4 = facefix_dir / "face_crop.mp4"
+            crop_mp4 = layout.scene_face_crop_mp4(scene_number, actor_id) if layout else facefix_dir / "face_crop.mp4"
             if not crop_mp4.exists():
                 _encode_crop_mp4(
                     crop_frames_dir,
