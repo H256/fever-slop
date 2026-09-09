@@ -164,8 +164,3 @@ class GlobalAsset:
             revision=payload.get("revision", 1), schema_version=payload.get("schema_version", SCHEMA_VERSION),
             metadata=tuple(raw_metadata.items()),
         )
-
-
-def asset_manifest_path(root: str, asset: GlobalAsset) -> str:
-    """Return the canonical manifest path without touching the filesystem."""
-    return str(PurePosixPath(root) / asset.kind.value / asset.id / "manifest.json")
