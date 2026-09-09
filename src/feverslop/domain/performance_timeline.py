@@ -15,6 +15,25 @@ def alignment_reference(timeline_index: int) -> dict:
     return {"version": ALIGNMENT_REFERENCE_VERSION, "timeline_index": timeline_index}
 
 
+_LEAN_EVENT_FIELDS = {"start", "end", "lyrics", "text", "word_timestamps", "timeline_index",
+                      "alignment_ref", "subject_id", "subject_label", "speaker_id",
+                      "speaker_description", "offscreen", "type", "kind"}
+
+
+def lean_performance_projection(phases: list[dict]) -> list[dict]:
+    """Drop copied timeline evidence while retaining H3/render relay semantics."""
+    result = []
+    for phase in phases:
+        projected = deepcopy(phase)
+        projected.pop("vocal_sources", None)
+        projected["vocal_events"] = [
+            {key: deepcopy(value) for key, value in event.items() if key in _LEAN_EVENT_FIELDS}
+            for event in projected.get("vocal_events", [])
+        ]
+        result.append(projected)
+    return result
+
+
 def _bounds(row):
     try:
         start, end = float(row["start"]), float(row["end"])

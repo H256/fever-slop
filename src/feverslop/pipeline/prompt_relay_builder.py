@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from feverslop.config.video_settings import VideoSettings
-from feverslop.domain.performance_timeline import project_performance
+from feverslop.domain.performance_timeline import lean_performance_projection, project_performance
 from feverslop.domain.srt import parse_srt_blocks
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.reporting import Reporter
@@ -113,7 +113,7 @@ def build_scene_prompt_relay(
         prompt_relay = []
         performance_intervals = []
         # Real pauses remain explicit regardless of the legacy duration hint.
-        for phase in project_performance(timeline, scene_start, scene_end):
+        for phase in lean_performance_projection(project_performance(timeline, scene_start, scene_end)):
             rel_start = phase["start"] - scene_start
             rel_end = phase["end"] - scene_start
             frame_start = video_settings.seconds_to_frame(rel_start)

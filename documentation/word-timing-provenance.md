@@ -38,6 +38,15 @@ supported timing.
 
 ## Stable timeline references
 
+Performance projections carry stable references to their owning entries in
+`timeline_song.json`. Stage1 and prompt-relay artifacts use the lean form:
+`vocal_sources` is omitted while clipped words, vocal events, and references
+remain available. Legacy full projections remain accepted by render and H3;
+the normalized relay representation is byte-identical. A follow-up can remove
+the compatibility reader after persisted artifacts have been regenerated.
+
+## Stable timeline references
+
 Performance projections now carry an additive reference to their source
 timeline segment. `timeline_indices` and `alignment_refs` on each phase, plus
 `timeline_index` and `alignment_ref` on each vocal event, identify the owning
