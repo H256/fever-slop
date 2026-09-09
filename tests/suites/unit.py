@@ -85,7 +85,6 @@ UNIT_MODULES = (
     "ingredients_vision_prompt",
     "ingredients_workflow_files",
     "insightface_extractor",
-    "insightface_tracker",
     "json_io",
     "llm_api_key_validation",
     "llm_benchmark_cli",

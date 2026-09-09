@@ -1302,6 +1302,12 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual([item.label for item in resolved], ["<Picture 1>", "<Picture 2>"])
 
+    def test_reference_limits_match_minimax_h3_guide_caps(self):
+        self.assertEqual(
+            {"max_pictures": 9, "max_audio": 2, "max_videos": 2},
+            ReferenceLimits().model_dump(),
+        )
+
     def test_h3_creative_plan_schema_contains_no_compiler_owned_reference_fields(self):
         from feverslop.prompting import dspy_h3_models
 
