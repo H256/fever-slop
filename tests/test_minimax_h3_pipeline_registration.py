@@ -19,7 +19,7 @@ from feverslop.composition.job_runtime import (
     _pipeline_step_names,
     _video_pipeline_for_mode,
 )
-from feverslop.config.project_validation import (
+from feverslop.config.project_config import (
     VIDEO_PIPELINE_BY_MODE,
     validate_full_auto_inputs,
     validate_pipeline_mode,
