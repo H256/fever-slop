@@ -1099,12 +1099,14 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         request = generator.requests[0]
         notes = json.loads(request["notes"])
         self.assertEqual(
-            {"scene", "scene_details", "global_context", "source_language", "language_policy"},
+            {"scene", "global_context", "source_language", "language_policy"},
             set(notes),
         )
         self.assertFalse(_collect_keys(notes) & _EVIDENCE_FIELDS)
         self.assertNotIn(marker, request["notes"])
         self.assertEqual("Mara sings into the rain", notes["scene"]["lyrics"])
+        self.assertNotIn("scene_details", notes)
+        self.assertNotIn("performance_intervals", notes["scene"])
         # The compiler consumes exactly request["relay_segments"], so the
         # word-level timing evidence must survive there untouched.
         self.assertNotIn(marker, json.dumps(request["relay_segments"]))

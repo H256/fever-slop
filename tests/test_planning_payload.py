@@ -1,6 +1,6 @@
 import unittest
 
-from feverslop.prompting.planning_payload import compact_creative_context
+from feverslop.prompting.planning_payload import compact_creative_context, compact_h3_scene_metadata
 
 
 class PlanningPayloadTests(unittest.TestCase):
@@ -18,3 +18,15 @@ class PlanningPayloadTests(unittest.TestCase):
         self.assertEqual({"story_idea", "style", "prompt_guidance"}, set(result))
         self.assertNotIn("global_asset_snapshots", result)
         self.assertNotIn("actors", result)
+
+    def test_h3_scene_metadata_drops_inputs_sent_elsewhere(self):
+        result = compact_h3_scene_metadata({
+            "lyrics": "And",
+            "type": "vocal",
+            "camera_motion": "slow push",
+            "subjects": [{"id": "singer"}],
+            "references": {"actor_ids": ["singer"]},
+            "performance_intervals": [{"start": 0, "end": 1}],
+        })
+
+        self.assertEqual({"lyrics": "And", "type": "vocal"}, result)
