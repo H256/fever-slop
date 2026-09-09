@@ -6,7 +6,13 @@ import math
 
 
 PERFORMANCE_TIMELINE_VERSION = 1
+ALIGNMENT_REFERENCE_VERSION = 1
 _SUPPORTED = {"whisper", "corrected_from_whisper"}
+
+
+def alignment_reference(timeline_index: int) -> dict:
+    """Return the stable, JSON-safe reference to a source timeline segment."""
+    return {"version": ALIGNMENT_REFERENCE_VERSION, "timeline_index": timeline_index}
 
 
 def _bounds(row):
@@ -107,7 +113,9 @@ def project_performance(timeline: list[dict], start: float, end: float) -> list[
         active = [(i, s, words, reasons) for i, s, words, intervals, reasons in sources
                   if any(left < b and right > a for left, right in intervals)]
         clipped, vocal_sources, lyrics, events = [], [], [], []
+        timeline_indices = []
         for index, segment, words, reasons in active:
+            timeline_indices.append(index)
             event_words, event_lyrics = [], []
             source = deepcopy(segment)
             source["timeline_index"] = index
@@ -149,7 +157,9 @@ def project_performance(timeline: list[dict], start: float, end: float) -> list[
                     selected_text = " ".join(event_lyrics)
                 event = {**deepcopy(segment), "start": a, "end": b,
                          "lyrics": selected_text, "text": selected_text,
-                         "word_timestamps": selected_words}
+                         "word_timestamps": selected_words,
+                         "timeline_index": index,
+                         "alignment_ref": alignment_reference(index)}
                 event.update({key: value for key, value in zip(identities, identity) if value is not None})
                 events.append(event)
         covering = [reasons for left, right, reasons in coverage if left <= a and right >= b]
@@ -159,6 +169,9 @@ def project_performance(timeline: list[dict], start: float, end: float) -> list[
         phases.append({"start": a, "end": b, "state": "singing" if active else "instrumental",
                        "lyrics": " ".join(lyrics), "word_timestamps": clipped,
                        "vocal_sources": vocal_sources, "vocal_events": events, "performance_phase": True,
+                       "timeline_indices": timeline_indices,
+                       "alignment_refs": [alignment_reference(index)
+                                          for index in timeline_indices],
                        "performance_intervals_version": PERFORMANCE_TIMELINE_VERSION,
                        "acoustically_verified": not reasons,
                        "reason_codes": reasons,

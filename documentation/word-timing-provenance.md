@@ -35,3 +35,19 @@ lyrics or transcript payloads.
 Downstream consumers must inspect provenance and unresolved targets when they
 need reliable coverage. A corrected lyric string does not imply every word has
 supported timing.
+
+## Stable timeline references
+
+Performance projections now carry an additive reference to their source
+timeline segment. `timeline_indices` and `alignment_refs` on each phase, plus
+`timeline_index` and `alignment_ref` on each vocal event, identify the owning
+entry in `timeline_song.json` without copying that entry's identity into
+consumer-specific schemas. References use the JSON-safe shape
+`{"version": 1, "timeline_index": N}` and are stable when a scene is
+re-projected with different bounds.
+
+This is the first compatibility step toward a lean projection model. Existing
+`vocal_sources`, `vocal_events`, and word timing fields remain available so
+current stage1, relay, render, and H3 consumers produce the same output. A
+follow-up migration can resolve source evidence from these references and then
+remove the duplicated source payloads once all consumers have switched.

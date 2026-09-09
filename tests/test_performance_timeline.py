@@ -1,9 +1,20 @@
 import unittest
 
-from feverslop.domain.performance_timeline import project_performance
+from feverslop.domain.performance_timeline import alignment_reference, project_performance
 
 
 class PerformanceTimelineTests(unittest.TestCase):
+    def test_phases_expose_stable_source_references(self):
+        timeline = [{"type": "vocals", "start": 0, "end": 2,
+                     "word_timestamps": [{"word": "one", "start": 0,
+                                           "end": 2, "source": "whisper"}]}]
+        phase = project_performance(timeline, 0, 2)[0]
+        expected = alignment_reference(0)
+        self.assertEqual([0], phase["timeline_indices"])
+        self.assertEqual([expected], phase["alignment_refs"])
+        self.assertEqual(expected, phase["vocal_events"][0]["alignment_ref"])
+        self.assertEqual(0, phase["vocal_events"][0]["timeline_index"])
+
     def test_overlapping_word_level_voices_keep_individual_onsets_and_offsets(self):
         phases = project_performance([dict(type="vocals", start=0, end=3, word_timestamps=[
             dict(word="one", start=0, end=2, source="whisper", word_id="w1", speaker_id="S1"),
