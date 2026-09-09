@@ -9,6 +9,12 @@ _EVIDENCE_FIELDS = frozenset({
     "vocal_sources", "vocal_events", "alignment", "raw_words", "raw_text",
 })
 
+_CREATIVE_CONTEXT_FIELDS = (
+    "story_idea", "style", "subject", "prompt_guidance", "subject_mode",
+    "max_scene_actors", "language", "silent_mode", "location_constraint", "steering",
+)
+
+
 
 def compact_planning_payload(value: Any) -> Any:
     """Copy creative inputs without replicated acoustic evidence; never truncate lyrics.
@@ -22,3 +28,14 @@ def compact_planning_payload(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [compact_planning_payload(item) for item in value]
     return value
+
+
+def compact_creative_context(value: Any) -> dict[str, Any]:
+    """Keep only global context needed to write one scene creatively."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: compact_planning_payload(value[key])
+        for key in _CREATIVE_CONTEXT_FIELDS
+        if key in value
+    }
