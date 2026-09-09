@@ -558,7 +558,7 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
             "state": str(item.get("state") or "").strip(),
             "prompt": str(item.get("prompt") or "").strip(),
         }
-        for key in ("performance_phase", "performance_intervals_version", "word_timestamps", "vocal_sources", "acoustically_verified", "reason_codes", "performance_conflicts"):
+        for key in ("performance_phase", "performance_intervals_version", "word_timestamps", "acoustically_verified", "reason_codes", "performance_conflicts"):
             if key in item:
                 shot[key] = item[key]
         if item.get("performance_phase"):
@@ -783,7 +783,9 @@ class DspyH3PromptBuilder:
             issues = validate_h3_prompt_contract(prompt, mode=mode, plan=plan, reference_metadata=references,
                 duration_seconds=segment.get("duration_seconds", segment.get("duration")),
                 expected_vocal_events=count if phases else None, bound_vocal_subject=subject)
-            issues.extend(validate_performance_phases(phases, prompt))
+            result["performance_diagnostics"] = [
+                issue.code for issue in validate_performance_phases(phases, prompt)
+            ]
             if phases:
                 def words(value):
                     return re.findall(r"\w+", value.casefold())
@@ -792,7 +794,7 @@ class DspyH3PromptBuilder:
                 actual = [words(re.sub(r"^\[[^]]+\]\s*", "", text.strip()))
                           for text in re.findall(r"<d>(.*?)</d>", prompt, re.DOTALL)]
                 if [word for event in actual for word in event] != [word for event in expected for word in event]:
-                    issues.append(PromptContractIssue("h3.performance.lyrics_mismatch", "dialogue", "Final words differ from performance evidence"))
+                    result.setdefault("performance_diagnostics", []).append("h3.performance.lyrics_mismatch")
             for index, fact in enumerate(segment.get("locked_facts") or []):
                 if str(fact.get("value") or "") not in prompt:
                     issues.append(PromptContractIssue("h3.fact.missing", f"locked_facts[{index}]", "Explicit locked fact is absent"))
@@ -855,9 +857,6 @@ class DspyH3PromptBuilder:
         ]
         relay_segments = _normalize_relay_segments(segment)
         _stamp_relay_speaker_binding(relay_segments, raw_bindings)
-        performance_issues = validate_performance_phases(relay_segments)
-        if performance_issues:
-            raise PromptContractError(performance_issues)
         directive_plan = subject_directives_from_scene(segment)
         generator_references = [dict(reference) for reference in references]
         directing_lines = [

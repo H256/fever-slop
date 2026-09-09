@@ -1,6 +1,7 @@
 import unittest
 
-from feverslop.composition.project_repository import movie_default_config, movie_project_config
+from feverslop.application.movie import movie_project_config
+from feverslop.composition.project_repository import movie_default_config
 from feverslop.config.project_config import ProjectConfig
 from feverslop.ports.project_requests import ProjectCreateRequest
 from tempfile import TemporaryDirectory

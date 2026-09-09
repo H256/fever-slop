@@ -35,9 +35,9 @@ def _attach_relay_segments(stage1_segments: list[dict], relay_scenes: list[dict]
         if relay_scene:
             result.setdefault("fps", relay_scene.get("fps"))
             result.setdefault("duration_seconds", relay_scene.get("duration_seconds"))
-            if "performance_intervals" in relay_scene:
-                result["performance_intervals"] = deepcopy(relay_scene["performance_intervals"])
             relay = relay_scene.get("prompt_relay") or (relay_scene.get("ltx") or {}).get("prompt_relay")
+            if relay_scene.get("performance_intervals") is not None:
+                result["performance_intervals"] = deepcopy(relay_scene["performance_intervals"])
             if relay:
                 ltx = dict(result.get("ltx") or {})
                 ltx.setdefault("prompt_relay", relay)
