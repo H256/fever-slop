@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
 from feverslop.domain.canonical_render_plan import validate_canonical_plan
 from feverslop.domain.project_render_settings import ProjectRenderSettings
+from feverslop.ports.canonical_plan import CanonicalPlanStore
 
 
 def sync_project_render_settings(

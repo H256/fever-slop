@@ -38,6 +38,10 @@ Current architecture boundaries:
 - `feverslop.domain` contains render plan, LTX, and postprocessing domain types.
 - `feverslop.ports` defines protocols and shared request types; ports do not import adapters.
 - `feverslop.adapters` contains ComfyUI, local JSON artifacts, OpenAI-compatible LLM clients, and FFmpeg/postprocessing integration.
+- Reporter implementations are exposed from `feverslop.ports.reporting`; the
+  adapter module remains a compatibility re-export. Application services can
+  therefore use the default reporter without importing an adapter, while
+  composition roots still choose the concrete console reporter.
 - the former `feverslop.studio` package is removed; headless services live in their canonical layers.
 - repository-root Python files are public CLI scripts or compatibility facades only.
 
