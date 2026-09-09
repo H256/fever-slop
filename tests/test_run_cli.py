@@ -58,11 +58,13 @@ class RunCliTests(unittest.TestCase):
     def test_parser_exposes_dry_run_resume_and_advanced_stage(self):
         dry = self._args("--dry-run")
         resume = self._args("--resume", "--scenes", "2,4")
+        replan = self._args("--replan", "--scenes", "2,4")
         advanced = self._args("--dry-run", "--stage", "anchor_fix")
 
         self.assertTrue(dry.dry_run)
         self.assertTrue(resume.resume)
         self.assertEqual("2,4", resume.scenes)
+        self.assertTrue(replan.replan)
         self.assertEqual(["anchor_fix"], advanced.stages)
 
     def test_parser_does_not_expose_internal_settings_sync_stage(self):
@@ -96,6 +98,17 @@ class RunCliTests(unittest.TestCase):
         executed_args = pipeline_run.call_args.args[0]
         self.assertEqual(["ltx_render_scenes"], executed_args.stages)
         self.assertEqual("2", executed_args.scenes)
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    def test_replan_requests_fresh_scene_recovery_budget(self, pipeline_run):
+        with patch("feverslop.cli.run_cli.build_resume_plan", return_value=self._plan()) as planner:
+            exit_code = run_project_command(
+                self._args("--replan", "--scenes", "25"),
+                console=self.console,
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertTrue(planner.call_args.kwargs["force_replan"])
 
     @patch("feverslop.cli.run_cli.pipeline_run")
     def test_compatibility_h3_stage_preserves_explicit_scene_selection(self, pipeline_run):

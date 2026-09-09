@@ -90,6 +90,7 @@ class ComfyUIAceStepSongGeneratorTests(unittest.TestCase):
                 client=client,
                 workflow_path=workflow_path,
                 model_resolver=resolver,
+                audio_normalizer=lambda path: False,
             )
 
             result = generator.generate(
@@ -128,7 +129,10 @@ class ComfyUIAceStepSongGeneratorTests(unittest.TestCase):
             self.assertEqual("audio/Joy_Demo", save["inputs"]["filename_prefix"])
             self.assertEqual("V0", save["inputs"]["quality"])
             self.assertEqual(temp / "input" / "Joy_Demo.mp3", result.audio_path)
-            self.assertEqual({"prompt_id": "prompt-id", "seed": 42, "workflow_path": str(workflow_path)}, result.manifest)
+            self.assertEqual(
+                {"prompt_id": "prompt-id", "seed": 42, "workflow_path": str(workflow_path), "audio_normalized": False},
+                result.manifest,
+            )
             self.assertEqual([("Joy_Demo.mp3", "audio", "output", temp / "input" / "Joy_Demo.mp3")], client.downloads)
             self.assertEqual(workflow_path, resolver.calls[0][1])
 
@@ -148,6 +152,7 @@ class ComfyUIAceStepSongGeneratorTests(unittest.TestCase):
                 client=client,
                 workflow_path=workflow_path,
                 model_resolver=resolver,
+                audio_normalizer=lambda path: False,
             )
 
             generator.generate(

@@ -30,6 +30,11 @@ def build_run_parser(subparsers) -> argparse.ArgumentParser:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="Show the immutable execution plan without writing.")
     mode.add_argument("--resume", action="store_true", help="Execute the minimal safe plan.")
+    mode.add_argument(
+        "--replan",
+        action="store_true",
+        help="Execute the plan while resetting scene recovery attempts and regenerating selected stages.",
+    )
     parser.add_argument(
         "--stage",
         dest="stages",
@@ -103,6 +108,7 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
                 selected_scenes=selected,
                 render_settings=render_settings,
                 judge_blocking=app_config.llm.prompt_judge_blocking,
+                force_replan=bool(getattr(args, "replan", False)),
             )
         _render_plan(plan, output)
         if plan.blocked:
@@ -169,6 +175,7 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
                     selected_scenes=selected,
                     render_settings=render_settings,
                     judge_blocking=app_config.llm.prompt_judge_blocking,
+                    force_replan=bool(getattr(args, "replan", False)),
                 )
                 next_phase = _manual_phase(next_plan, app_config, compatibility=False)
                 if next_phase is not None and next_phase.stages:

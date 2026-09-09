@@ -379,7 +379,7 @@ class H3PromptPipeline:
             else None
         )
         request = context["request"] if "request" in context.keys() else None
-        resume_requested = bool(getattr(request, "resume", False))
+        replan_requested = bool(getattr(request, "replan", False))
 
         mode = model_spec.prompt_mode.value if model_spec else PromptMode.T2V.value
         stem_files = context["stem_files"] if "stem_files" in context.keys() else None
@@ -434,8 +434,8 @@ class H3PromptPipeline:
             preserve_existing_aggregate=selected_scene_numbers is not None,
             reuse_checkpoints=(
                 selected_scene_numbers is None
-                or resume_requested
-            ),
+                or bool(getattr(request, "resume", False))
+            ) and not replan_requested,
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
