@@ -217,13 +217,12 @@ class APIMetricsTests(unittest.TestCase):
         session_class.return_value = session
         metrics = APIMetrics()
 
-        with self.assertLogs("feverslop.adapters.comfyui_client", level="INFO") as logs:
+        with self.assertNoLogs("feverslop.adapters.comfyui_client"):
             ComfyUIClient(metrics=metrics).queue_prompt({})
 
         stats = metrics.snapshot()[("comfyui", "queue_prompt")]
         self.assertEqual((1, 1, 0), (stats.calls, stats.successes, stats.failures))
-        self.assertIn("api_call service=comfyui operation=queue_prompt", logs.output[0])
-        self.assertIn(f"correlation_id={metrics.export_snapshot()['entries'][0]['correlation_id']}", logs.output[0])
+        self.assertEqual(1, len(metrics.export_snapshot()["entries"]))
 
     @patch("requests.Session")
     def test_comfyui_health_check_uses_read_only_probe(self, session_class):

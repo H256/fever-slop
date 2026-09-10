@@ -91,7 +91,11 @@ class ComfyUIClient:
         return self._session
 
     def _request(self, method: str, url: str, operation: str, **kwargs):
-        emit_log = kwargs.pop("_emit_log", True)
+        # Successful low-level API calls are intentionally quiet.  Pipeline
+        # stages provide the user-facing progress; metrics still record every
+        # request and callers can opt into detailed request logs explicitly.
+        emit_log = kwargs.pop("_emit_log", False)
+        emit_error_log = kwargs.pop("_emit_error_log", True)
         log_level = kwargs.pop("_log_level", TRACE_LEVEL if operation == "get_history" else logging.INFO)
         if self.auth_headers:
             kwargs.setdefault("headers", {}).update(self.auth_headers)
@@ -102,7 +106,7 @@ class ComfyUIClient:
             response = getattr(self._ensure_session(), method)(url, **kwargs)
         except Exception:
             record_api_call(
-                self.metrics, logger if emit_log else None, "comfyui", operation,
+                self.metrics, logger if emit_error_log else None, "comfyui", operation,
                 started_at, success=False, level=logging.ERROR,
             )
             raise
@@ -175,11 +179,24 @@ class ComfyUIClient:
         return require_json_object(response.json(), context="get_history")
 
     def get_object_info(self) -> dict:
-        response = self._request("get", f"{self.base_url}/object_info", "get_object_info",
-            timeout=self.prompt_timeout_seconds,
-        )
-        self._raise_for_status(response, "get object info")
-        return response.json()
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = self._request(
+                    "get",
+                    f"{self.base_url}/object_info",
+                    "get_object_info",
+                    _emit_error_log=attempt == 2,
+                    timeout=self.prompt_timeout_seconds,
+                )
+                self._raise_for_status(response, "get object info")
+                return response.json()
+            except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError) as exc:
+                last_error = exc
+                if attempt == 2:
+                    raise
+                time.sleep(0.25 * (attempt + 1))
+        raise AssertionError(f"unreachable object_info retry state: {last_error!r}")
 
     def wait_for_completion(
         self,
@@ -349,7 +366,12 @@ class ComfyUIClient:
     def free_cache_and_vram(self) -> None:
         """Best-effort unload of ComfyUI models and cached CUDA memory."""
         try:
-            response = self._request("post", f"{self.base_url}/free", "free_cache_and_vram", _emit_log=False,
+            response = self._request(
+                "post",
+                f"{self.base_url}/free",
+                "free_cache_and_vram",
+                _emit_log=False,
+                _emit_error_log=False,
                 json={"unload_models": True, "free_memory": True},
                 timeout=30,
             )
