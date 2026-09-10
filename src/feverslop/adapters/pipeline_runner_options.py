@@ -35,6 +35,7 @@ class ResolutionTuple(NamedTuple):
 
 RUNNER_ARGUMENTS = (
     ("app_config", ("--app-config",), {"default": "app_config.json"}),
+    ("log_level", ("--log-level",), {"choices": ["trace", "debug", "info", "warning", "error", "critical", "off"], "default": None, "help": "Human-facing log level (default: info; FEVERSLOP_LOG_LEVEL is also supported)."}),
     ("resolution", ("--resolution",), {"type": ResolutionTuple.parse, "default": None}),
     ("upscale_resolution", ("--upscale-resolution",), {"type": ResolutionTuple.parse, "default": None, "help": "Override SeedVR2 target resolution for this run."}),
     ("set_resolution", ("--set-resolution",), {"type": ResolutionTuple.parse, "default": None}),

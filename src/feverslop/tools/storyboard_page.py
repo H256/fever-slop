@@ -1,4 +1,5 @@
 from __future__ import annotations
+from feverslop.ports.reporting import report_message
 
 import argparse
 import html
@@ -238,7 +239,7 @@ def main() -> None:
         limit=args.limit,
         allow_missing_images=args.allow_missing_images,
     )
-    print(output_html)
+    report_message(output_html)
 
 
 if __name__ == "__main__":

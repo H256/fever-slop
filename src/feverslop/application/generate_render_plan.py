@@ -12,7 +12,7 @@ from feverslop.domain.scene_duration_limits import ResolvedSceneDurationPolicy
 from feverslop.domain.duration_capability import DurationCapability
 from feverslop.errors import FeverSlopConfigError, FeverSlopValidationError
 from feverslop.ports.artifacts import ArtifactStore
-from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
+from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter, install_reporter_logging
 
 
 @dataclass(frozen=True)
@@ -65,6 +65,8 @@ class GenerateRenderPlanUseCase:
             self.reporter = ConsoleReporter(console)
         else:
             self.reporter = NullReporter()
+        if isinstance(self.reporter, ConsoleReporter):
+            install_reporter_logging(self.reporter)
         self.pipeline_services = pipeline_services if pipeline_services is not None else []
         self.artifact_store = artifact_store
         self.storyboard_renderer_factory = storyboard_renderer_factory

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+from time import perf_counter
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -8,6 +10,40 @@ from typing import Any
 from openai import OpenAI
 
 from feverslop.llm_concurrency import limit_dspy_lm
+from feverslop.adapters.api_observability import (
+    default_api_metrics,
+    log_api_call_start,
+    record_api_call,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _instrument_openai_client(client, metrics):
+    completions = client.chat.completions
+    if getattr(completions, "_feverslop_observed", False):
+        return
+    original_create = completions.create
+    metrics = metrics or default_api_metrics
+
+    def create(*args, **kwargs):
+        started_at = perf_counter()
+        log_api_call_start(logger, "llm", "chat_completions")
+        try:
+            response = original_create(*args, **kwargs)
+        except Exception:
+            record_api_call(
+                metrics, logger, "llm", "chat_completions", started_at,
+                success=False,
+            )
+            raise
+        record_api_call(
+            metrics, logger, "llm", "chat_completions", started_at,
+            success=True,
+        )
+        return response
+    completions.create = create
+    completions._feverslop_observed = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +113,7 @@ class DspyRuntime:
             kwargs["chat_template_kwargs"] = dict(chat_template_kwargs)
 
         if inject:
+            _instrument_openai_client(client, getattr(llm, "metrics", None))
             kwargs["client"] = client
         timeout = getattr(llm, "request_timeout_seconds", None)
         if timeout is not None:

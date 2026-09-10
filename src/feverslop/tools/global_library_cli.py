@@ -20,6 +20,8 @@ from feverslop.application.global_character_creator import (
 )
 from feverslop.application.sequence_to_sheet import generate_sequence_to_sheet
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
+from feverslop.ports.reporting import report_message
+from feverslop.utils.cli_output import emit_cli_data
 
 
 def _kind(value: str) -> AssetKind:
@@ -88,7 +90,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _error(message: str) -> int:
-    print(f"error: {message}", file=sys.stderr)
+    report_message(f"error: {message}", file=sys.stderr)
     return 2
 
 
@@ -102,18 +104,19 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "list":
             assets = library.list(args.kind)
             payload = [asset.to_dict() for asset in assets]
-            print(json.dumps(payload, ensure_ascii=False, indent=2) if args.json else "\n".join(f"{a.kind.value}/{a.id}: {a.name}" for a in assets))
+            _emit_result(json.dumps(payload, ensure_ascii=False, indent=2) if args.json else "\n".join(f"{a.kind.value}/{a.id}: {a.name}" for a in assets), json_output=args.json)
         elif args.command == "show":
             asset = library.get(args.kind, args.id)
-            print(
+            _emit_result(
                 json.dumps(asset.to_dict(), ensure_ascii=False, indent=2)
                 if args.json
-                else f"{asset.kind.value}/{asset.id}: {asset.name}"
+                else f"{asset.kind.value}/{asset.id}: {asset.name}",
+                json_output=args.json,
             )
         elif args.command == "create":
             asset = GlobalAsset.from_dict(json.loads(args.manifest.read_text(encoding="utf-8"))) if args.manifest else GlobalAsset(args.id, args.kind, args.name, args.description)
             library.create(asset)
-            print(f"created {asset.kind.value}/{asset.id}")
+            report_message(f"created {asset.kind.value}/{asset.id}")
         elif args.command == "create-look":
             asset = library.get(args.kind, args.id)
             asset_dir = library.root / asset.kind.value / asset.id
@@ -122,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
                     raise FileNotFoundError(f"{field_name} media not found in asset directory: {raw_path}")
             look = AssetLook(args.look_id, args.name, hero_image=args.hero_image, sheet_image=args.sheet_image)
             library.update(GlobalAsset(asset.id, asset.kind, asset.name, asset.description, asset.looks + (look,), asset.revision + 1, asset.schema_version, asset.metadata), expected_revision=asset.revision)
-            print(f"created look {args.kind.value}/{args.id}/{args.look_id}")
+            report_message(f"created look {args.kind.value}/{args.id}/{args.look_id}")
         elif args.command == "validate":
             assets = library.list(args.kind)
             dangling: list[str] = []
@@ -141,14 +144,14 @@ def main(argv: list[str] | None = None) -> int:
                         if relative and not (asset_dir / relative).is_file():
                             dangling.append(f"{asset.kind.value}/{asset.id}: look {look.id}: {field_name} -> {relative}")
             if dangling:
-                print(f"validation failed: {len(dangling)} dangling media reference(s)", file=sys.stderr)
+                report_message(f"validation failed: {len(dangling)} dangling media reference(s)", file=sys.stderr)
                 for line in dangling:
-                    print(f"  {line}", file=sys.stderr)
+                    report_message(f"  {line}", file=sys.stderr)
                 return 2
-            print(f"validated {len(assets)} asset manifest(s)")
+            report_message(f"validated {len(assets)} asset manifest(s)")
         elif args.command == "delete":
             library.delete(args.kind, args.id)
-            print(f"deleted {args.kind.value}/{args.id}")
+            report_message(f"deleted {args.kind.value}/{args.id}")
         elif args.command == "refresh":
             snapshot = args.snapshot.resolve()
             # base = parents[3] must have >= 2 components; shallower snapshots would materialize
@@ -165,11 +168,11 @@ def main(argv: list[str] | None = None) -> int:
                     raise ValueError(f"snapshot {snapshot} changed before refresh; refusing to replace it")
                 shutil.rmtree(snapshot)
                 shutil.move(target, snapshot)
-            print(f"refreshed {snapshot}")
+            report_message(f"refreshed {snapshot}")
         elif args.command == "import-from-project":
             asset = GlobalAsset.from_dict(json.loads(args.manifest.read_text(encoding="utf-8")))
             library.create(asset)
-            print(f"imported {asset.kind.value}/{asset.id}")
+            report_message(f"imported {asset.kind.value}/{asset.id}")
         elif args.command == "generate":
             raw = {}
             if args.input:
@@ -196,10 +199,10 @@ def main(argv: list[str] | None = None) -> int:
             generator = GuidedAssetGenerator(library, profiles={args.workflow: runner})
             preview = generator.preview(idea, profile_id=args.workflow)
             if args.dry_run:
-                print(json.dumps(preview, ensure_ascii=False, indent=2))
+                emit_cli_data(json.dumps(preview, ensure_ascii=False, indent=2))
             else:
                 result = generator.generate(idea, profile_id=args.workflow)
-                print(json.dumps({"run_id": result.run_id, "asset_id": result.asset.id, "status": result.status}, indent=2))
+                emit_cli_data(json.dumps({"run_id": result.run_id, "asset_id": result.asset.id, "status": result.status}, indent=2))
         elif args.command == "sequence-to-sheet":
             if args.view_count is not None and args.view_count < 1:
                 raise ValueError("view-count must be positive")
@@ -214,10 +217,17 @@ def main(argv: list[str] | None = None) -> int:
                 backend=args.backend,
                 profile=args.profile,
             )
-            print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else f"published {args.kind.value}/{args.id}/{args.look_id} revision {result['revision']}")
+            _emit_result(json.dumps(result, ensure_ascii=False, indent=2) if args.json else f"published {args.kind.value}/{args.id}/{args.look_id} revision {result['revision']}", json_output=args.json)
         return 0
     except (FileNotFoundError, ValueError, FileExistsError, KeyError, OSError) as exc:
         return _error(f"{exc}; create or import the asset and check the configured library path")
+
+
+def _emit_result(value: str, *, json_output: bool) -> None:
+    if json_output:
+        emit_cli_data(value)
+    else:
+        report_message(value)
 
 
 if __name__ == "__main__":

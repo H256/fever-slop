@@ -29,6 +29,12 @@ safe music-video resume command. It does not belong in a project config.
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `vram_handoff` | `continuous` or `manual` | `continuous` | Whether safe resume may cross directly between LLM- and ComfyUI-owned stages. |
+| `log_level` | `trace`, `debug`, `info`, `warning`, `error`, `critical`, or `off` | `info` | Global human-facing logging threshold. `trace` includes polling and other diagnostic API events. |
+
+The same setting is available as `--log-level LEVEL` on pipeline commands or
+through `FEVERSLOP_LOG_LEVEL`. The precedence is CLI, environment, config,
+then the `info` default. API metrics remain recorded even when their log
+events are filtered.
 
 Use `manual` when one GPU cannot keep the external LLM and ComfyUI models
 loaded together:

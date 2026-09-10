@@ -4,6 +4,7 @@ import argparse
 import os
 
 from rich.console import Console
+from feverslop.ports.reporting import ReporterConsole
 from rich.panel import Panel
 from rich.table import Table
 
@@ -15,7 +16,7 @@ from feverslop.pipeline.scene_duration_enforcer import (
     validate_scene_durations,
 )
 
-console = Console()
+console = ReporterConsole(Console())
 
 
 def ensure_output_writable(output_srt):

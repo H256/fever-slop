@@ -284,6 +284,11 @@ def _validate_r2v_contract(
             "h3.detail.style_opening",
             "detailed_description",
             "R2V detailed_description must contain a compiler-owned style opening before Shot 1",
+    if not before_first_shot or _REFERENCE_LABEL.search(before_first_shot):
+        issues.append(PromptContractIssue(
+            "h3.detail.style_opening",
+            "detailed_description",
+            "R2V detailed_description must contain a compiler-owned style opening before Shot 1",
         ))
     if not re.match(r"^\[[a-z][a-z +]+\]\s+\S", summary):
         issues.append(PromptContractIssue(

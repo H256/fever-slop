@@ -142,6 +142,9 @@ class ResolvedReference(BaseModel):
     description: str
     name: str | None = None
     use_audio: bool = False
+    # Audio delivery (workflow slot) and semantic relationship are distinct.
+    copy_mode: str | None = None
+    semantic_role: str | None = None
 
 
 class AudioSubjectBinding(BaseModel):

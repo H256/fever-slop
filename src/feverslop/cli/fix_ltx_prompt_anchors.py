@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 
 from rich.console import Console
+from feverslop.ports.reporting import ReporterConsole
 from rich.panel import Panel
 
 from feverslop.path_utils import coerce_local_path
@@ -11,7 +12,7 @@ from feverslop.prompting.ltx_prompt_anchor_fixer import (
     validate_anchor_file,
 )
 
-console = Console()
+console = ReporterConsole(Console())
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -61,4 +62,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

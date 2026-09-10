@@ -9,9 +9,72 @@ from feverslop.adapters.api_observability import (
     redact_secrets,
     require_json_object,
 )
+from feverslop.ports.reporting import TRACE_LEVEL, install_reporter_logging, parse_log_level
 
 
 class APIMetricsTests(unittest.TestCase):
+    def test_parses_global_log_levels_with_info_default(self):
+        self.assertEqual(TRACE_LEVEL, parse_log_level("trace"))
+        self.assertEqual(10, parse_log_level("debug"))
+        self.assertEqual(20, parse_log_level(None))
+        self.assertEqual(40, parse_log_level("ERROR"))
+
+    def test_pipeline_parser_exposes_global_log_level(self):
+        from feverslop.composition.arg_parser import build_arg_parser
+
+        default_args = build_arg_parser().parse_args([])
+        self.assertIsNone(default_args.log_level)
+        self.assertEqual("debug", build_arg_parser().parse_args(["--log-level", "debug"]).log_level)
+
+    def test_rejects_unknown_global_log_level(self):
+        with self.assertRaisesRegex(ValueError, "unknown log level"):
+            parse_log_level("verbose")
+
+    def test_reporter_logging_uses_requested_level(self):
+        import logging
+
+        root = logging.getLogger()
+        previous = root.level
+        try:
+            install_reporter_logging(MagicMock(), level="warning")
+            self.assertEqual(logging.WARNING, root.level)
+            handler = next(
+                item for item in root.handlers
+                if item.__class__.__name__ == "ReporterLoggingHandler"
+            )
+            self.assertEqual(logging.WARNING, handler.level)
+        finally:
+            root.setLevel(previous)
+
+    def test_trace_api_event_is_recorded_but_filtered_by_info(self):
+        import logging
+
+        logger = logging.getLogger("feverslop.test.api")
+        metrics = APIMetrics()
+        with self.assertLogs(logger, level=TRACE_LEVEL) as captured:
+            record_api_call(metrics, logger, "comfyui", "get_history", 0.0,
+                            success=True, level=TRACE_LEVEL)
+        self.assertEqual(1, len(captured.records))
+        self.assertEqual(TRACE_LEVEL, captured.records[0].levelno)
+
+    def test_failed_api_event_defaults_to_error(self):
+        import logging
+
+        logger = logging.getLogger("feverslop.test.api.failure")
+        with self.assertLogs(logger, level=logging.ERROR) as captured:
+            record_api_call(APIMetrics(), logger, "llm", "chat", 0.0, success=False)
+        self.assertEqual(logging.ERROR, captured.records[0].levelno)
+
+    def test_info_level_hides_trace_events(self):
+        import logging
+
+        root = logging.getLogger()
+        previous = root.level
+        try:
+            install_reporter_logging(MagicMock(), level="info")
+            self.assertFalse(logging.getLogger("feverslop.test.trace").isEnabledFor(TRACE_LEVEL))
+        finally:
+            root.setLevel(previous)
     def test_require_json_object_rejects_scalar_external_payloads(self):
         with self.assertRaises(ValueError):
             require_json_object([], context="test")
@@ -79,6 +142,21 @@ class APIMetricsTests(unittest.TestCase):
         self.assertEqual("job-1", entry["job_id"])
         self.assertEqual("project-1", entry["project_id"])
         self.assertEqual("scene-2", entry["scene_id"])
+
+    def test_api_log_includes_safe_scene_timing_context(self):
+        import logging
+
+        logger = logging.getLogger("feverslop.test.api.context")
+        with self.assertLogs(logger, level=logging.INFO) as captured:
+            with api_observability_context(
+                correlation_id="corr-1", stage="h3_prompt", scene_id="segment_019",
+                operation="planner", attempt=2, checkpoint="miss",
+            ):
+                record_api_call(APIMetrics(), logger, "llm", "chat", 0.0, success=True)
+        self.assertIn("stage=h3_prompt", captured.output[0])
+        self.assertIn("scene_id=segment_019", captured.output[0])
+        self.assertIn("attempt=2", captured.output[0])
+        self.assertIn("checkpoint=miss", captured.output[0])
 
     def test_exposes_percentiles_retry_count_and_time_window(self):
         metrics = APIMetrics()

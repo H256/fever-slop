@@ -70,6 +70,10 @@ class APIObservabilityContext:
     job_id: str | None = None
     project_id: str | None = None
     scene_id: str | None = None
+    stage: str | None = None
+    operation: str | None = None
+    attempt: int | None = None
+    checkpoint: str | None = None
 
 
 _observability_context: ContextVar[APIObservabilityContext | None] = ContextVar(
@@ -84,12 +88,21 @@ def api_observability_context(
     job_id: str | None = None,
     project_id: str | None = None,
     scene_id: str | None = None,
+    stage: str | None = None,
+    operation: str | None = None,
+    attempt: int | None = None,
+    checkpoint: str | None = None,
 ):
+    parent = _observability_context.get()
     context = APIObservabilityContext(
-        correlation_id=correlation_id or uuid.uuid4().hex,
-        job_id=job_id,
-        project_id=project_id,
-        scene_id=scene_id,
+        correlation_id=correlation_id or (parent.correlation_id if parent else uuid.uuid4().hex),
+        job_id=job_id if job_id is not None else (parent.job_id if parent else None),
+        project_id=project_id if project_id is not None else (parent.project_id if parent else None),
+        scene_id=scene_id if scene_id is not None else (parent.scene_id if parent else None),
+        stage=stage if stage is not None else (parent.stage if parent else None),
+        operation=operation if operation is not None else (parent.operation if parent else None),
+        attempt=attempt if attempt is not None else (parent.attempt if parent else None),
+        checkpoint=checkpoint if checkpoint is not None else (parent.checkpoint if parent else None),
     )
     token = _observability_context.set(context)
     try:
@@ -263,6 +276,31 @@ class RequestRateLimiter:
 default_api_metrics = APIMetrics()
 
 
+def log_api_call_start(
+    logger: logging.Logger | None,
+    service: str,
+    operation: str,
+    *,
+    level: int = logging.DEBUG,
+) -> None:
+    """Log safe request-start metadata; never include payloads or credentials."""
+    if logger is None:
+        return
+    context = _observability_context.get()
+    logger.log(
+        level,
+        "api_call_start service=%s operation=%s correlation_id=%s stage=%s "
+        "scene_id=%s attempt=%s checkpoint=%s",
+        service,
+        operation,
+        context.correlation_id if context else "",
+        context.stage if context else "",
+        context.scene_id if context else "",
+        context.attempt if context and context.attempt is not None else "",
+        context.checkpoint if context else "",
+    )
+
+
 def record_api_call(
     metrics: APIMetrics,
     logger: logging.Logger | None,
@@ -278,6 +316,7 @@ def record_api_call(
     reasoning_tokens: int = 0,
     retry_attempts: int = 0,
     correlation_id: str | None = None,
+    level: int | None = None,
 ) -> None:
     duration_ms = (perf_counter() - started_at) * 1000
     context = _observability_context.get()
@@ -296,13 +335,19 @@ def record_api_call(
         correlation_id=resolved_correlation_id,
     )
     if logger is not None:
-        logger.info(
-            "api_call service=%s operation=%s duration_ms=%.1f success=%s correlation_id=%s retry_attempts=%d",
+        logger.log(
+            level if level is not None else (logging.INFO if success else logging.ERROR),
+            "api_call service=%s operation=%s duration_ms=%.1f success=%s correlation_id=%s "
+            "stage=%s scene_id=%s attempt=%s checkpoint=%s retry_attempts=%d",
             service,
             operation,
             duration_ms,
             str(success).lower(),
             resolved_correlation_id or "",
+            context.stage if context else "",
+            context.scene_id if context else "",
+            context.attempt if context and context.attempt is not None else "",
+            context.checkpoint if context else "",
             retry_attempts,
         )
 

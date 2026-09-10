@@ -19,6 +19,8 @@ from feverslop.application.visual_consistency_preflight import (
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.visual_consistency import PreflightMode
+from feverslop.ports.reporting import report_message
+from feverslop.utils.cli_output import emit_cli_data
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -164,22 +166,22 @@ def _print_result(
         "issues": [asdict(issue) for issue in result.issues],
     }
     if json_output:
-        print(json.dumps(payload, sort_keys=True))
+        emit_cli_data(json.dumps(payload, sort_keys=True))
         return
     state = "renderable" if result.renderable else "blocked"
-    print(
+    report_message(
         f"Visual consistency preflight: {state}; "
         f"{len(result.contracts)} contract(s), {len(result.issues)} issue(s)",
     )
     for issue in result.issues:
-        print(f"[{issue.severity}] scene {issue.scene} {issue.code}: {issue.message}")
+        report_message(f"[{issue.severity}] scene {issue.scene} {issue.code}: {issue.message}")
 
 
 def _print_error(message: str, *, json_output: bool) -> None:
     if json_output:
-        print(json.dumps({"error": message}))
+        emit_cli_data(json.dumps({"error": message}))
     else:
-        print(f"Could not run visual consistency preflight: {message}")
+        report_message(f"Could not run visual consistency preflight: {message}")
 
 
 def main() -> None:

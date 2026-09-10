@@ -5,6 +5,7 @@ import json
 import shutil
 
 from rich.console import Console
+from feverslop.ports.reporting import ReporterConsole
 from rich.panel import Panel
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.domain.postprocessing import TrimSpec
@@ -12,7 +13,7 @@ from feverslop.path_utils import coerce_local_path
 from feverslop.utils.rich_progress import build_progress
 from feverslop.utils.render_plan_selection import parse_scene_list
 
-console = Console()
+console = ReporterConsole(Console())
 
 
 def _resolve_ffmpeg_path(value: str) -> str:

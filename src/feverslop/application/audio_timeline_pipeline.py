@@ -14,6 +14,7 @@ from feverslop.ports.generate_pipeline import (
     StemSeparatorFactory,
     VocalTimelineAnalyzerFactory,
 )
+from feverslop.utils.stems import discover_stem_files
 
 logger = logging.getLogger(__name__)
 
@@ -97,16 +98,23 @@ class AudioTimelinePipeline:
             separator = self.separator_factory(config)
             try:
                 files = run_spinner(
-                    "Separating audio into vocals/drums/bass/other...",
+                    "Separating audio into Demucs stems...",
                     lambda: separator.separate(config.input_audio, paths.stems_dir),
                 )
+                files = discover_stem_files(paths.stems_dir, config.input_audio) or files
             finally:
                 _close_audio_component(separator, "Demucs", reporter)
 
+        required_stems = {"vocals", "drums", "bass", "other"}
+        missing = sorted(required_stems - set(files))
+        if missing:
+            raise FileNotFoundError(
+                f"Demucs did not produce required stems: {', '.join(missing)} in {paths.stems_dir}",
+            )
         reporter.table(
             "Generated Stems",
             ["Stem", "Path"],
-            [[stem_name, str(files[stem_name])] for stem_name in ("vocals", "drums", "bass", "other")],
+            [[stem_name, str(files[stem_name])] for stem_name in sorted(files)],
         )
 
         log_step("2. Vocal Timeline Analysis")
@@ -199,16 +207,7 @@ class AudioTimelinePipeline:
 
     @staticmethod
     def _load_existing_stems(stems_dir, input_audio):
-        suffixes = {".wav", ".mp3", ".flac"}
-        stem_prefix = input_audio.stem
-        files = {}
-        for name in ("vocals", "drums", "bass", "other"):
-            matches = sorted(
-                path for path in stems_dir.glob(f"{name}_{stem_prefix}.*")
-                if path.is_file() and path.suffix.lower() in suffixes
-            )
-            if matches:
-                files[name] = next((path for path in matches if path.suffix.lower() == ".wav"), matches[0])
+        files = discover_stem_files(stems_dir, input_audio) or {}
         missing = sorted({"vocals", "drums", "bass", "other"} - files.keys())
         if missing:
             raise FileNotFoundError(f"Cannot skip stem separation; missing stems: {', '.join(missing)} in {stems_dir}")

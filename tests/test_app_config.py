@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import tempfile
 import unittest
@@ -39,6 +40,16 @@ class AppConfigTests(unittest.TestCase):
 
         self.assertEqual(12288, configured.llm.prompt_judge_max_tokens)
 
+    def test_h3_judge_is_disabled_by_default_and_explicitly_enableable(self):
+        from feverslop.config.app_config import AppConfig
+
+        self.assertFalse(AppConfig.load(Path("does-not-exist.json")).llm.prompt_judge_enabled)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"llm": {"prompt_judge_enabled": true}}', encoding="utf-8")
+            configured = AppConfig.load(config_path)
+        self.assertTrue(configured.llm.prompt_judge_enabled)
+
     def test_execution_config_does_not_change_existing_positional_arguments(self):
         from feverslop.config.app_config import AppConfig, ComfyUIConfig, LLMConfig
 
@@ -57,6 +68,31 @@ class AppConfigTests(unittest.TestCase):
             config = AppConfig.load(config_path)
 
         self.assertIs(VramHandoffMode.CONTINUOUS, config.execution.vram_handoff)
+
+    def test_log_level_defaults_to_info(self):
+        from feverslop.config.app_config import AppConfig
+
+        self.assertEqual(logging.INFO, AppConfig.load(Path("does-not-exist.json")).execution.log_level)
+
+    def test_loads_configured_log_level(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"execution": {"log_level": "debug"}}', encoding="utf-8")
+            config = AppConfig.load(config_path)
+
+        self.assertEqual(10, config.execution.log_level)
+
+    def test_rejects_invalid_log_level(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"execution": {"log_level": "verbose"}}', encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "execution.log_level.*unknown log level"):
+                AppConfig.load(config_path)
 
     def test_loads_manual_vram_handoff(self):
         from feverslop.config.app_config import AppConfig, VramHandoffMode

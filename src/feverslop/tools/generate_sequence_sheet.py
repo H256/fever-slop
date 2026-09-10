@@ -18,6 +18,8 @@ from feverslop.application.sequence_reference_pipeline import (
 )
 from feverslop.config.app_config import AppConfig
 from feverslop.domain.global_library import AssetKind, GlobalAsset
+from feverslop.ports.reporting import report_message
+from feverslop.utils.cli_output import emit_cli_data
 from feverslop.utils.io import atomic_write_json
 
 
@@ -205,9 +207,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         payload = run(args)
     except (FileNotFoundError, OSError, ValueError) as exc:
-        print(f"error: {exc}")
+        report_message(f"error: {exc}")
         return 2
-    print(json.dumps(payload, ensure_ascii=False, indent=2) if args.json or args.dry_run else f"generated {payload['manifest']}")
+    if args.json or args.dry_run:
+        emit_cli_data(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        report_message(f"generated {payload['manifest']}")
     return 0
 
 

@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from rich.console import Console
+from feverslop.ports.reporting import ReporterConsole
 
 from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
 from feverslop.application.canonical_plan_migration import (
@@ -32,7 +33,7 @@ def run_canonical_plan_migration(
     *,
     console: Console | None = None,
 ) -> int:
-    output = console or Console()
+    output = ReporterConsole(console or Console())
     project = Path(args.project).resolve()
     mode = "Apply" if args.apply else "Dry run"
     output.print(f"[bold]{mode}:[/bold] analyzing canonical and legacy render plans in {project}")
