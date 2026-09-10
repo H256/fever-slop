@@ -13,6 +13,10 @@ from feverslop.application.prompt_generation import PromptGenerationService
 from feverslop.config.app_config import AppConfig
 from feverslop.prompting.dspy_h3_prompt_builder import build_dspy_generator
 from feverslop.prompting.model_types import resolve_model_type
+from feverslop.ports.reporting import ConsoleReporter, install_reporter_logging
+from rich.console import Console
+
+reporter = ConsoleReporter(Console())
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -82,6 +86,8 @@ def main(
 ) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
+    install_reporter_logging(reporter)
+    error_reporter = ConsoleReporter(Console(file=sys.stderr))
     try:
         resolve_model_type(args.model_type)
         references = load_references(args.reference)
@@ -115,7 +121,7 @@ def main(
             secrets.append(config.llm.api_key)
         except (UnboundLocalError, AttributeError):
             pass
-        print(f"error: {_redact(str(exc), secrets)}", file=sys.stderr)
+        error_reporter.warning(_redact(str(exc), secrets), title="Error")
         return 1
 
 

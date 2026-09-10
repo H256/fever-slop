@@ -15,9 +15,14 @@ from feverslop.adapters.movie_artifact_writer import LocalMovieArtifactWriter
 from feverslop.application.movie import MovieInput, ScaffoldMovieUseCase
 from feverslop.path_utils import coerce_local_path
 from feverslop.composition.project_repository import build_movie_planner
+from feverslop.ports.reporting import ConsoleReporter, install_reporter_logging
+from rich.console import Console
+
+reporter = ConsoleReporter(Console())
 
 
 def main() -> None:
+    install_reporter_logging(reporter)
     parser = argparse.ArgumentParser(
         description="Scaffold a new movie project (creates render_plan.json and all planning artefacts).",
     )
@@ -90,20 +95,20 @@ def main() -> None:
     source_type = "short_story"
 
     if args.screenplay and args.story_text:
-        print("Error: specify only one of --screenplay or --story-text", file=sys.stderr)
+        reporter.warning("specify only one of --screenplay or --story-text", title="Error")
         sys.exit(1)
 
     if args.screenplay:
         sp_path = Path(args.screenplay)
         if not sp_path.exists():
-            print(f"Error: screenplay file not found: {sp_path}", file=sys.stderr)
+            reporter.warning(f"screenplay file not found: {sp_path}", title="Error")
             sys.exit(1)
         story_text = sp_path.read_text(encoding="utf-8-sig")
         source_type = "screenplay"
     elif args.story_text:
         story_text = args.story_text
     else:
-        print("Error: specify --screenplay or --story-text", file=sys.stderr)
+        reporter.warning("specify --screenplay or --story-text", title="Error")
         sys.exit(1)
 
     from feverslop.application.movie import slugify_project_name
@@ -113,17 +118,16 @@ def main() -> None:
     slug = slugify_project_name(name)
     target_dir = projects_root / slug
 
-    print(f"Scaffolding movie project: {name}")
-    print(f"  Slug:          {slug}")
-    print(f"  Project dir:   {target_dir}")
-    print(f"  Source type:   {source_type}")
-    print(f"  Planner:       {args.planner_backend}")
-    print(f"  Length:        {args.desired_length}s")
-    print(f"  Resolution:    {args.width}x{args.height}")
-    print()
+    reporter.message(f"Scaffolding movie project: {name}")
+    reporter.message(f"  Slug:          {slug}")
+    reporter.message(f"  Project dir:   {target_dir}")
+    reporter.message(f"  Source type:   {source_type}")
+    reporter.message(f"  Planner:       {args.planner_backend}")
+    reporter.message(f"  Length:        {args.desired_length}s")
+    reporter.message(f"  Resolution:    {args.width}x{args.height}")
 
     if target_dir.exists():
-        print(f"Error: project directory already exists: {target_dir}", file=sys.stderr)
+        reporter.warning(f"project directory already exists: {target_dir}", title="Error")
         sys.exit(1)
 
     planner = build_movie_planner({"planner_backend": args.planner_backend})
@@ -170,16 +174,14 @@ def main() -> None:
         ),
     )
 
-    print()
-    print("Scaffold complete!")
-    print(f"  Bible:          {result.bible_path}")
-    print(f"  Render plan:    {result.render_plan_path}")
-    print(f"  Screenplay:     {result.screenplay_path}")
-    print(f"  Screenplay MD:  {result.project_dir / 'movie' / 'screenplay.md'}")
-    print(f"  Reference manifest: {result.reference_manifest_path}")
-    print()
-    print("Next step: run the movie pipeline with:")
-    print(f'  uv run python movie_pipeline.py "{result.project_dir}" --movie-video-workflow ingredients')
+    reporter.message("Scaffold complete!")
+    reporter.message(f"  Bible:          {result.bible_path}")
+    reporter.message(f"  Render plan:    {result.render_plan_path}")
+    reporter.message(f"  Screenplay:     {result.screenplay_path}")
+    reporter.message(f"  Screenplay MD:  {result.project_dir / 'movie' / 'screenplay.md'}")
+    reporter.message(f"  Reference manifest: {result.reference_manifest_path}")
+    reporter.message("Next step: run the movie pipeline with:")
+    reporter.message(f'  uv run python movie_pipeline.py "{result.project_dir}" --movie-video-workflow ingredients')
 
 
 if __name__ == "__main__":

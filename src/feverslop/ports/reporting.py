@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
+import logging
 from pathlib import Path
 from typing import Protocol, TypeVar
 
@@ -59,11 +61,16 @@ class ConsoleReporter:
         self.console = console
     def step(self, title: str) -> None:
         self.console.print()
-        self.console.rule(f"[bold cyan]{title}[/bold cyan]")
+        self.console.rule(self._timestamp(f"[bold cyan]{title}[/bold cyan]"))
     def file(self, label: str, path: Path) -> None:
         self.message(f"[green]OK[/green] {label}: [cyan]{path}[/cyan]")
     def message(self, text: str) -> None:
-        self.console.print(text)
+        self.console.print(self._timestamp(text))
+
+    @staticmethod
+    def _timestamp(text: str) -> str:
+        now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        return "\n".join(f"[dim][{now}][/dim] {line}" for line in text.splitlines())
     def warning(self, text: str, *, title: str | None = None) -> None:
         self.panel(f"[yellow]{escape(text)}[/yellow]", title=f"[bold yellow]{escape(title or 'Warning')}[/bold yellow]")
     def panel(self, text: str, *, title: str | None = None) -> None:
@@ -76,3 +83,35 @@ class ConsoleReporter:
             self.message(" | ".join(row))
     def run_progress(self, description: str, func: Callable[[], T]) -> T:
         return func()
+
+
+class ReporterLoggingHandler(logging.Handler):
+    """Forward application and captured warning logs through the Reporter."""
+
+    def __init__(self, reporter: Reporter):
+        super().__init__()
+        self.reporter = reporter
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = self.format(record)
+            if record.levelno >= logging.WARNING:
+                self.reporter.warning(message, title=record.name)
+            else:
+                self.reporter.message(f"[dim]{record.name}[/dim] {message}")
+        except Exception:
+            self.handleError(record)
+
+
+def install_reporter_logging(reporter: Reporter) -> None:
+    root = logging.getLogger()
+    handler = next(
+        (item for item in root.handlers if isinstance(item, ReporterLoggingHandler)),
+        None,
+    )
+    if handler is None:
+        root.addHandler(ReporterLoggingHandler(reporter))
+    else:
+        handler.reporter = reporter
+    root.setLevel(logging.INFO)
+    logging.captureWarnings(True)

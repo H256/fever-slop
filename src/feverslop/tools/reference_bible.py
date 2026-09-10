@@ -21,6 +21,7 @@ from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.path_utils import resolve_workflow_reference
 from feverslop.ports.rendering import WorkflowAnchorConfig
+from feverslop.ports.reporting import ConsoleReporter, Reporter, install_reporter_logging
 from feverslop.utils.rich_progress import build_progress
 
 console = Console()
@@ -120,7 +121,10 @@ def _item_value(item, name: str) -> str:
     return str(getattr(item, name, "") or "").strip()
 
 
-def run(args: argparse.Namespace) -> list[Path]:
+def run(args: argparse.Namespace, reporter: Reporter | None = None) -> list[Path]:
+    reporter = reporter or ConsoleReporter(console)
+    if isinstance(reporter, ConsoleReporter):
+        install_reporter_logging(reporter)
     app_config = AppConfig.load(args.app_config)
     project_config = ProjectConfig.load(args.project_config)
     output_dir = Path(args.output_dir) if args.output_dir else project_config.project_dir / "output" / "references"
@@ -188,7 +192,7 @@ def run(args: argparse.Namespace) -> list[Path]:
     actor_work = 1 if sequence_backend is not None else len(actor_view_names)
     location_work = 1 if sequence_backend is not None else len(location_view_names)
     total_views = (len(subjects) * actor_work) + (len(locations) * location_work)
-    console.print(
+    reporter.message(
         "[bold cyan]Reference Bible render plan[/bold cyan]\n"
         f"Project: [cyan]{project_config.project_name}[/cyan]\n"
         f"Output: [cyan]{output_dir}[/cyan]\n"
@@ -207,7 +211,7 @@ def run(args: argparse.Namespace) -> list[Path]:
         total_task_id = progress.add_task("Rendering reference views", total=total_views)
 
         if sequence_backend is not None:
-            console.print(
+            reporter.message(
                 "[cyan]Reference phases:[/cyan] each asset runs the anchor image first, "
                 "then the MiniMax sequence.",
             )
@@ -228,7 +232,7 @@ def run(args: argparse.Namespace) -> list[Path]:
         def on_sequence_phase(event: dict) -> None:
             label = SEQUENCE_PHASE_LABELS.get(event["phase"], event["phase"])
             suffix = f": {event['path']}" if event.get("path") else ""
-            console.print(f"[cyan]{event['kind']} {event['id']}[/cyan] {label}{suffix}")
+            reporter.message(f"[cyan]{event['kind']} {event['id']}[/cyan] {label}{suffix}")
 
         generator = ReferenceBibleGenerator(
             backend=hero_backend,
@@ -248,7 +252,7 @@ def run(args: argparse.Namespace) -> list[Path]:
         )
 
         for subject in subjects:
-            console.print(f"[cyan]Starting Krea anchor + MiniMax sequence: actor {subject.id}[/cyan]")
+            reporter.message(f"[cyan]Starting Krea anchor + MiniMax sequence: actor {subject.id}[/cyan]")
             current_task_id = progress.add_task(
                 f"Actor {subject.id}",
                 total=actor_work,
@@ -256,9 +260,9 @@ def run(args: argparse.Namespace) -> list[Path]:
             manifest = generator.generate_subject_bible(subject)
             manifests.append(manifest)
             progress.update(current_task_id, completed=actor_work)
-            console.print(f"[green]OK[/green] Actor Bible: [cyan]{manifest}[/cyan]")
+            reporter.message(f"[green]OK[/green] Actor Bible: [cyan]{manifest}[/cyan]")
         for location in locations:
-            console.print(f"[cyan]Starting Krea anchor + MiniMax sequence: location {location.id}[/cyan]")
+            reporter.message(f"[cyan]Starting Krea anchor + MiniMax sequence: location {location.id}[/cyan]")
             current_task_id = progress.add_task(
                 f"Location {location.id}",
                 total=location_work,
@@ -266,7 +270,7 @@ def run(args: argparse.Namespace) -> list[Path]:
             manifest = generator.generate_location_bible(location)
             manifests.append(manifest)
             progress.update(current_task_id, completed=location_work)
-            console.print(f"[green]OK[/green] Location Bible: [cyan]{manifest}[/cyan]")
+            reporter.message(f"[green]OK[/green] Location Bible: [cyan]{manifest}[/cyan]")
         current_task_id = None
     return manifests
 
@@ -278,10 +282,12 @@ def resolve_view_names(view_set: str) -> tuple[tuple[str, ...], tuple[str, ...]]
 
 
 def main() -> None:
+    reporter = ConsoleReporter(console)
+    install_reporter_logging(reporter)
     try:
-        run(build_arg_parser().parse_args())
+        run(build_arg_parser().parse_args(), reporter=reporter)
     except ValueError as exc:
-        console.print(f"[red]ERROR[/red] {exc}")
+        reporter.warning(str(exc), title="ERROR")
         raise SystemExit(1) from None
 
 

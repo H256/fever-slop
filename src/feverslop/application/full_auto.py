@@ -13,7 +13,7 @@ from feverslop.ports.full_auto import (
     SongAudioGeneratorPort,
     SongBriefGeneratorPort,
 )
-from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter
+from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter, install_reporter_logging
 
 
 @dataclass(frozen=True)
@@ -49,6 +49,8 @@ class FullAutoUseCase:
             self.reporter = ConsoleReporter(console)
         else:
             self.reporter = NullReporter()
+        if isinstance(self.reporter, ConsoleReporter):
+            install_reporter_logging(self.reporter)
 
     def execute(self, request: FullAutoRequest) -> FullAutoResult:
         project_slug = slugify_project_name(request.project_name or request.idea)

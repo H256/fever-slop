@@ -22,8 +22,10 @@ from .stage_runners import (
     _initial_render_plan,
     console,
     resolve_pipeline_stages,
+    set_reporter,
     write_step,
 )
+from feverslop.ports.reporting import ConsoleReporter, install_reporter_logging
 
 COMFYUI_RENDERING_STAGES = frozenset({
     PipelineStage.STORYBOARD_FRAMES,
@@ -64,11 +66,14 @@ def build_run_state(args: argparse.Namespace, stages: list[PipelineStage]) -> Pi
         base_url=app_config.comfyui.base_url,
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
     )
-    console.print(f"Project: {context.project_config_path}")
-    console.print(f"Input audio: {context.input_audio}")
-    console.print(f"Song ID: {context.song_id}")
-    console.print(f"Render mode: {args.render_mode}")
-    console.print("Stages: " + ", ".join(stage.value for stage in stages))
+    reporter = ConsoleReporter(console)
+    install_reporter_logging(reporter)
+    set_reporter(reporter)
+    reporter.message(f"Project: {context.project_config_path}")
+    reporter.message(f"Input audio: {context.input_audio}")
+    reporter.message(f"Song ID: {context.song_id}")
+    reporter.message(f"Render mode: {args.render_mode}")
+    reporter.message("Stages: " + ", ".join(stage.value for stage in stages))
     return state
 
 
@@ -77,33 +82,35 @@ def run(
     *,
     on_stage_complete: Callable[[str], None] | None = None,
 ) -> PipelineRunResult:
+    reporter = ConsoleReporter(console)
+    set_reporter(reporter)
     stages = resolve_pipeline_stages(args)
     state = build_run_state(args, stages)
     for stage in stages:
         if stage in COMFYUI_RENDERING_STAGES and state.comfyui_client is not None:
-            console.print(f"[dim]Clearing ComfyUI cache and VRAM before {STAGE_LABELS[stage]}...[/dim]")
+            reporter.message(f"[dim]Clearing ComfyUI cache and VRAM before {STAGE_LABELS[stage]}...[/dim]")
             state.comfyui_client.free_cache_and_vram()
         write_step(f"Stage {STAGE_LABELS[stage]}")
         try:
             STAGE_RUNNERS[stage](state)
         except FeverSlopError as exc:
-            console.print(f"[red]Pipeline error:[/red] {exc}")
+            reporter.message(f"[red]Pipeline error:[/red] {exc}")
             raise
         except Exception as exc:
             raise RuntimeError(f"{STAGE_LABELS[stage]} failed: {exc}") from exc
         if on_stage_complete is not None:
             on_stage_complete(stage.value)
 
-    console.print("Pipeline complete.")
-    console.print(f"Render plan: {state.plan_for_next_step}")
+    reporter.message("Pipeline complete.")
+    reporter.message(f"Render plan: {state.plan_for_next_step}")
     if state.final_video_path:
-        console.print(f"Final video: {state.final_video_path}")
+        reporter.message(f"Final video: {state.final_video_path}")
     elif state.video_only_path:
-        console.print(f"Video-only concat: {state.video_only_path}")
+        reporter.message(f"Video-only concat: {state.video_only_path}")
     if state.openshot_project_path:
-        console.print(f"OpenShot project: {state.openshot_project_path}")
+        reporter.message(f"OpenShot project: {state.openshot_project_path}")
     if getattr(state, "timeline_project_path", None):
-        console.print(f"Timeline project: {state.timeline_project_path}")
+        reporter.message(f"Timeline project: {state.timeline_project_path}")
 
     return PipelineRunResult(
         render_plan_path=state.plan_for_next_step,
