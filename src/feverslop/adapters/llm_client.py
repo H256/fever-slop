@@ -133,6 +133,7 @@ class LocalOpenAIClient:
         prompt_judge_attempts: int = 3,
         prompt_judge_max_tokens: int = 8192,
         prompt_judge_blocking: bool = True,
+        prompt_judge_enabled: bool = True,
         chat_template_kwargs: dict[str, Any] | None = None,
         metrics: APIMetrics | None = None,
         auth_headers: dict[str, str] | None = None,
@@ -164,6 +165,7 @@ class LocalOpenAIClient:
         self.prompt_judge_attempts = int(prompt_judge_attempts)
         self.prompt_judge_max_tokens = int(prompt_judge_max_tokens)
         self.prompt_judge_blocking = bool(prompt_judge_blocking)
+        self.prompt_judge_enabled = bool(prompt_judge_enabled)
         self.chat_template_kwargs = dict(chat_template_kwargs or {})
         self.request_rate_limiter = RequestRateLimiter(min_request_interval_seconds)
         self.llm_limiter = get_shared_llm_concurrency_limiter(self.max_concurrent_requests)
