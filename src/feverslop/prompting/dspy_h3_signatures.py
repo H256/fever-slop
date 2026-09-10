@@ -46,8 +46,10 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         complete, grammatical description containing the intended action, performance,
         camera, environment, and transition details. Do not distribute the same scene
         information across auxiliary fields: the deterministic compiler renders only
-        `description` for newly generated shots. For R2V, include a concrete style_opening
-        and normally target 350-500 English words across the combined shot descriptions,
+        `description` for newly generated shots. The application owns the style opening
+        and places it deterministically in the guide-defined detailed_description section;
+        do not put subjects, references, or scene staging into a separate style_opening.
+        Normally target 350-500 English words across the combined shot descriptions,
         scaled to the scene's actual information load.
         This is a writing target; the downstream validator judges structure and the final
         judge evaluates whether the description is sufficiently detailed.

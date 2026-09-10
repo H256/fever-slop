@@ -39,6 +39,11 @@ CONCEPT_BATCH_JSON_OVERHEAD = 2048
 LYRIC_ALIGNMENT_PER_SEGMENT_TOKENS = 1024
 MSR_PER_RELAY_TOKENS = 2048
 
+# H3 is called once per scene. Never inherit the application's large global
+# response budget for these bounded structured/advisory tasks.
+H3_PLANNER_MAX_TOKENS = 4096
+H3_JUDGE_MAX_TOKENS = 2048
+
 # Batched tasks are budgeted by the per-call-site multiplier functions
 # (concept_batch_max_tokens / lyric_alignment_max_tokens), not by this
 # static map; their entries here are only a conservative fallback.
