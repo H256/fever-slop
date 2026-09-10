@@ -5,12 +5,13 @@ import json
 from pathlib import Path
 
 from rich.console import Console
+from feverslop.ports.reporting import ReporterConsole
 from rich.panel import Panel
 
 from feverslop.path_utils import coerce_local_path
 from feverslop.tools.render_plan_normalizer import normalize_render_plan_file
 
-console = Console()
+console = ReporterConsole(Console())
 
 
 def main():

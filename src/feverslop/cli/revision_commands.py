@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 from feverslop.domain.prompt_revisions import PromptField
+from feverslop.ports.reporting import ReporterConsole
+from rich.console import Console
 
 
 def _utc_now() -> datetime.datetime:
@@ -14,8 +16,6 @@ def _utc_now() -> datetime.datetime:
 
 def run_revisions(args: argparse.Namespace) -> None:
     """Handle the revisions subcommand."""
-    from rich.console import Console
-
     from feverslop.application.prompt_revisions import (
         LoadPromptHistoryUseCase,
         PatchPromptError,
@@ -23,7 +23,7 @@ def run_revisions(args: argparse.Namespace) -> None:
     )
     from feverslop.infra.sqlite_adapter import SqliteRevisionStore
 
-    console = Console()
+    console = ReporterConsole(Console())
     project_dir = Path(args.project_dir)
 
     # Resolve revision store from project dir
@@ -79,14 +79,12 @@ def run_revisions(args: argparse.Namespace) -> None:
 
 def run_rebuild_preview(args: argparse.Namespace) -> None:
     """Handle the rebuild-preview subcommand."""
-    from rich.console import Console
-
     from feverslop.application.rebuild_preview import PreviewRebuildUseCase
     from feverslop.domain.rebuild_policy import (
         ChangeSet,
     )
 
-    console = Console()
+    console = ReporterConsole(Console())
     console.print("[bold]Rebuild Preview[/]\n")
 
     # Placeholder: load scene documents and compare prompt hashes against provenance

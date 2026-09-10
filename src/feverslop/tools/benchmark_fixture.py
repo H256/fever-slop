@@ -1,6 +1,7 @@
 """Validate the tracked, media-free benchmark project contract."""
 
 from __future__ import annotations
+from feverslop.ports.reporting import report_message
 
 import argparse
 import hashlib
@@ -56,7 +57,7 @@ def main() -> int:
     parser.add_argument("project", type=Path)
     args = parser.parse_args()
     validate_benchmark_project(args.project)
-    print(f"validated benchmark project: {args.project}")
+    report_message(f"validated benchmark project: {args.project}")
     return 0
 
 

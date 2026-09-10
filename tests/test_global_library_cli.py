@@ -19,7 +19,10 @@ class GlobalLibraryCliTests(unittest.TestCase):
             human_output = StringIO()
             with redirect_stdout(human_output):
                 self.assertEqual(0, main(["--library-root", temp, "show", "--kind", "prop", "--id", "lamp"]))
-            self.assertEqual("prop/lamp: Lamp\n", human_output.getvalue())
+            self.assertRegex(
+                human_output.getvalue(),
+                r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] prop/lamp: Lamp\n$",
+            )
             output = StringIO()
             with redirect_stdout(output):
                 self.assertEqual(0, main(["--library-root", temp, "list", "--json"]))
@@ -35,7 +38,7 @@ class GlobalLibraryCliTests(unittest.TestCase):
             with redirect_stderr(error):
                 code = main(["--library-root", temp, "show", "--kind", "prop", "--id", "missing"])
             self.assertNotEqual(0, code)
-            self.assertIn("create or import", error.getvalue())
+            self.assertRegex(error.getvalue(), r"create or\s+import")
 
     def test_generate_dry_run_accepts_json_input_and_explicit_workflow(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -72,7 +75,7 @@ class GlobalLibraryCliTests(unittest.TestCase):
         with redirect_stdout(StringIO()), redirect_stderr(error):
             code = main(["--library-root", str(library_root), "refresh", "--snapshot", str(snap)])
         self.assertEqual(2, code)
-        self.assertIn("refusing to materialize", error.getvalue())
+        self.assertRegex(error.getvalue(), r"refusing to\s+materialize")
         self.assertTrue((snap / "manifest.json").is_file())
         self.assertTrue((snapshot / "manifest.json").is_file())
         self.assertTrue((snapshot / "hero.png").is_file())

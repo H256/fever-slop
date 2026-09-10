@@ -7,6 +7,7 @@ from typing import Any
 
 from rich.console import Console
 from rich.table import Table
+from feverslop.ports.reporting import ReporterConsole
 
 from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
 from feverslop.application.canonical_plan_inspection import inspect_overrides, inspect_scene_roles
@@ -37,7 +38,7 @@ def build_canonical_plan_parsers(subparsers) -> None:
 
 
 def run_canonical_plan_command(args: argparse.Namespace, *, console: Console | None = None) -> int:
-    output = console or Console()
+    output = ReporterConsole(console or Console())
     project = Path(args.project).resolve()
     try:
         if args.command == "status":

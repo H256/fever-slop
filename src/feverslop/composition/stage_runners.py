@@ -28,6 +28,7 @@ from feverslop.adapters.project_visual_consistency import (
     validate_project_scene_artifacts,
 )
 from feverslop.adapters.reporting import ConsoleReporter
+from feverslop.ports.reporting import Reporter
 from feverslop.adapters.video_postprocessor import VideoPostProcessor, final_video_postprocessor
 from feverslop.adapters.cutless_assembly import CutlessAssemblyService
 from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
@@ -105,6 +106,7 @@ from feverslop.tools.reference_bible import run as render_reference_bible
 from feverslop.tools.storyboard_page import generate_storyboard_page, parse_scene_list
 from feverslop.utils.io import file_is_valid
 from feverslop.utils.rich_progress import build_progress
+from feverslop.utils.stems import discover_stem_files
 
 from .arg_parser import PipelineStage
 from .config_loader import (
@@ -135,6 +137,16 @@ def _get_resolution(args: argparse.Namespace) -> tuple[int, int] | None:
 
 
 console = Console()
+_active_reporter: Reporter | None = None
+
+
+def set_reporter(reporter: Reporter | None) -> None:
+    global _active_reporter
+    _active_reporter = reporter
+
+
+def _report(text: str = "") -> None:
+    (_active_reporter or ConsoleReporter(console)).message(text)
 
 
 class RenderProgressReporter:
@@ -164,11 +176,11 @@ class RenderProgressReporter:
         if self.task_id is not None:
             self.progress.update(self.task_id, completed=completed)
         if self.emit_scene_progress:
-            console.print(f"Rendered scene {completed}/{total}")
+            _report(f"Rendered scene {completed}/{total}")
 
     def analysis_attempt(self, scene_id: int, references: list[dict[str, str]]) -> None:
         summary = ", ".join(f"{item['type']}:{item['id']}" for item in references)
-        console.print(f"Ingredients image analysis: scene {scene_id}; {len(references)} references [{summary}]")
+        _report(f"Ingredients image analysis: scene {scene_id}; {len(references)} references [{summary}]")
         if self.task_id is not None:
             self.progress.update(self.task_id, description=f"Analyzing scene {scene_id}: {summary}")
 
@@ -250,7 +262,7 @@ def _select_pipeline_scenes(scenes: list[dict], scene_spec: str | None) -> list[
 
 def _report_reference_fallbacks(warnings: list[str]) -> None:
     for warning in warnings:
-        console.print(f"[yellow]Reference fallback:[/yellow] {warning}")
+        _report(f"[yellow]Reference fallback:[/yellow] {warning}")
 
 
 def _seed_reference_bindings(plan_path: Path, config: ProjectConfig) -> list[str]:
@@ -347,31 +359,7 @@ def _discover_stem_files(
     stems_dir: Path,
     input_audio: Path | None = None,
 ) -> dict[str, Path] | None:
-    if not stems_dir.is_dir():
-        return None
-    stem_files = {}
-    supported_suffixes = (".wav", ".mp3", ".flac")
-    if input_audio is not None:
-        input_stem = Path(input_audio).stem
-        for stem_name in ("vocals", "drums", "bass", "other"):
-            expected_stem = f"{stem_name}_{input_stem}"
-            matches = sorted(
-                path
-                for path in stems_dir.iterdir()
-                if path.is_file()
-                and path.suffix.lower() in supported_suffixes
-                and path.stem == expected_stem
-            )
-            if matches:
-                stem_files[stem_name] = next(
-                    (path for path in matches if path.suffix.lower() == ".wav"),
-                    matches[0],
-                )
-    else:
-        for stem_file in sorted(stems_dir.iterdir()):
-            if stem_file.is_file() and stem_file.suffix.lower() in supported_suffixes:
-                stem_files[stem_file.stem.split("_", 1)[0]] = stem_file
-    return stem_files or None
+    return discover_stem_files(stems_dir, input_audio)
 
 
 def _merge_reference_paths_into_h3_segments(
@@ -457,7 +445,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         scene_details = {
             key: value for key, value in scene_details.items() if str(key) in selected_ids
         }
-        console.print(
+        _report(
             f"[cyan]Scene selection active: H3 generation limited to "
             f"{', '.join(str(number) for number in sorted(selected))}[/cyan]",
         )
@@ -527,7 +515,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
     )
     pipeline.execute(context)
     state.plan_for_next_step = state.context.render_plan
-    console.print(f"[green]OK H3 Prompts JSON: {h3_prompts_json}[/green]")
+    _report(f"[green]OK H3 Prompts JSON: {h3_prompts_json}[/green]")
 
 
 def _run_render_plan_stage(state: PipelineRunState) -> None:
@@ -575,12 +563,12 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         plan_writer=regenerator.write,
     )
     if selected_scene_spec:
-        console.print(
+        _report(
             "[cyan]Scene selection active: regenerated selected scenes while "
             "preserving unselected canonical scenes[/cyan]",
         )
     state.plan_for_next_step = state.context.render_plan
-    console.print(f"[green]OK Render Plan JSON: {state.plan_for_next_step}[/green]")
+    _report(f"[green]OK Render Plan JSON: {state.plan_for_next_step}[/green]")
 
 
 def _preserve_enriched_reference_paths(
@@ -663,7 +651,7 @@ def _run_anchor_fix_stage(state: PipelineRunState) -> None:
     )
     warnings = validate_anchor_file(state.plan_for_next_step, subject_hint=subject_anchor)
     for warning in warnings[:30]:
-        console.print(f"! {warning}")
+        _report(f"! {warning}")
 
 
 def _run_set_resolution_stage(state: PipelineRunState) -> None:
@@ -676,7 +664,7 @@ def _run_set_resolution_stage(state: PipelineRunState) -> None:
     height = set_res.height
     megapixels = set_res.megapixels
     label = f"{width}x{height}" if megapixels is None else f"{megapixels} MP"
-    console.print(f"Setting resolution to {label}...")
+    _report(f"Setting resolution to {label}...")
 
     # 1. Patch config.json
     ProjectConfig.set_resolution_on_disk(
@@ -685,14 +673,14 @@ def _run_set_resolution_stage(state: PipelineRunState) -> None:
         height=height,
         megapixels=megapixels,
     )
-    console.print(f"[green]Updated config.json resolution to {label}[/green]")
+    _report(f"[green]Updated config.json resolution to {label}[/green]")
 
     # Keep derived plans and manifests untouched. Their old fingerprints are
     # the evidence that makes the next normal resume rebuild the right work.
     store = CanonicalPlanStore(state.context.project_config_dir)
     snapshot = store.capture_regeneration()
     if not snapshot.exists:
-        console.print(
+        _report(
             "[green]Resolution saved. The canonical plan will receive it when "
             "the normal pipeline creates the plan.[/green]",
         )
@@ -709,7 +697,7 @@ def _run_set_resolution_stage(state: PipelineRunState) -> None:
         updated.append(patched)
     store.commit_regeneration(snapshot, updated)
     state.plan_for_next_step = state.context.artifact_layout.base_plan
-    console.print(
+    _report(
         "[green]Updated canonical resolution. Use the normal --dry-run/--resume "
         "pair to rebuild stale workflows and clips.[/green]",
     )
@@ -725,9 +713,9 @@ def _run_sync_project_settings_stage(state: PipelineRunState) -> None:
     )
     state.plan_for_next_step = state.context.artifact_layout.base_plan
     if changed:
-        console.print("[green]Canonical project render settings synchronized.[/green]")
+        _report("[green]Canonical project render settings synchronized.[/green]")
     else:
-        console.print("[dim]Canonical project render settings already match.[/dim]")
+        _report("[dim]Canonical project render settings already match.[/dim]")
 
 
 def _run_storyboard_frames_stage(state: PipelineRunState) -> None:
@@ -780,7 +768,7 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
             actor_ids=(actor.id for actor in config.actors),
             location_id=(location.id for location in config.structured_locations),
         ):
-            console.print("[yellow]Skipping MSR reference rendering; existing reference manifests are reusable.[/yellow]")
+            _report("[yellow]Skipping MSR reference rendering; existing reference manifests are reusable.[/yellow]")
             return
     reference_args = _get_reference_bible_parser().parse_args([
         "--project-config",
@@ -800,7 +788,7 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
         "--sequence-workflow",
         str(getattr(state.args, "sequence_to_sheet_workflow", "workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json")),
     ])
-    render_reference_bible(reference_args)
+    render_reference_bible(reference_args, reporter=_active_reporter)
 
 
 def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
@@ -809,7 +797,7 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
             "msr_reference_sheets requires --video-pipeline ltx_msr, ltx_ingredients, minimax-h3-r2v, or minimax-h3-i2v",
         )
     if not state.plan_for_next_step.is_file():
-        console.print(
+        _report(
             "[dim]Render plan missing; creating the intermediate plan before enriching MSR references...[/dim]",
         )
         _run_render_plan_stage(state)
@@ -1146,7 +1134,7 @@ def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
     try:
         for completed, render_scene in enumerate(scenes, start=1):
             if render_scene.scene_number in handoff_predecessors:
-                console.print(
+                _report(
                     f"Deferred scene {completed}/{total}: "
                     f"{render_scene.scene_number} (awaiting predecessor handoff)",
                 )
@@ -1162,7 +1150,7 @@ def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
                     canonical_dependencies,
                 )
             ):
-                console.print(
+                _report(
                     f"Reused prepared scene {completed}/{total}: "
                     f"{render_scene.scene_number}",
                 )
@@ -1175,7 +1163,7 @@ def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
                 pipeline=state.args.video_pipeline,
                 canonical_dependencies=canonical_dependencies,
             ))
-            console.print(f"Prepared scene {completed}/{total}: {render_scene.scene_number}")
+            _report(f"Prepared scene {completed}/{total}: {render_scene.scene_number}")
     except Exception:
         for path, content in previous.items():
             if content is None:
@@ -1483,7 +1471,7 @@ def _run_visual_consistency_preflight(
         (*result.issues, *artifact_issues),
     )
     for issue in result.issues:
-        console.print(
+        _report(
             f"Visual consistency {issue.severity.upper()} "
             f"scene {issue.scene} {issue.code}: {issue.message}",
         )
@@ -1949,7 +1937,7 @@ def _assemble_declared_cutless_groups(
             for segment in group.get("segments") or []
         ]
         if not segment_ids or any(segment_id not in clips_by_segment for segment_id in segment_ids):
-            console.print(
+            _report(
                 f"[yellow]Skipping cutless group {group.get('group_id', index)}: "
                 "rendered segment clips are not individually addressable.[/yellow]",
             )
@@ -2009,7 +1997,7 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
     if canonical_available:
         clips = canonical_clips
     else:
-        console.print(
+        _report(
             "[yellow]No canonical final.mp4 scene artifacts found; using the complete legacy "
             "scene layout for the base movie.[/yellow]",
         )
@@ -2026,7 +2014,7 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
     )
     rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
     postprocessor = final_video_postprocessor()
-    console.print(f"Concatenating base variant: {len(clips)} scene clips")
+    _report(f"Concatenating base variant: {len(clips)} scene clips")
     state.video_only_path = postprocessor.concat_clips(
         concat_list=state.context.concat_list,
         output_file=layout.video_only,
@@ -2045,7 +2033,7 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
             continue
         if len(available) != len(variant_clips):
             missing = [clip.parent.name for clip in variant_clips if not clip.is_file()]
-            console.print(
+            _report(
                 f"[yellow]Skipping {variant} movie: found {len(available)}/{len(variant_clips)} "
                 f"scene clips; missing {', '.join(missing[:10])}.[/yellow]",
             )
@@ -2055,7 +2043,7 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
             layout.final_dir,
             f"concat_{variant}.txt",
         )
-        console.print(f"Concatenating {variant} variant: {len(variant_clips)} scene clips")
+        _report(f"Concatenating {variant} variant: {len(variant_clips)} scene clips")
         state.video_only_variants[variant] = postprocessor.concat_clips(
             concat_list=concat_list,
             output_file=output_path,
@@ -2107,7 +2095,7 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
             if all(clip.is_file() for clip in scene_clips):
                 variants[variant] = aggregate_path
             else:
-                console.print(
+                _report(
                     f"[yellow]Ignoring stale {aggregate_path.name}: the current render plan "
                     f"does not have a complete {variant} scene set.[/yellow]",
                 )
@@ -2123,7 +2111,7 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
             video_file = variants.get(variant)
             if video_file is None:
                 continue
-            console.print(f"Muxing original audio into {variant} movie")
+            _report(f"Muxing original audio into {variant} movie")
             results[variant] = postprocessor.mux_original_audio(
                 video_file=video_file,
                 audio_file=state.context.input_audio,
@@ -2153,7 +2141,7 @@ def _run_upscale_stage(state: PipelineRunState) -> None:
 
     config = ProjectConfig.load(state.context.project_config_path)
     if not config.upscale.enabled and not getattr(state.args, "upscale", False):
-        console.print("SeedVR2 upscale disabled in project config.")
+        _report("SeedVR2 upscale disabled in project config.")
         return
     config.upscale.validate_resources()
     workflow_path = Path(config.upscale.workflow_path)
@@ -2178,7 +2166,7 @@ def _run_upscale_stage(state: PipelineRunState) -> None:
         scene_numbers=parse_scene_list(getattr(state.args, "scenes", None)),
         reporter=reporter,
     ))
-    console.print("[green]SeedVR2 upscale artifacts ready.[/green]")
+    _report("[green]SeedVR2 upscale artifacts ready.[/green]")
 
 
 def _run_diagnostic_scene_audio_concat_stage(state: PipelineRunState) -> None:
@@ -2215,7 +2203,7 @@ def _run_timeline_export_stage(state: PipelineRunState) -> None:
         variants.append(("_upscaled", False, True))
 
     def report(completed: int, total: int, label: str) -> None:
-        console.print(f"[dim]Timeline export: {completed}/{total} ({label})[/dim]")
+        _report(f"[dim]Timeline export: {completed}/{total} ({label})[/dim]")
 
     for export_format in export_formats:
         extension = "mlt" if export_format == "mlt" else "osp"
@@ -2229,7 +2217,7 @@ def _run_timeline_export_stage(state: PipelineRunState) -> None:
                 prefer_upscaled=prefer_upscaled,
             )
             output_path = state.context.project_output_dir / output_dir_name / f"{state.context.project_file_stem}{suffix}.{extension}"
-            console.print(f"Timeline export ({export_format}, {suffix or 'final'}): writing {len(clips)} rendered clips")
+            _report(f"Timeline export ({export_format}, {suffix or 'final'}): writing {len(clips)} rendered clips")
             if export_format == "mlt":
                 written = export_render_plan_to_mlt(
                     render_plan_path=state.plan_for_next_step, clip_paths=clips,
@@ -2248,7 +2236,7 @@ def _run_timeline_export_stage(state: PipelineRunState) -> None:
                 )
                 if not suffix:
                     state.openshot_project_path = written
-            console.print(f"[green]Timeline project written: {output_path}[/green]")
+            _report(f"[green]Timeline project written: {output_path}[/green]")
 
 
 def _run_facefix_stage(state: PipelineRunState) -> None:
@@ -2260,7 +2248,7 @@ def _run_facefix_stage(state: PipelineRunState) -> None:
     layout = state.context.artifact_layout
     scenes_dir = layout.scenes_dir
     if not scenes_dir.is_dir():
-        console.print(
+        _report(
             "[yellow]No scenes directory found at"
              f" {scenes_dir}, FaceFix skipped.[/yellow]",
         )
@@ -2285,7 +2273,7 @@ def _run_facefix_stage(state: PipelineRunState) -> None:
 
 
 def _run_facefix_concat_stage(state: PipelineRunState) -> None:
-    console.print("FaceFix final concat uses the shared artifact-variant assembler.")
+    _report("FaceFix final concat uses the shared artifact-variant assembler.")
     _run_concat_video_only_stage(state)
     _run_mux_original_audio_stage(state)
 
@@ -2363,8 +2351,8 @@ def _scene_progress_callback(progress: RenderProgressReporter):
 
 
 def write_step(message: str) -> None:
-    console.print()
-    console.print(f"==> {message}")
+    _report()
+    _report(f"==> {message}")
 
 
 def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
@@ -2390,7 +2378,7 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
     if not args.skip_main_pipeline:
         stages.append(PipelineStage.MAIN_PIPELINE)
     else:
-        console.print("Skipping main pipeline; using existing timeline, prompts, and render plan.")
+        _report("Skipping main pipeline; using existing timeline, prompts, and render plan.")
     if not args.skip_relay_compact and args.render_mode != "single_prompt":
         stages.append(PipelineStage.RELAY_COMPACT)
     if not args.skip_anchor_fix:
@@ -2399,7 +2387,7 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         if not args.skip_msr_reference_render:
             stages.append(PipelineStage.MSR_REFERENCES)
         else:
-            console.print("Skipping MSR reference rendering; using existing reference manifests.")
+            _report("Skipping MSR reference rendering; using existing reference manifests.")
         stages.append(PipelineStage.MSR_REFERENCE_SHEETS)
         if args.video_pipeline == "minimax-h3-r2v":
             stages.append(PipelineStage.H3_PROMPTS)
@@ -2407,21 +2395,21 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         if args.video_pipeline == "ltx_msr" and not args.skip_msr_prompt_enrichment:
             stages.append(PipelineStage.MSR_PROMPT_ENRICH)
         elif args.video_pipeline == "ltx_msr":
-            console.print("Skipping MSR prompt enrichment; using existing MSR prompt fields.")
+            _report("Skipping MSR prompt enrichment; using existing MSR prompt fields.")
     elif args.video_pipeline == "ltx_ingredients":
         if not args.skip_msr_reference_render:
             stages.append(PipelineStage.MSR_REFERENCES)
         else:
-            console.print("Skipping MSR reference rendering; using existing reference manifests.")
+            _report("Skipping MSR reference rendering; using existing reference manifests.")
         stages.append(PipelineStage.MSR_REFERENCE_SHEETS)
         if not args.skip_msr_prompt_enrichment:
             stages.append(PipelineStage.MSR_PROMPT_ENRICH)
         else:
-            console.print("Skipping MSR prompt enrichment; using existing MSR prompt fields.")
+            _report("Skipping MSR prompt enrichment; using existing MSR prompt fields.")
         if not getattr(args, "skip_ingredients_sheets", False):
             stages.append(PipelineStage.INGREDIENTS_SHEETS)
         else:
-            console.print("Skipping Ingredients sheets; using existing sheets or references.")
+            _report("Skipping Ingredients sheets; using existing sheets or references.")
     else:
         if not args.skip_storyboard:
             stages.append(PipelineStage.STORYBOARD_FRAMES)
@@ -2442,7 +2430,7 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         if not args.skip_facefix:
             stages.append(PipelineStage.FACEFIX)
         else:
-            console.print("Skipping FaceFix postprocessing.")
+            _report("Skipping FaceFix postprocessing.")
         if upscale_enabled:
             stages.append(PipelineStage.UPSCALE)
         stages.append(PipelineStage.CONCAT_VIDEO_ONLY)
@@ -2450,15 +2438,15 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
         if args.diagnostic_original_audio_mux:
             stages.append(PipelineStage.DIAGNOSTIC_SCENE_AUDIO_CONCAT)
         elif args.no_original_audio_mux:
-            console.print("--no-original-audio-mux is deprecated; original-audio muxing is now always used for final concat.")
+            _report("--no-original-audio-mux is deprecated; original-audio muxing is now always used for final concat.")
         if not getattr(args, "skip_openshot_export", False):
             stages.append(PipelineStage.EXPORT_TIMELINE)
         else:
-            console.print("Skipping OpenShot project export.")
+            _report("Skipping OpenShot project export.")
     elif not args.skip_facefix:
         stages.append(PipelineStage.FACEFIX)
     else:
-        console.print("Skipping FaceFix postprocessing.")
+        _report("Skipping FaceFix postprocessing.")
     return stages
 
 

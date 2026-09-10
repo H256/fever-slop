@@ -21,6 +21,7 @@ UNIT_MODULES = (
     "artifact_store_pipeline_io",
     "atomic_io",
     "audio_model_cleanup",
+    "reporting_and_stems",
     "audit_domain_validation",
     "audit_movie_config_path",
     "audit_render_correctness",

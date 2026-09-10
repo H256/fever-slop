@@ -1,4 +1,5 @@
 from __future__ import annotations
+from feverslop.ports.reporting import report_message
 
 import argparse
 import json
@@ -225,11 +226,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.dry_run:
-        print(f"Project: {project_dir}")
-        print(f"Files: {len(members)}")
-        print(f"Bytes: {sum(member.size for member in members)}")
+        report_message(f"Project: {project_dir}")
+        report_message(f"Files: {len(members)}")
+        report_message(f"Bytes: {sum(member.size for member in members)}")
         for member in members:
-            print(member.arcname)
+            report_message(member.arcname)
         return 0
 
     output_zip = create_project_archive(
@@ -238,9 +239,9 @@ def main(argv: list[str] | None = None) -> int:
         project_name=project_name,
         output_zip=args.output,
     )
-    print(f"Archive: {output_zip}")
-    print(f"Files: {len(members)}")
-    print(f"Bytes: {sum(member.size for member in members)}")
+    report_message(f"Archive: {output_zip}")
+    report_message(f"Files: {len(members)}")
+    report_message(f"Bytes: {sum(member.size for member in members)}")
     return 0
 
 

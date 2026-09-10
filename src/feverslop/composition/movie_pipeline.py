@@ -39,9 +39,17 @@ from feverslop.composition.movie_planner import build_movie_planner
 from feverslop.config.app_config import AppConfig
 from feverslop.path_utils import coerce_local_path
 from feverslop.scene_artifacts import SceneArtifactLayout
+from feverslop.adapters.reporting import ConsoleReporter
+from feverslop.ports.reporting import install_reporter_logging
+from feverslop.ports.reporting import Reporter
 from feverslop.utils.rich_progress import build_progress
 
 console = Console()
+_active_reporter: Reporter | None = None
+
+
+def _report(text: str = "") -> None:
+    (_active_reporter or ConsoleReporter(console)).message(text)
 
 
 def _parse_scene_numbers(value: str) -> list[int]:
@@ -258,6 +266,9 @@ class MoviePipelineResult:
 
 
 def run(args: argparse.Namespace) -> MoviePipelineResult:
+    global _active_reporter
+    _active_reporter = ConsoleReporter(console)
+    install_reporter_logging(_active_reporter)
     config = config_from_args(args)
     if getattr(args, "stage", None) == "openshot_export":
         stage_titles = {"Movie OpenShot export"}
@@ -334,11 +345,11 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
 
     def report_ingredients_analysis(shot_id: str, references: list[dict[str, str]]) -> None:
         summary = ", ".join(f"{item['type']}:{item['id']}" for item in references)
-        console.print(f"Ingredients image analysis: shot {shot_id}; {len(references)} references [{summary}]")
+        _report(f"Ingredients image analysis: shot {shot_id}; {len(references)} references [{summary}]")
 
     def report_msr_analysis(shot_id: str, references: list[dict[str, str]]) -> None:
         summary = ", ".join(f"{item['type']}:{item['id']}" for item in references)
-        console.print(f"MSR image analysis: shot {shot_id}; {len(references)} references [{summary}]")
+        _report(f"MSR image analysis: shot {shot_id}; {len(references)} references [{summary}]")
 
     if not render_plan_path.exists():
         raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
@@ -479,10 +490,10 @@ def _run_movie_openshot_export_stage(args: argparse.Namespace, project_dir: Path
         audio_path = coerce_local_path(audio_value, base_dir=project_dir).resolve()
     output_path = project_dir / "output" / "movie" / "openshot" / f"{project_dir.name}.osp"
 
-    console.print(f"Movie OpenShot export: writing {len(clips)} rendered clips")
+    _report(f"Movie OpenShot export: writing {len(clips)} rendered clips")
 
     def report(completed: int, total: int, label: str) -> None:
-        console.print(f"[dim]Movie OpenShot export: {completed}/{total} ({label})[/dim]")
+        _report(f"[dim]Movie OpenShot export: {completed}/{total} ({label})[/dim]")
 
     export_render_plan_to_openshot(
         render_plan_path=plan_path,
@@ -848,10 +859,10 @@ def _run_msr_workflow(
         prepared_minimax_plan_path = prompt_adapter.prepare_render_plan(
             render_plan_path,
             project_dir,
-            on_scene_started=lambda index, total, scene: console.print(
+            on_scene_started=lambda index, total, scene: _report(
                 f"[cyan]H3 prompts: processing scene {index}/{total} - scene {scene}[/cyan]",
             ),
-            on_scene_prepared=lambda completed, total, scene: console.print(
+            on_scene_prepared=lambda completed, total, scene: _report(
                 f"[cyan]H3 prompts: {completed}/{total} scenes - scene {scene}[/cyan]",
             ),
         )
@@ -871,7 +882,7 @@ def _run_msr_workflow(
             final_video_path = adapter.render_movie(
                 project_dir=project_dir, render_plan_path=prepared_minimax_plan_path or render_plan_msr_path or render_plan_path,
                 selected_scenes=args.scenes, continuity_keyframes=config["continuity_keyframes"],
-                on_clip_rendered=lambda completed, total, scene_number: print(
+                on_clip_rendered=lambda completed, total, scene_number: _report(
                     f"Rendered movie clip {completed}/{total}: scene {scene_number}",
                 ),
             )
@@ -929,7 +940,7 @@ def _log_stage(title: str, detail: str = "") -> None:
     message = f"[bold cyan]{title}[/bold cyan]"
     if detail:
         message = f"{message}: {detail}"
-    console.print(message)
+    _report(message)
 
 
 def _format_startframe_step(event: dict[str, Any]) -> str:
@@ -1066,7 +1077,7 @@ def _prepare_and_render_msr_movie(
         ),
         postprocessor=adapter.postprocessor,
         legacy_dirs=[project_dir / "output" / "movie" / "ltx_msr"],
-        on_clip_rendered=lambda completed, total, scene: print(
+        on_clip_rendered=lambda completed, total, scene: _report(
             f"Rendered movie clip {completed}/{total}: scene {scene}",
         ),
     )

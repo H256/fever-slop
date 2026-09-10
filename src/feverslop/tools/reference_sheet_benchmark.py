@@ -1,6 +1,7 @@
 """Evaluate pinned reference-sheet benchmark results without storing media."""
 
 from __future__ import annotations
+from feverslop.ports.reporting import report_message
 
 import argparse
 import json
@@ -115,9 +116,9 @@ def run(config_path: Path, report_path: Path) -> dict[str, Any]:
 def main() -> int:
     args = build_arg_parser().parse_args()
     report = run(args.config, args.report)
-    print(f"Reference-sheet benchmark: {report['decision']}")
+    report_message(f"Reference-sheet benchmark: {report['decision']}")
     if report["recommendation"]:
-        print(f"Recommended candidate: {report['recommendation']}")
+        report_message(f"Recommended candidate: {report['recommendation']}")
     return 0
 
 

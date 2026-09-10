@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from rich.console import Console
+from feverslop.ports.reporting import ReporterConsole
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,  # noqa: F401 - re-exported by the legacy root-level CLI wrapper.
@@ -32,7 +33,7 @@ from feverslop.utils.render_plan_selection import load_render_plan_subset, parse
 from feverslop.utils.media_paths import safe_file_stem, write_concat_list as write_media_concat_list
 from feverslop.utils.rich_progress import build_progress
 
-console = Console()
+console = ReporterConsole(Console())
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

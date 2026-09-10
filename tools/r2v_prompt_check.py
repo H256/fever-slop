@@ -18,6 +18,12 @@ import json
 import pathlib
 import sys
 
+from rich.console import Console
+
+from feverslop.ports.reporting import ConsoleReporter, install_reporter_logging
+
+reporter = ConsoleReporter(Console())
+
 
 def load_api_key(cfg_path: pathlib.Path) -> str:
     """Load LLM API key from app_config.json."""
@@ -34,6 +40,7 @@ def missing_expected_fields(payload: dict, expected_keys: list[str]) -> list[str
 
 
 def main():
+    install_reporter_logging(reporter)
     parser = argparse.ArgumentParser(description="R2V prompt checker")
     parser.add_argument("--pipeline", default="minimax-h3-r2v",
                         help="Video pipeline (default: minimax-h3-r2v)")
@@ -61,7 +68,7 @@ def main():
     from feverslop.prompting.minimax_h3_prompt_style import build_h3_video_system_prompt
 
     llm = LocalOpenAIClient(base_url=base_url, model=model, api_key=api_key, max_tokens=2048)
-    print(f"🔌 LLM: {model} @ {base_url}")
+    reporter.message(f"🔌 LLM: {model} @ {base_url}")
 
     # ─── Demo segment ───────────────────────────────────────────────
     segment: dict = {
@@ -91,11 +98,11 @@ def main():
 
     # ─── Resolve references ────────────────────────────────────────
     refs = build_references_from_segment(segment)
-    print(f"\n📋 References: {json.dumps(refs, indent=2)}")
+    reporter.message(f"📋 References: {json.dumps(refs, indent=2)}")
 
     # ─── Resolve mode from pipeline ────────────────────────────────
     mode = "ref" if args.pipeline == "minimax-h3-r2v" else "base"
-    print(f"🎬 Mode: {mode} (pipeline: {args.pipeline})")
+    reporter.message(f"🎬 Mode: {mode} (pipeline: {args.pipeline})")
 
     # ─── Build system prompt ───────────────────────────────────────
     prompt = build_h3_video_system_prompt(
@@ -106,10 +113,10 @@ def main():
     )
 
     # Show relevant sections
-    print("\n--- System Prompt Highlights ---")
+    reporter.message("--- System Prompt Highlights ---")
     for line in prompt.split("\n"):
         if any(tok in line for tok in ("Reference Labels Used", "Mandatory", "MANDATORY", "audio=fully_preserved", "Audio Preservation")):
-            print(line)
+            reporter.message(line)
 
     # ─── Build user payload ────────────────────────────────────────
     user_payload = {
@@ -128,16 +135,16 @@ def main():
     }
 
     # ─── Call LLM ──────────────────────────────────────────────────
-    print("\n🤖 Calling LLM...")
+    reporter.message("🤖 Calling LLM...")
     result = llm.complete_prompt(system_prompt=prompt, prompt=json.dumps(user_payload))
 
     # ─── Parse and validate ────────────────────────────────────────
     try:
         parsed = extract_json_object(result)
     except Exception as e:
-        print(f"\n❌ Parse failed: {e}")
-        print("Raw output:")
-        print(result[:500])
+        reporter.warning(f"Parse failed: {e}", title="Error")
+        reporter.message("Raw output:")
+        reporter.message(result[:500])
         sys.exit(1)
 
     expected_keys = ["subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music"]
@@ -146,9 +153,9 @@ def main():
         expected_keys = ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"]
 
     missing = missing_expected_fields(parsed, expected_keys)
-    print(f"\n{'✅' if not missing else '❌'} Fields present: {list(parsed.keys())}")
+    reporter.message(f"{'✅' if not missing else '❌'} Fields present: {list(parsed.keys())}")
     if missing:
-        print(f"   Missing: {missing}")
+        reporter.message(f"   Missing: {missing}")
 
     # Audio validation (ref mode)
     if mode == "ref" and refs and refs.get("audio", []):
@@ -156,28 +163,28 @@ def main():
         ra = parsed.get("retention_analysis", "")
         audio_in_sd = "<Audio" in sd
         audio_in_ra = "<Audio" in ra
-        print(f"\n{'✅' if audio_in_sd else '❌'} Audio in subject_definitions")
-        print(f"{'✅' if audio_in_ra else '❌'} Audio in retention_analysis")
+        reporter.message(f"{'✅' if audio_in_sd else '❌'} Audio in subject_definitions")
+        reporter.message(f"{'✅' if audio_in_ra else '❌'} Audio in retention_analysis")
     else:
-        print("\n   (no audio refs to check)")
+        reporter.message("   (no audio refs to check)")
 
     # ─── Pretty output ─────────────────────────────────────────────
-    print("\n" + "=" * 60)
-    print("MERGED PROMPT (ComfyUI #PROMPT)")
-    print("=" * 60)
+    reporter.message("=" * 60)
+    reporter.message("MERGED PROMPT (ComfyUI #PROMPT)")
+    reporter.message("=" * 60)
 
     if mode == "ref":
         for field in ("subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music"):
             val = parsed.get(field, "")
             if val:
-                print(f"\n{field}:")
-                print(val)
+                reporter.message(f"{field}:")
+                reporter.message(val)
     else:
         for field in ("integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"):
             val = parsed.get(field, "")
             if val:
-                print(f"\n{field}:")
-                print(val)
+                reporter.message(f"{field}:")
+                reporter.message(val)
 
 
 if __name__ == "__main__":

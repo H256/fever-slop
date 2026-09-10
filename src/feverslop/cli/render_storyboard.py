@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 
 from rich.console import Console
+from feverslop.ports.reporting import ReporterConsole
 from rich.panel import Panel
 
 from feverslop.application.render_storyboard import RenderStoryboardRequest
@@ -13,7 +14,7 @@ from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.utils.rich_progress import build_progress
 from feverslop.utils.render_plan_selection import load_render_plan_subset, parse_scene_list
 
-console = Console()
+console = ReporterConsole(Console())
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -106,4 +107,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
