@@ -102,6 +102,24 @@ class ComfyUIClientTests(unittest.TestCase):
         session.get.assert_any_call("http://comfy.example/object_info", timeout=900, allow_redirects=False)
 
     @patch("requests.Session")
+    @patch("time.sleep")
+    def test_object_info_retries_incomplete_read(self, sleep, session_class):
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+
+        session = MagicMock()
+        broken = requests.exceptions.ChunkedEncodingError("incomplete read")
+        response = MagicMock(ok=True)
+        response.json.return_value = {"LoadImage": {}}
+        session.get.side_effect = [broken, response]
+        session_class.return_value = session
+
+        result = ComfyUIClient(base_url="http://comfy.example").get_object_info()
+
+        self.assertEqual({"LoadImage": {}}, result)
+        self.assertEqual(2, session.get.call_count)
+        sleep.assert_called_once()
+
+    @patch("requests.Session")
     def test_history_polling_is_trace_level_but_failures_are_errors(self, session_class):
         import logging
 
