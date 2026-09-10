@@ -153,6 +153,28 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         full_mix = next(reference for reference in references if reference["name"] == "full_mix")
         self.assertEqual("fully_copy", full_mix["copy_mode"])
+        self.assertEqual("audio_reuse", full_mix["role"])
+        self.assertEqual("audio_reuse", full_mix["delivery_role"])
+
+    def test_reference_only_audio_does_not_emit_audio_reuse_semantic_role(self):
+        references, _ = _scene_references(
+            {
+                "segment_id": "seg-1",
+                "references": {
+                    "reference_audio_paths": ["song.wav"],
+                    "_stem_audio_tags": {
+                        "song.wav": "full_mix - original song for beat and rhythm continuity",
+                    },
+                },
+            },
+            None,
+            None,
+        )
+
+        full_mix = references[0]
+        self.assertEqual("reference", full_mix["copy_mode"])
+        self.assertEqual("rhythm", full_mix["role"])
+        self.assertEqual("audio_reuse", full_mix["delivery_role"])
 
     def test_audio_latent_delivery_repairs_stale_full_mix_reference_metadata(self):
         references = _normalize_resolved_scene_references(

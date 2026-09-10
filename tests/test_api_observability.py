@@ -1,3 +1,4 @@
+import logging
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -5,6 +6,8 @@ from feverslop.adapters.api_observability import (
     APIMetrics,
     RequestRateLimiter,
     api_observability_context,
+    log_api_call_start,
+    request_fingerprint,
     record_api_call,
     redact_secrets,
     require_json_object,
@@ -157,6 +160,26 @@ class APIMetricsTests(unittest.TestCase):
         self.assertIn("scene_id=segment_019", captured.output[0])
         self.assertIn("attempt=2", captured.output[0])
         self.assertIn("checkpoint=miss", captured.output[0])
+
+    def test_request_fingerprint_is_stable_without_exposing_payload(self):
+        from feverslop.adapters.api_observability import record_api_call
+
+        fingerprint, size = request_fingerprint({"prompt": "secret"})
+        self.assertTrue(fingerprint.startswith("sha256:"))
+        self.assertGreater(size, 0)
+        logger = logging.getLogger("feverslop.test.api.start")
+        with self.assertLogs(logger, level=logging.INFO) as captured:
+            with api_observability_context(stage="h3_prompt", scene_id="s1"):
+                log_api_call_start(
+                    logger, "llm", "chat_completions",
+                    request_hash=fingerprint, input_size=size,
+                )
+                record_api_call(
+                    APIMetrics(), logger, "llm", "chat_completions", 0.0,
+                    success=True, request_hash=fingerprint, input_size=size,
+                )
+        self.assertEqual(2, len(captured.records))
+        self.assertNotIn("secret", "\n".join(captured.output))
 
     def test_exposes_percentiles_retry_count_and_time_window(self):
         metrics = APIMetrics()
