@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -67,7 +68,11 @@ def build_run_state(args: argparse.Namespace, stages: list[PipelineStage]) -> Pi
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
     )
     reporter = ConsoleReporter(console)
-    install_reporter_logging(reporter)
+    configured_level = app_config.execution.log_level
+    requested_level = args.log_level
+    if requested_level is None:
+        requested_level = os.environ.get("FEVERSLOP_LOG_LEVEL", configured_level)
+    install_reporter_logging(reporter, level=requested_level)
     set_reporter(reporter)
     reporter.message(f"Project: {context.project_config_path}")
     reporter.message(f"Input audio: {context.input_audio}")

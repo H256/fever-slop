@@ -101,6 +101,30 @@ class ComfyUIClientTests(unittest.TestCase):
         session.get.assert_any_call("http://comfy.example/history/prompt-1", timeout=900, allow_redirects=False)
         session.get.assert_any_call("http://comfy.example/object_info", timeout=900, allow_redirects=False)
 
+    @patch("requests.Session")
+    def test_history_polling_is_trace_level_but_failures_are_errors(self, session_class):
+        import logging
+
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+
+        session = MagicMock()
+        session.get.return_value.ok = True
+        session.get.return_value.json.return_value = {}
+        session_class.return_value = session
+        logger = logging.getLogger("feverslop.adapters.comfyui_client")
+        with self.assertLogs(logger, level=5) as logs:
+            ComfyUIClient().get_history("prompt-1")
+        self.assertEqual(5, logs.records[0].levelno)
+
+        session.get.return_value.ok = False
+        session.get.return_value.status_code = 500
+        with self.assertLogs(logger, level=logging.ERROR) as logs:
+            try:
+                ComfyUIClient().get_history("prompt-1")
+            except Exception:
+                pass
+        self.assertEqual(logging.ERROR, logs.records[0].levelno)
+
     def test_http_error_includes_response_body(self):
         from feverslop.adapters.comfyui_client import ComfyUIClient, ComfyUIHTTPError
 
