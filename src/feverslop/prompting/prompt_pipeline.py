@@ -76,6 +76,7 @@ class MusicVideoPromptPipeline:
         stage1_segments: list[dict] | None = None,
         global_context: dict | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
+        skip_llm: bool = False,
     ) -> dict:
         details = {}
         segment_types = {
@@ -106,6 +107,15 @@ class MusicVideoPromptPipeline:
                 "scene_concept": concept_text, "scene_cast": scene_cast,
                 "prompt_guidance": (global_context or {}).get("prompt_guidance", {}),
             }
+            if skip_llm:
+                details[segment_id] = {
+                    "camera_motion": "",
+                    "character_motion": "",
+                    "spatial_relations": "",
+                }
+                if progress_callback is not None:
+                    progress_callback(current, total)
+                continue
             camera_motion = self.prompt_modules.detail(
                 "Camera Motion", detail_payload,
                 build_detail_system_prompt("Camera Motion", segment_type=segment_type,
