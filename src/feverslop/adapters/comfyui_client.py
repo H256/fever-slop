@@ -157,8 +157,9 @@ class ComfyUIClient:
             raise ComfyUIHTTPError("queue_prompt response missing prompt_id")
         return prompt_id
 
-    def get_history(self, prompt_id: str) -> dict:
+    def get_history(self, prompt_id: str, *, emit_log: bool = True) -> dict:
         response = self._request("get", f"{self.base_url}/history/{prompt_id}", "get_history",
+            _emit_log=emit_log,
             timeout=self.prompt_timeout_seconds,
         )
         self._raise_for_status(response, "get history")
@@ -184,7 +185,9 @@ class ComfyUIClient:
         while True:
             if cancel_event is not None and cancel_event.is_set():
                 raise InterruptedError(f"ComfyUI prompt cancelled: {prompt_id}")
-            history = self.get_history(prompt_id)
+            # Polling is recorded in metrics but stays quiet in normal CLI
+            # output; stage progress and terminal errors remain visible.
+            history = self.get_history(prompt_id, emit_log=False)
 
             if prompt_id in history:
                 entry = history[prompt_id]
