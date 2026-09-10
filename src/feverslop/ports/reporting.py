@@ -85,6 +85,27 @@ class ConsoleReporter:
         return func()
 
 
+class ReporterConsole:
+    """Compatibility console that routes human output through a Reporter."""
+
+    def __init__(self, console: Console, reporter: ConsoleReporter | None = None):
+        self.console = console
+        self.reporter = reporter or ConsoleReporter(console)
+
+    def print(self, *objects: object, **kwargs: object) -> None:
+        if not objects:
+            self.reporter.message("")
+            return
+        if all(isinstance(value, str) for value in objects) and not kwargs:
+            self.reporter.message(" ".join(objects))
+            return
+        timestamp = self.reporter._timestamp(" ")
+        self.console.print(timestamp, *objects, **kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self.console, name)
+
+
 class ReporterLoggingHandler(logging.Handler):
     """Forward application and captured warning logs through the Reporter."""
 

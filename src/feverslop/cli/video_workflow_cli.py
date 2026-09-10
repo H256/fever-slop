@@ -7,6 +7,7 @@ from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
+from feverslop.ports.reporting import ReporterConsole
 
 from feverslop.config.app_config import AppConfig
 
@@ -46,7 +47,7 @@ def build_profiles_parser(subparsers) -> None:
 
 def run_profiles_command(args: argparse.Namespace, *, console: Console | None = None) -> int:
     """Run a profile command without contacting ComfyUI."""
-    output = console or Console()
+    output = ReporterConsole(console or Console())
     try:
         config = AppConfig.load(Path(args.app_config))
         if args.profile_command == "list":

@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from rich.console import Console
+from feverslop.ports.reporting import ReporterConsole
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
@@ -34,7 +35,7 @@ def validate_comfyui_workflows(
 
 def main() -> None:
     args = build_arg_parser().parse_args()
-    console = Console()
+    console = ReporterConsole(Console())
     app_config = AppConfig.load(coerce_local_path(args.app_config))
     client = ComfyUIClient(
         base_url=app_config.comfyui.base_url,

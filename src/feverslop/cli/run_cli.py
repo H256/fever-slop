@@ -7,6 +7,7 @@ from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
+from feverslop.ports.reporting import ReporterConsole
 
 from feverslop.adapters.pipeline_runner_options import RUNNER_ARGUMENTS, default_single_prompt_workflow
 from feverslop.composition.resume_plan import build_compatibility_plan, build_resume_plan
@@ -58,7 +59,7 @@ def build_run_parser(subparsers) -> argparse.ArgumentParser:
 
 
 def run_project_command(args: argparse.Namespace, *, console: Console | None = None) -> int:
-    output = console or Console()
+    output = ReporterConsole(console or Console())
     project = Path(args.project).resolve()
     try:
         args.project_root = str(project)
