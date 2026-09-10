@@ -205,6 +205,39 @@ class PromptContractValidationTests(unittest.TestCase):
 
         self.assertNotIn("h3.detail.style_opening", [issue.code for issue in issues])
 
+    def test_h3_contract_accepts_compiler_sanitized_style_opening(self):
+        prompt = (
+            "subject_definitions:\n"
+            "<Subject 1> is a singer in <Picture 1>.\n\n"
+            "summary: [reference generation] A performance.\n\n"
+            "retention_analysis:\n"
+            "<Subject 1> (appears in [Shot 1]): fully_preserved - identity retained.\n\n"
+            "detailed_description: High-contrast crimson lighting and wet atmospheric haze.\n"
+            "[Shot 1] <Subject 1> stands in the battlefield.\n\n"
+            "overall_soundscape: Low wind.\n\n"
+            "non_diegetic_music: N/A"
+        )
+        plan = ResolvedPromptPlan(
+            creative_intent="A performance.",
+            style_opening=(
+                "The singer stands in the battlefield. "
+                "High-contrast crimson lighting and wet atmospheric haze."
+            ),
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Singer", description="a singer",
+                source_references=["<Picture 1>"],
+            )],
+            shots=[PlannedShot(
+                shot_number=1, description="The singer stands in the battlefield.",
+                start_seconds=0, end_seconds=2,
+            )],
+            overall_soundscape="Low wind.", music_intent=MusicIntent.NONE,
+        )
+
+        issues = validate_h3_prompt_contract(prompt, mode="r2v", plan=plan)
+
+        self.assertNotIn("h3.detail.style_opening", [issue.code for issue in issues])
+
     def test_h3_contract_allows_subject_name_in_verbatim_dialogue(self):
         prompt = (
             "subject_definitions:\n"
