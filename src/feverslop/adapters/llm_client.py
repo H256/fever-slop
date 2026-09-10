@@ -17,6 +17,8 @@ from feverslop.adapters.api_observability import (
     RequestRateLimiter,
     default_api_metrics,
     record_api_call,
+    log_api_call_start,
+    request_fingerprint,
 )
 from feverslop.errors import FeverSlopLMLError
 from feverslop.llm_concurrency import (
@@ -220,6 +222,11 @@ class LocalOpenAIClient:
         request_timeout = self.request_timeout_seconds if timeout is None else timeout
         with self.llm_limiter.acquire():
             started_at = time.perf_counter()
+            request_hash, input_size = request_fingerprint(messages)
+            log_api_call_start(
+                logger, "llm", "chat_completions",
+                request_hash=request_hash, input_size=input_size,
+            )
             retry_attempts = 0
             for attempt in range(self.max_retries):
                 try:
@@ -254,6 +261,8 @@ class LocalOpenAIClient:
                         completion_tokens=telemetry.completion_tokens,
                         reasoning_tokens=telemetry.reasoning_tokens,
                         retry_attempts=retry_attempts,
+                        request_hash=request_hash,
+                        input_size=input_size,
                     )
                     return result
                 except RETRYABLE_ERRORS as exc:
@@ -263,7 +272,7 @@ class LocalOpenAIClient:
                         base_delay = self.retry_base_delay * (2 ** attempt)
                         jitter = random.uniform(0, base_delay)
                         time.sleep(base_delay + jitter)
-                except Exception:
+                except Exception as exc:
                     record_api_call(
                         self.metrics,
                         logger,
@@ -272,6 +281,9 @@ class LocalOpenAIClient:
                         started_at,
                         success=False,
                         retry_attempts=retry_attempts,
+                        request_hash=request_hash,
+                        input_size=input_size,
+                        error_class=type(exc).__name__,
                     )
                     raise
 
@@ -283,6 +295,9 @@ class LocalOpenAIClient:
                 started_at,
                 success=False,
                 retry_attempts=retry_attempts,
+                request_hash=request_hash,
+                input_size=input_size,
+                error_class=type(last_error).__name__ if last_error else None,
             )
         raise FeverSlopLMLError(
             f"LLM API error after {self.max_retries} attempts: {last_error}",
