@@ -807,10 +807,14 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
     def _validate_prepared_audio_sources(prepared: list[dict], resolved: list[dict], scene: dict) -> None:
         if len(prepared) != len(resolved):
             raise H3AudioContractError("h3_audio_source_mismatch", "Selected audio sources changed after preparation.")
-        for old, current in zip(prepared, resolved):
-            for key in ("source_path", "source_hash", "roles", "bindings", "reference_index"):
-                if old.get(key) != current.get(key):
-                    raise H3AudioContractError("h3_audio_source_mismatch", "Prepared audio declaration differs from the selected workflow or sources.")
+        prepared_by_path = {str(item.get("source_path")): item for item in prepared}
+        resolved_by_path = {str(item.get("source_path")): item for item in resolved}
+        if set(prepared_by_path) != set(resolved_by_path):
+            raise H3AudioContractError("h3_audio_source_mismatch", "Selected audio sources changed after preparation.")
+        for source_path, old in prepared_by_path.items():
+            current = resolved_by_path[source_path]
+            if old.get("source_hash") != current.get("source_hash"):
+                raise H3AudioContractError("h3_audio_source_mismatch", "Prepared audio source content changed.")
             before, after = old.get("audio_timing_window"), current.get("audio_timing_window")
             if before != after:
                 allowance = int(scene.get("anchor_frames") or 0) / 24

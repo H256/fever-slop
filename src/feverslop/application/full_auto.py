@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -70,6 +71,8 @@ class FullAutoUseCase:
         self.log_file("Generated audio", generated_song.audio_path)
 
         self.log_step("3. Creating FeverSlop project")
+        video_pipeline = str(request.runner_options.get("video_pipeline") or "ltx_i2v")
+        reference_generation = str(request.runner_options.get("reference_generation") or "image_views")
         scaffold = self.project_scaffold.create_project(
             projects_dir=Path(request.projects_dir),
             project_slug=project_slug,
@@ -78,9 +81,15 @@ class FullAutoUseCase:
             width=int(request.width),
             height=int(request.height),
             fps=int(request.fps),
-            video_pipeline=str(request.runner_options.get("video_pipeline") or "ltx_i2v"),
+            video_pipeline=video_pipeline,
             render_profile=str(request.runner_options.get("render_profile") or "ltx25-i2v-draft"),
             silent_mode=bool(request.silent_mode),
+        )
+        _persist_workflow_settings(
+            scaffold.project_config_path,
+            request.runner_options,
+            video_pipeline=video_pipeline,
+            reference_generation=reference_generation,
         )
         self.log_file("Project config", scaffold.project_config_path)
         self.log_file("Lyrics", scaffold.lyrics_path)
@@ -174,3 +183,26 @@ class FullAutoUseCase:
             visual_style=str(request.style).strip(),
             music_style=str(request.music_style or spec.music_style or request.style or "").strip(),
         )
+
+
+def _persist_workflow_settings(
+    config_path: Path,
+    options: dict[str, Any],
+    *,
+    video_pipeline: str,
+    reference_generation: str,
+) -> None:
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    option = {
+        "ltx_msr": "msr_workflow",
+        "ltx_ingredients": "ingredients_workflow",
+    }.get(video_pipeline, "single_prompt_workflow")
+    video_workflow = options.get(option)
+    workflows = config.setdefault("workflows", {})
+    if video_workflow:
+        workflows["video"] = str(video_workflow)
+    config["reference_generation"] = reference_generation
+    sequence_workflow = options.get("sequence_to_sheet_workflow")
+    if reference_generation == "sequence_sheet" and sequence_workflow:
+        workflows["reference_sequence"] = str(sequence_workflow)
+    config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

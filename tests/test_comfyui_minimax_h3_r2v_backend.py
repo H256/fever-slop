@@ -2888,12 +2888,31 @@ class AudioGuideContractTests(unittest.TestCase):
         self.assertEqual(4.25, result['4']['inputs']['duration'])
 
 class AudioPreparedContractTests(unittest.TestCase):
-    def test_prepared_contract_rejects_role_or_source_drift(self):
+    def test_prepared_contract_allows_workflow_specific_bindings_to_change(self):
+        record = {
+            'source_path': 'drums.wav', 'source_hash': 'hash', 'roles': ['reference'],
+            'bindings': [{'node_id': 'old', 'input_name': 'ref_audios.ref_audio_0'}],
+            'reference_index': 0,
+            'audio_timing_window': {'start_seconds': 10, 'end_seconds': 20},
+        }
+        current = {
+            **record,
+            'bindings': [{'node_id': 'new', 'input_name': 'ref_audios.ref_audio_1'}],
+        }
+        ComfyUIMiniMaxH3R2VBackend._validate_prepared_audio_sources([record], [current], {})
+
+    def test_prepared_contract_allows_template_role_and_order_changes(self):
+        record = {'source_path': 'drums.wav', 'source_hash': 'hash', 'roles': ['reference'], 'bindings': [], 'reference_index': 0,
+                  'audio_timing_window': {'start_seconds': 10, 'end_seconds': 20}}
+        current = {**record, 'roles': ['conditioning'], 'reference_index': 1}
+        ComfyUIMiniMaxH3R2VBackend._validate_prepared_audio_sources([record], [current], {})
+
+    def test_prepared_contract_rejects_source_drift(self):
         from feverslop.domain.h3_audio_delivery import H3AudioContractError
         record = {'source_path': 'drums.wav', 'source_hash': None, 'roles': ['reference'], 'bindings': [], 'reference_index': 0,
                   'audio_timing_window': {'start_seconds': 10, 'end_seconds': 20}}
         with self.assertRaises(H3AudioContractError):
-            ComfyUIMiniMaxH3R2VBackend._validate_prepared_audio_sources([record], [{**record, 'roles': ['conditioning']}], {})
+            ComfyUIMiniMaxH3R2VBackend._validate_prepared_audio_sources([record], [{**record, 'source_hash': 'changed'}], {})
 
     def test_child_window_allowed_but_extension_rejected(self):
         from feverslop.domain.h3_audio_delivery import H3AudioContractError
