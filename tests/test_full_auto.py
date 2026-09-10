@@ -130,6 +130,46 @@ class FullAutoUseCaseTests(unittest.TestCase):
                 result.final_video_path,
             )
 
+    def test_full_auto_persists_video_and_sequence_workflow_choices_for_resume(self):
+        from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold
+        from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            use_case = FullAutoUseCase(
+                brief_generator=FakeBriefGenerator(),
+                song_generator=FakeSongGenerator(),
+                project_scaffold=LocalProjectScaffold(),
+                pipeline_runner=FakeRunner(),
+                console=FakeConsole(),
+            )
+
+            use_case.execute(
+                FullAutoRequest(
+                    idea="friendship and joy",
+                    style="bright pop",
+                    project_name="Joy Demo",
+                    projects_dir=Path(temp_dir),
+                    run_video_pipeline=True,
+                    runner_options={
+                        "video_pipeline": "minimax-h3-r2v",
+                        "single_prompt_workflow": "workflows/video/minimax_h3/r2v_audio_fullmix_guide_1-pass_turbo.json",
+                        "reference_generation": "sequence_sheet",
+                        "sequence_to_sheet_workflow": "workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json",
+                    },
+                ),
+            )
+
+            config = json.loads((Path(temp_dir) / "joy-demo" / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                "workflows/video/minimax_h3/r2v_audio_fullmix_guide_1-pass_turbo.json",
+                config["workflows"]["video"],
+            )
+            self.assertEqual("sequence_sheet", config["reference_generation"])
+            self.assertEqual(
+                "workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json",
+                config["workflows"]["reference_sequence"],
+            )
+
     def test_full_auto_logs_each_major_step_with_rich_console(self):
         from feverslop.adapters.full_auto_scaffold import LocalProjectScaffold
         from feverslop.application.full_auto import FullAutoRequest, FullAutoUseCase

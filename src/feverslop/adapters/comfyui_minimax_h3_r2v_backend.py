@@ -808,7 +808,9 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         if len(prepared) != len(resolved):
             raise H3AudioContractError("h3_audio_source_mismatch", "Selected audio sources changed after preparation.")
         for old, current in zip(prepared, resolved):
-            for key in ("source_path", "source_hash", "roles", "bindings", "reference_index"):
+            # Node ids and input names belong to the selected workflow. The
+            # patcher deliberately rebuilds those bindings for every template.
+            for key in ("source_path", "source_hash", "roles", "reference_index"):
                 if old.get(key) != current.get(key):
                     raise H3AudioContractError("h3_audio_source_mismatch", "Prepared audio declaration differs from the selected workflow or sources.")
             before, after = old.get("audio_timing_window"), current.get("audio_timing_window")
