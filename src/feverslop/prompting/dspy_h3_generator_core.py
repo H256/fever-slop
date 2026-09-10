@@ -37,10 +37,11 @@ from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.planning_payload import compact_planning_payload
 from feverslop.prompting.h3_user_messages import renderer_recovery_message
+from feverslop.prompting.llm_policy import H3_JUDGE_MAX_TOKENS, H3_PLANNER_MAX_TOKENS
 
 logger = logging.getLogger(__name__)
 
-_H3_JUDGE_MAX_TOKENS = 8192
+_H3_JUDGE_MAX_TOKENS = H3_JUDGE_MAX_TOKENS
 
 
 def _subjects_from_references(refs: list[ResolvedReference]) -> list[SubjectDefinition]:
@@ -240,6 +241,7 @@ class VideoPromptGenerator:
                  llm: Any, image_analysis_mode: ImageAnalysisMode = ImageAnalysisMode.MISSING_ONLY,
                  limits: ReferenceLimits | None = None,
                  dspy_runtime: DspyRuntime | None = None,
+                 judge_enabled: bool = True,
                  warning_callback: Callable[..., None] | None = None):
         self.base_guide_path = Path(str(base_guide_path)).name
         self.reference_guide_path = Path(str(reference_guide_path)).name
@@ -255,17 +257,21 @@ class VideoPromptGenerator:
         self.reference_renderer = self.dspy_runtime.predict(signatures.render_reference_prompt)
         self.judge = (
             self.dspy_runtime.predict(signatures.judge_final_prompt)
-            if getattr(signatures, "judge_final_prompt", None) is not None
+            if judge_enabled and getattr(signatures, "judge_final_prompt", None) is not None
             else None
         )
+        self.judge_enabled = bool(judge_enabled)
         # A judge is an advisory review, never a generation control loop.
         self.judge_attempts = 1
         self.prompt_judge_blocking = False
         self.warning_callback = warning_callback
-        self.lm = self.dspy_runtime.make_lm(llm)
+        self.lm = self.dspy_runtime.make_lm(llm, max_tokens=H3_PLANNER_MAX_TOKENS)
         self.judge_lm = self.dspy_runtime.make_lm(
             llm,
-            max_tokens=int(getattr(llm, "prompt_judge_max_tokens", _H3_JUDGE_MAX_TOKENS)),
+            max_tokens=min(
+                int(getattr(llm, "prompt_judge_max_tokens", _H3_JUDGE_MAX_TOKENS)),
+                _H3_JUDGE_MAX_TOKENS,
+            ),
         )
 
     def set_warning_callback(self, callback: Callable[..., None] | None) -> None:
@@ -346,6 +352,16 @@ class VideoPromptGenerator:
             if isinstance(reference, ResolvedReference)
             else ResolvedReference.model_validate(reference)
             for reference in references
+        ]
+        # `role` describes how the workflow delivers an audio input.  The judge
+        # must receive the independent semantic relationship as well, otherwise
+        # a rhythm-only reference is incorrectly presented as copied audio.
+        resolved_references = [
+            reference.model_copy(update={"role": "rhythm"})
+            if reference.kind.value == "audio"
+            and str(getattr(reference, "copy_mode", "reference")) == "reference"
+            else reference
+            for reference in resolved_references
         ]
         request_model = VideoPromptRequest.model_validate({
             "mode": request["mode"],

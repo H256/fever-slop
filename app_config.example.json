@@ -23,7 +23,8 @@
     "latent_upscaler_device": null
   },
   "execution": {
-    "vram_handoff": "continuous"
+    "vram_handoff": "continuous",
+    "log_level": "info"
   },
   "global_library_path": "~/.feverslop/library",
   "video_workflow_profiles": [

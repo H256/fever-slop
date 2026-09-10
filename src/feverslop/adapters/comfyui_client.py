@@ -20,6 +20,7 @@ from feverslop.adapters.api_observability import (
     require_json_object,
 )
 from feverslop.errors import FeverSlopWorkflowError
+from feverslop.ports.reporting import TRACE_LEVEL
 from feverslop.security.url_validation import validate_api_url
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,7 @@ class ComfyUIClient:
 
     def _request(self, method: str, url: str, operation: str, **kwargs):
         emit_log = kwargs.pop("_emit_log", True)
+        log_level = kwargs.pop("_log_level", TRACE_LEVEL if operation == "get_history" else logging.INFO)
         if self.auth_headers:
             kwargs.setdefault("headers", {}).update(self.auth_headers)
         kwargs.setdefault("allow_redirects", False)
@@ -99,9 +101,16 @@ class ComfyUIClient:
             self.request_rate_limiter.wait()
             response = getattr(self._ensure_session(), method)(url, **kwargs)
         except Exception:
-            record_api_call(self.metrics, logger if emit_log else None, "comfyui", operation, started_at, success=False)
+            record_api_call(
+                self.metrics, logger if emit_log else None, "comfyui", operation,
+                started_at, success=False, level=logging.ERROR,
+            )
             raise
-        record_api_call(self.metrics, logger if emit_log else None, "comfyui", operation, started_at, success=response.ok)
+        record_api_call(
+            self.metrics, logger if emit_log else None, "comfyui", operation,
+            started_at, success=response.ok,
+            level=log_level if response.ok else logging.ERROR,
+        )
         return response
 
     def close(self) -> None:

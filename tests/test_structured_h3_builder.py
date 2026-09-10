@@ -264,9 +264,11 @@ class StructuredH3BuilderTests(unittest.TestCase):
                 status_callback=lambda current, total, status: statuses.append(status),
             )
 
-        self.assertEqual(1, generator.calls)
-        self.assertIn("regenerating", statuses)
-        self.assertEqual("dspy_section_plan", store.saved[-1]["prompt_provenance"]["source"])
+        # The stale structured plan is recompiled deterministically; a planner
+        # call is no longer required just to repair compiler-owned opening text.
+        self.assertEqual(0, generator.calls)
+        self.assertIn("recompiled", statuses)
+        self.assertEqual("resumed_dspy_section_plan", store.saved[-1]["prompt_provenance"]["source"])
 
     def test_resume_keeps_bad_recompiled_plan_advisory(self):
         from pathlib import Path

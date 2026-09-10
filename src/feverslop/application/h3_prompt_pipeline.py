@@ -370,8 +370,12 @@ class H3PromptPipeline:
             reporter.message(
                 f"[cyan]H3 judge output budget: {judge_output_budget} tokens per verdict.[/cyan]",
             )
+            judge_enabled = bool(getattr(llm, "prompt_judge_enabled", True))
             reporter.message(
-                "[cyan]H3 judge mode: advisory; BAD verdicts are saved but never stop render preparation.[/cyan]",
+                "[cyan]H3 judge mode: "
+                + ("advisory; BAD verdicts are saved but never stop render preparation."
+                   if judge_enabled else "disabled; deterministic prompt validation remains active.")
+                + "[/cyan]",
             )
         selected_scene_numbers = (
             context["selected_scene_numbers"]

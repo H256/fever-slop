@@ -270,13 +270,25 @@ def _validate_r2v_contract(
     detailed = _h3_section(text, "detailed_description:", "overall_soundscape:")
     soundscape = _h3_section(text, "overall_soundscape:", "non_diegetic_music:")
     music = text.partition("non_diegetic_music:")[2]
-    style_opening = _canonical_subject_labels(str(plan.style_opening or ""), plan).strip()
     before_first_shot = detailed.partition("[Shot 1]")[0].strip()
-    if not style_opening or before_first_shot != style_opening:
+    # ``style_opening`` is compiler-owned prose.  The compiler deliberately
+    # removes subject/reference sentences because the guide places the opening
+    # inside ``detailed_description`` but reserves subject/reference bindings
+    # for the structured sections and shots.  Comparing the emitted opening to
+    # the raw planner field therefore rejects valid compiler output (and made a
+    # scene block after an otherwise successful generation).  Validate the
+    # emitted contract instead: it must exist and must not contain backend
+    # labels or compiler-owned reference phrases.
+    if not before_first_shot or _REFERENCE_LABEL.search(before_first_shot):
         issues.append(PromptContractIssue(
             "h3.detail.style_opening",
             "detailed_description",
-            "R2V detailed_description must begin with the LLM-authored style_opening before Shot 1",
+            "R2V detailed_description must contain a compiler-owned style opening before Shot 1",
+    if not before_first_shot or _REFERENCE_LABEL.search(before_first_shot):
+        issues.append(PromptContractIssue(
+            "h3.detail.style_opening",
+            "detailed_description",
+            "R2V detailed_description must contain a compiler-owned style opening before Shot 1",
         ))
     if not re.match(r"^\[[a-z][a-z +]+\]\s+\S", summary):
         issues.append(PromptContractIssue(

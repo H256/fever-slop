@@ -8,6 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from feverslop.adapters.api_observability import api_observability_context
 from feverslop.domain.performance_sync import select_performance_audio_paths
 from feverslop.domain.h3_audio_delivery import H3AudioDelivery
 from feverslop.domain.h3_prompt_checkpoint import H3PromptCheckpointInput
@@ -284,6 +285,11 @@ def _normalize_resolved_scene_references(
                 if audio_delivery and audio_delivery.copies_to_output
                 else "reference"
             )
+            item["semantic_role"] = (
+                "audio_reuse"
+                if item["copy_mode"] in {"fully_copy", "partially_copy"}
+                else "rhythm"
+            )
         normalized.append(item)
     return normalized
 
@@ -299,17 +305,17 @@ def _normalize_plan_audio_usage(
     usages = []
     for usage in plan.reference_usage:
         reference = by_label.get(usage.reference_label, {})
-        if (
-            str(reference.get("kind") or "").casefold() == "audio"
-            and str(reference.get("copy_mode") or "").casefold() == "reference"
-            and not (audio_delivery and audio_delivery.conditions_generation)
-        ):
+        if str(reference.get("kind") or "").casefold() == "audio":
+            copy_mode = str(reference.get("copy_mode") or "reference").casefold()
+            purpose = "audio reuse" if copy_mode in {"fully_copy", "partially_copy"} else "audio reference"
+            details = (
+                "Reuse the supplied synchronized audio signal in the target video; preserve its timing and audible content."
+                if purpose == "audio reuse" else
+                "Use the supplied original song only for beat, rhythm, and dynamic timing continuity without copying the source signal."
+            )
             usage = usage.model_copy(update={
-                "purpose": "audio reference",
-                "details": (
-                    "Use the supplied original song only for beat, rhythm, and dynamic "
-                    "timing continuity without copying the source signal."
-                ),
+                "purpose": purpose,
+                "details": details,
             })
         usages.append(usage)
     updates: dict[str, Any] = {"reference_usage": usages}
@@ -577,7 +583,28 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
             value = str(item.get(key) or "").strip()
             if value:
                 shot[key] = value
-        events = item.get("vocal_events") or []
+        # Uncertain evidence must never become invented lip-sync. Preserve the
+        # measured interval for diagnostics, but render this phase safely as a
+        # non-vocal performance so scene preparation can continue.
+        reasons = {
+            str(item.get("reason_code") or "").strip().casefold()
+            for item in shot.get("performance_conflicts") or ()
+            if isinstance(item, dict)
+        }
+        reasons.update(str(item).strip().casefold() for item in shot.get("reason_codes") or ())
+        if shot.get("performance_phase") and (
+            shot.get("acoustically_verified") is False
+            or reasons.intersection({
+                "uncertain_vocal_evidence", "missing_performance_evidence",
+                "legacy_timing_unverified", "unresolved_lyric_alignment",
+            })
+        ):
+            shot.update(
+                state="instrumental", lyrics="", dialogue="", text="",
+                performance_fallback="non_vocal_uncertain_evidence",
+                prompt="Use non-vocal performance only; keep the mouth closed and do not create lip-sync.",
+            )
+        events = [] if shot.get("performance_fallback") else (item.get("vocal_events") or [])
         if events:
             labels = {actor: f"<Subject {i}>" for i, actor in enumerate((segment.get("references") or {}).get("actor_ids") or [], 1)}
             for event in events:
@@ -719,6 +746,11 @@ class DspyH3PromptBuilder:
                 item["copy_mode"] = (
                     "fully_copy" if source["name"] == "full_mix" else "partially_copy"
                 ) if "output_copy" in source["roles"] else "reference"
+                item["semantic_role"] = (
+                    "audio_reuse"
+                    if item["copy_mode"] in {"fully_copy", "partially_copy"}
+                    else "rhythm"
+                )
             result.append(item)
         if self.reporter is not None:
             self.reporter.message(f"Validated H3 audio roles for {len(sources)} sources")
@@ -934,7 +966,14 @@ class DspyH3PromptBuilder:
         current_plan = None
         self._reserve(recovery, "generate")
         try:
-            generated = self.generator(request)
+            with api_observability_context(
+                stage="h3_prompt",
+                scene_id=str(segment.get("segment_id") or ""),
+                operation="planner",
+                attempt=1,
+                checkpoint="miss",
+            ):
+                generated = self.generator(request)
             if hasattr(generated, "plan"):
                 # Generation is intentionally single-pass. A scene must fall
                 # back or retain an advisory BAD verdict rather than entering a
@@ -1007,7 +1046,14 @@ class DspyH3PromptBuilder:
                                 + ". Preserve all locked facts, references, relay timing, and bindings."
                             )
                             self._reserve(recovery, "repair")
-                            repaired = self.generator(repair_request)
+                            with api_observability_context(
+                                stage="h3_prompt",
+                                scene_id=str(segment.get("segment_id") or ""),
+                                operation="planner_repair",
+                                attempt=attempt + 1,
+                                checkpoint="miss",
+                            ):
+                                repaired = self.generator(repair_request)
                             repaired_plan = getattr(repaired, "plan", None)
                             if repaired_plan is not None:
                                 current_plan = repaired_plan
@@ -1038,9 +1084,16 @@ class DspyH3PromptBuilder:
                         },
                     }
                     judge_compiled = getattr(self.generator, "judge_compiled_prompt", None)
-                    judged = judge_compiled(
-                        request=request, plan=plan, references=references, final_prompt=prompt,
-                    ) if callable(judge_compiled) else None
+                    with api_observability_context(
+                        stage="h3_prompt",
+                        scene_id=str(segment.get("segment_id") or ""),
+                        operation="judge",
+                        attempt=1,
+                        checkpoint="miss",
+                    ):
+                        judged = judge_compiled(
+                            request=request, plan=plan, references=references, final_prompt=prompt,
+                        ) if callable(judge_compiled) else None
                     if judged is not None:
                         judge_attempts.append(judged.model_dump())
                         result["prompt_judge"] = judged.model_dump()
@@ -1493,6 +1546,7 @@ def build_dspy_generator(llm: Any) -> Callable[[dict[str, Any]], Any]:
         base_guide_path="minimax-h3-base.md",
         reference_guide_path="minimax-h3-references.md",
         llm=llm,
+        judge_enabled=bool(getattr(llm, "prompt_judge_enabled", True)),
     )
 
 
