@@ -14,6 +14,7 @@ from feverslop.config.app_config import AppConfig
 from feverslop.prompting.dspy_h3_prompt_builder import build_dspy_generator
 from feverslop.prompting.model_types import resolve_model_type
 from feverslop.ports.reporting import ConsoleReporter, install_reporter_logging
+from feverslop.utils.cli_output import emit_cli_data
 from rich.console import Console
 
 reporter = ConsoleReporter(Console())
@@ -113,7 +114,7 @@ def main(
             music_intent=args.music_intent,
             strict_fidelity=args.strict_fidelity,
         )
-        print(_render_prompt(result))
+        emit_cli_data(_render_prompt(result))
         return 0
     except Exception as exc:
         secrets = [os.environ.get("LLM_API_KEY")]

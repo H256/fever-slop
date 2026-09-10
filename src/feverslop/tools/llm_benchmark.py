@@ -9,6 +9,8 @@ from typing import Any
 
 from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.errors import FeverSlopLMLError
+from feverslop.ports.reporting import report_message
+from feverslop.utils.cli_output import emit_cli_data
 
 
 def benchmark_prompts(
@@ -93,9 +95,9 @@ def main(argv: list[str] | None = None) -> int:
         model=args.model,
         temperature=args.temperature,
     )
-    print(json.dumps(report, indent=2))
+    emit_cli_data(json.dumps(report, indent=2))
     if report["completed"] is False:
-        print(f"benchmark incomplete: {report['error']} - partial report above", file=sys.stderr)
+        report_message(f"benchmark incomplete: {report['error']} - partial report above", file=sys.stderr)
         return 1
     return 0
 

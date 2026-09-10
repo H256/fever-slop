@@ -2,6 +2,7 @@ import io
 import logging
 import tempfile
 import unittest
+import ast
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,10 +10,25 @@ from rich.console import Console
 
 from feverslop.application.audio_timeline_pipeline import AudioTimelinePipeline
 from feverslop.composition.stage_runners import _discover_stem_files
-from feverslop.ports.reporting import ConsoleReporter, ReporterLoggingHandler
+from feverslop.ports.reporting import ConsoleReporter, ReporterLoggingHandler, report_message
+from feverslop.utils.cli_output import emit_cli_data
 
 
 class ReportingAndStemDiscoveryTests(unittest.TestCase):
+    def test_production_code_has_no_bare_print_calls(self):
+        root = Path(__file__).resolve().parents[1]
+        offenders = []
+        source_roots = (root / "src", root / "tools", root / "scripts")
+        paths = [path for source_root in source_roots for path in source_root.rglob("*.py")]
+        paths.extend(root.glob("*.py"))
+        for path in paths:
+            if path.name == "reporting.py":
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+            if any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print" for node in ast.walk(tree)):
+                offenders.append(str(path.relative_to(root)))
+        self.assertEqual([], offenders)
+
     def test_console_reporter_prefixes_messages_with_local_timestamp(self):
         output = io.StringIO()
         reporter = ConsoleReporter(Console(file=output, force_terminal=False))
@@ -32,6 +48,20 @@ class ReportingAndStemDiscoveryTests(unittest.TestCase):
             r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] first\n"
             r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] second\n$",
         )
+
+    def test_cli_data_channel_preserves_machine_readable_payload(self):
+        output = io.StringIO()
+
+        emit_cli_data('{"status":"ok"}', file=output)
+
+        self.assertEqual('{"status":"ok"}\n', output.getvalue())
+
+    def test_report_message_resolves_redirected_stream_at_call_time(self):
+        output = io.StringIO()
+
+        report_message("status", file=output)
+
+        self.assertRegex(output.getvalue(), r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] status\n$")
 
     def test_logging_handler_forwards_records_to_reporter(self):
         reporter = SimpleNamespace(messages=[], warnings=[])

@@ -16,6 +16,9 @@ from tempfile import NamedTemporaryFile
 from types import MappingProxyType
 from typing import Any
 
+from feverslop.ports.reporting import report_message
+from feverslop.utils.cli_output import emit_cli_data
+
 SCORE_NAMES = (
     "identity",
     "wardrobe",
@@ -755,7 +758,7 @@ def run(argv: list[str] | None = None) -> int:
         ValueError,
     ) as exc:
         output = {"valid": False, "error": str(exc)}
-        print(json.dumps(output, sort_keys=True) if args.json else output["error"])
+        _emit_result(output, json_output=args.json, human_output=output["error"])
         return 1
 
     if args.create_review:
@@ -766,11 +769,7 @@ def run(argv: list[str] | None = None) -> int:
                 "valid": False,
                 "failures": list(failures),
             }
-            print(
-                json.dumps(output, sort_keys=True)
-                if args.json
-                else "; ".join(failures),
-            )
+            _emit_result(output, json_output=args.json, human_output="; ".join(failures))
             return 2
         review, sealed_mapping = create_blinded_review_artifact(
             results, environment=environment, seed=args.seed,
@@ -784,11 +783,7 @@ def run(argv: list[str] | None = None) -> int:
             )
         except OSError as exc:
             output = {"valid": False, "error": str(exc)}
-            print(
-                json.dumps(output, sort_keys=True)
-                if args.json
-                else output["error"],
-            )
+            _emit_result(output, json_output=args.json, human_output=output["error"])
             return 1
         output = {
             "mode": "review",
@@ -822,11 +817,7 @@ def run(argv: list[str] | None = None) -> int:
             ValueError,
         ) as exc:
             output = {"valid": False, "error": str(exc)}
-            print(
-                json.dumps(output, sort_keys=True)
-                if args.json
-                else output["error"],
-            )
+            _emit_result(output, json_output=args.json, human_output=output["error"])
             return 1
         validation = validate_complete_matrix(
             results,
@@ -841,18 +832,17 @@ def run(argv: list[str] | None = None) -> int:
             "failures": list(validation.failures),
         }
         if not validation.valid:
-            print(
-                json.dumps(output, sort_keys=True)
-                if args.json
-                else "; ".join(validation.failures),
-            )
+            _emit_result(output, json_output=args.json, human_output="; ".join(validation.failures))
             return 2
-    print(
-        json.dumps(output, sort_keys=True)
-        if args.json
-        else _human_success(output),
-    )
+    _emit_result(output, json_output=args.json, human_output=_human_success(output))
     return 0
+
+
+def _emit_result(output: dict[str, Any], *, json_output: bool, human_output: str) -> None:
+    if json_output:
+        emit_cli_data(json.dumps(output, sort_keys=True))
+    else:
+        report_message(human_output)
 
 
 def _scores(value: Any) -> dict[str, int]:

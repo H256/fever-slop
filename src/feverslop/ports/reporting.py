@@ -4,7 +4,7 @@ from collections.abc import Callable
 from datetime import datetime
 import logging
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Protocol, TextIO, TypeVar
 
 from rich.console import Console
 from rich.markup import escape
@@ -104,6 +104,16 @@ class ReporterConsole:
 
     def __getattr__(self, name: str) -> object:
         return getattr(self.console, name)
+
+
+def report_message(*objects: object, file: TextIO | None = None, **_kwargs: object) -> None:
+    """Report a short CLI status line through a timestamped Rich reporter.
+
+    This compatibility helper is for small command-line tools that do not yet
+    have a composed application reporter.  It resolves the stream at call time
+    so tests and embedding callers can redirect stdout/stderr reliably.
+    """
+    ConsoleReporter(Console(file=file)).message(" ".join(str(value) for value in objects))
 
 
 class ReporterLoggingHandler(logging.Handler):
