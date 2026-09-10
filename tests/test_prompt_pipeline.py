@@ -109,6 +109,19 @@ class MusicVideoPromptPipelineTests(unittest.TestCase):
         self.assertEqual(3, len(spatial_calls))
         self.assertEqual("Spatial Relations", spatial_calls[-1].payload["label"])
 
+    def test_h3_scene_details_can_skip_legacy_llm_calls(self):
+        modules = MusicVideoModulesFake(detail="should not be called")
+        pipeline = MusicVideoPromptPipeline(object(), prompt_modules=modules)
+
+        details = pipeline.create_scene_details(
+            concept_prompts={"segment_001": "A person approaches a doorway."},
+            stage1_segments=[{"segment_id": "segment_001", "type": "vocals"}],
+            global_context={}, skip_llm=True,
+        )
+
+        self.assertEqual({"camera_motion": "", "character_motion": "", "spatial_relations": ""}, details["segment_001"])
+        self.assertEqual([], modules.calls)
+
     def test_create_final_scene_prompts_passes_video_payload_and_performance_policy_to_i2v(self):
         """The i2v module must receive the video payload dict and its performance policy."""
         segment = {"segment_id": "segment_001", "type": "vocals"}
