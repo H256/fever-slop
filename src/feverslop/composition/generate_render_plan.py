@@ -244,6 +244,7 @@ def _build_llm(app_config):
         prompt_judge_attempts=app_config.llm.prompt_judge_attempts,
         prompt_judge_max_tokens=app_config.llm.prompt_judge_max_tokens,
         prompt_judge_blocking=app_config.llm.prompt_judge_blocking,
+        prompt_judge_enabled=app_config.llm.prompt_judge_enabled,
         chat_template_kwargs=app_config.llm.chat_template_kwargs,
     )
 

@@ -143,6 +143,21 @@ class APIMetricsTests(unittest.TestCase):
         self.assertEqual("project-1", entry["project_id"])
         self.assertEqual("scene-2", entry["scene_id"])
 
+    def test_api_log_includes_safe_scene_timing_context(self):
+        import logging
+
+        logger = logging.getLogger("feverslop.test.api.context")
+        with self.assertLogs(logger, level=logging.INFO) as captured:
+            with api_observability_context(
+                correlation_id="corr-1", stage="h3_prompt", scene_id="segment_019",
+                operation="planner", attempt=2, checkpoint="miss",
+            ):
+                record_api_call(APIMetrics(), logger, "llm", "chat", 0.0, success=True)
+        self.assertIn("stage=h3_prompt", captured.output[0])
+        self.assertIn("scene_id=segment_019", captured.output[0])
+        self.assertIn("attempt=2", captured.output[0])
+        self.assertIn("checkpoint=miss", captured.output[0])
+
     def test_exposes_percentiles_retry_count_and_time_window(self):
         metrics = APIMetrics()
         for duration in (10, 20, 30, 40, 50):

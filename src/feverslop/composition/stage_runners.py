@@ -499,6 +499,7 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             prompt_judge_attempts=current_config.llm.prompt_judge_attempts,
             prompt_judge_max_tokens=current_config.llm.prompt_judge_max_tokens,
             prompt_judge_blocking=current_config.llm.prompt_judge_blocking,
+            prompt_judge_enabled=current_config.llm.prompt_judge_enabled,
             chat_template_kwargs=current_config.llm.chat_template_kwargs,
         ),
         h3_prompt_builder_factory=H3PromptBuilder,

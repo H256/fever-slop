@@ -40,6 +40,16 @@ class AppConfigTests(unittest.TestCase):
 
         self.assertEqual(12288, configured.llm.prompt_judge_max_tokens)
 
+    def test_h3_judge_is_disabled_by_default_and_explicitly_enableable(self):
+        from feverslop.config.app_config import AppConfig
+
+        self.assertFalse(AppConfig.load(Path("does-not-exist.json")).llm.prompt_judge_enabled)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"llm": {"prompt_judge_enabled": true}}', encoding="utf-8")
+            configured = AppConfig.load(config_path)
+        self.assertTrue(configured.llm.prompt_judge_enabled)
+
     def test_execution_config_does_not_change_existing_positional_arguments(self):
         from feverslop.config.app_config import AppConfig, ComfyUIConfig, LLMConfig
 
