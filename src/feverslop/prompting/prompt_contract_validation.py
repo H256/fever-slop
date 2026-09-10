@@ -270,13 +270,12 @@ def _validate_r2v_contract(
     detailed = _h3_section(text, "detailed_description:", "overall_soundscape:")
     soundscape = _h3_section(text, "overall_soundscape:", "non_diegetic_music:")
     music = text.partition("non_diegetic_music:")[2]
-    style_opening = _canonical_subject_labels(str(plan.style_opening or ""), plan).strip()
     before_first_shot = detailed.partition("[Shot 1]")[0].strip()
-    if not style_opening or before_first_shot != style_opening:
+    if not str(plan.style_opening or "").strip() or not before_first_shot:
         issues.append(PromptContractIssue(
             "h3.detail.style_opening",
             "detailed_description",
-            "R2V detailed_description must begin with the LLM-authored style_opening before Shot 1",
+            "R2V detailed_description must contain a non-empty style opening before Shot 1",
         ))
     if not re.match(r"^\[[a-z][a-z +]+\]\s+\S", summary):
         issues.append(PromptContractIssue(

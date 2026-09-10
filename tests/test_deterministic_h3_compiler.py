@@ -488,6 +488,48 @@ class DeterministicH3CompilerTests(unittest.TestCase):
         self.assertNotIn("Dark Entity 1", opening)
         self.assertIn("<Subject 1> holds a rigid pose.", first_shot)
 
+    def test_compiled_normalized_style_opening_passes_h3_contract_validation(self):
+        from feverslop.prompting.prompt_contract_validation import validate_h3_prompt_contract
+
+        plan = ResolvedPromptPlan(
+            creative_intent="A reference-guided performance.",
+            style_opening=(
+                "A high resolution cinematic photograph of Dark Entity 1 on the "
+                "Apocalyptic Battlefield with severe blue lighting."
+            ),
+            subjects=[SubjectDefinition(
+                label="<Subject 1>",
+                name="Dark Entity 1",
+                description="a shadowy gothic figure",
+                source_references=["<Picture 1>"],
+            ), SubjectDefinition(
+                label="<Subject 2>",
+                name="Apocalyptic Battlefield",
+                description="a devastated battlefield",
+                source_references=["<Picture 2>"],
+            )],
+            reference_usage=[],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="Dark Entity 1 holds a rigid pose on the Apocalyptic Battlefield.",
+                start_seconds=0,
+                end_seconds=2,
+            )],
+            overall_soundscape="A low electrical hum continues.",
+            music_intent=MusicIntent.NONE,
+        )
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v",
+            plan=plan,
+            facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-0001": (0.0, 2.0)},
+        )
+
+        issues = validate_h3_prompt_contract(prompt, mode="r2v", plan=plan)
+
+        self.assertNotIn("h3.detail.style_opening", [issue.code for issue in issues])
+
     def test_r2v_compiler_removes_reference_description_placeholders(self):
         plan = ResolvedPromptPlan(
             creative_intent="A reference-guided performance.",
