@@ -102,6 +102,28 @@ non_diegetic_music: N/A"""
 
 
 class DspyH3PromptBuilderTests(unittest.TestCase):
+    def test_uncertain_vocal_relay_downgrades_to_safe_non_vocal_phase(self):
+        from feverslop.prompting.dspy_h3_prompt_builder import _normalize_relay_segments
+
+        phases = _normalize_relay_segments({
+            "duration": 2,
+            "performance_intervals": [{
+                "performance_phase": True,
+                "start_seconds": 0,
+                "end_seconds": 2,
+                "state": "singing",
+                "lyrics": "Ashes rise",
+                "acoustically_verified": False,
+                "vocal_events": [{"lyrics": "Ashes rise"}],
+                "performance_conflicts": [{"reason_code": "uncertain_vocal_evidence"}],
+            }],
+        })
+
+        self.assertEqual("instrumental", phases[0]["state"])
+        self.assertEqual("non_vocal_uncertain_evidence", phases[0]["performance_fallback"])
+        self.assertEqual("", phases[0]["lyrics"])
+        self.assertNotIn("vocal_events", phases[0])
+
     def test_fallback_preserves_last_structured_camera_and_timing(self):
         from types import SimpleNamespace
         plan = ResolvedPromptPlan(creative_intent="A performer waits.", style_opening="",
@@ -111,7 +133,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         generator = FakeGenerator(SimpleNamespace(plan=plan))
         result = DspyH3PromptBuilder(generator).build_h3_prompt(segment={"segment_id": "s1", "duration": 2},
             concept="A different generic concept", scene_details={}, global_context={}, mode="r2v")
-        self.assertEqual(2, len(generator.requests))
+        self.assertEqual(1, len(generator.requests))
         self.assertEqual("ready", result["readiness"]["status"])
         self.assertIn("folds a letter", result["prompt"])
         self.assertIn("dolly left", result["prompt"])
@@ -1289,8 +1311,8 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 llm=LLM(),
             )
 
-        self.assertEqual(65536, lm_factory.call_args_list[0].kwargs["max_tokens"])
-        self.assertEqual(8192, lm_factory.call_args_list[1].kwargs["max_tokens"])
+        self.assertEqual(4096, lm_factory.call_args_list[0].kwargs["max_tokens"])
+        self.assertEqual(2048, lm_factory.call_args_list[1].kwargs["max_tokens"])
 
     def test_reference_limits_use_plural_picture_field(self):
         generator = object.__new__(CoreVideoPromptGenerator)
@@ -2217,7 +2239,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual("blocked", result["readiness"]["status"])
         self.assertFalse(result["prompt_contract"]["valid"])
 
-    def test_retries_dspy_plan_once_after_a_prompt_contract_failure(self):
+    def test_compiler_owned_style_opening_does_not_trigger_a_repair(self):
         from types import SimpleNamespace
 
         invalid = ResolvedPromptPlan(
@@ -2248,9 +2270,9 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
             mode="r2v",
         )
 
-        self.assertEqual(2, generator.calls)
+        self.assertEqual(1, generator.calls)
         self.assertTrue(result["prompt_contract"]["valid"])
-        self.assertEqual("dspy_contract_repair", result["prompt_provenance"]["source"])
+        self.assertEqual("dspy_section_plan", result["prompt_provenance"]["source"])
 
     def test_instrumental_audio_with_no_score_keeps_creative_plan_without_repair(self):
         from types import SimpleNamespace
