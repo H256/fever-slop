@@ -278,6 +278,7 @@ def record_api_call(
     reasoning_tokens: int = 0,
     retry_attempts: int = 0,
     correlation_id: str | None = None,
+    level: int | None = None,
 ) -> None:
     duration_ms = (perf_counter() - started_at) * 1000
     context = _observability_context.get()
@@ -296,7 +297,8 @@ def record_api_call(
         correlation_id=resolved_correlation_id,
     )
     if logger is not None:
-        logger.info(
+        logger.log(
+            level if level is not None else (logging.INFO if success else logging.ERROR),
             "api_call service=%s operation=%s duration_ms=%.1f success=%s correlation_id=%s retry_attempts=%d",
             service,
             operation,

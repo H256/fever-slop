@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 from dataclasses import dataclass, field
@@ -11,6 +12,7 @@ from typing import Any
 from feverslop.config.comfyui import ComfyUIModelOverride
 from feverslop.domain.video_workflow_profile import VideoWorkflowProfile
 from feverslop.path_utils import coerce_local_path
+from feverslop.ports.reporting import parse_log_level
 
 
 @dataclass
@@ -92,6 +94,7 @@ class VramHandoffMode(str, Enum):
 @dataclass(frozen=True)
 class ExecutionConfig:
     vram_handoff: VramHandoffMode = VramHandoffMode.CONTINUOUS
+    log_level: int = logging.INFO
 
 
 @dataclass(frozen=True)
@@ -234,6 +237,13 @@ class AppConfig:
             raise ValueError(
                 "execution.vram_handoff must be 'continuous' or 'manual'",
             ) from None
+        raw_log_level = execution_raw.get("log_level", "info")
+        if not isinstance(raw_log_level, (str, int)):
+            raise ValueError("execution.log_level must be a string or integer")
+        try:
+            log_level = parse_log_level(raw_log_level)
+        except ValueError as exc:
+            raise ValueError(f"execution.log_level: {exc}") from None
         default_max_render_duration_raw = comfyui_raw.get("default_max_render_duration_seconds")
         default_max_render_duration = (
             None
@@ -344,7 +354,7 @@ class AppConfig:
                 video_workflow_limits=video_workflow_limits,
                 latent_upscaler_device=latent_upscaler_device,
             ),
-            execution=ExecutionConfig(vram_handoff=vram_handoff),
+            execution=ExecutionConfig(vram_handoff=vram_handoff, log_level=log_level),
             global_library_path=library_path.resolve(),
             storyboard_prompt_transforms=[
                 StoryboardPromptTransformConfig.from_dict(item)

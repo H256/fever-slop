@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 import logging
+import os
 from pathlib import Path
 from typing import Protocol, TextIO, TypeVar
 
@@ -10,6 +11,37 @@ from rich.console import Console
 from rich.markup import escape
 
 T = TypeVar("T")
+
+TRACE_LEVEL = 5
+OFF_LEVEL = logging.CRITICAL + 1
+_LOG_LEVELS = {
+    "trace": TRACE_LEVEL,
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+    "critical": logging.CRITICAL,
+    "off": OFF_LEVEL,
+}
+logging.addLevelName(TRACE_LEVEL, "TRACE")
+
+
+def parse_log_level(value: str | int | None) -> int:
+    """Resolve the global human-facing log level; default to INFO."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return logging.INFO
+    if isinstance(value, int):
+        if value < 0:
+            raise ValueError("log level must not be negative")
+        return value
+    normalized = value.strip().lower()
+    try:
+        return _LOG_LEVELS[normalized]
+    except KeyError as exc:
+        raise ValueError(
+            f"unknown log level {value!r}; expected trace, debug, info, "
+            "warning, error, critical, or off",
+        ) from exc
 
 
 class Reporter(Protocol):
@@ -134,15 +166,22 @@ class ReporterLoggingHandler(logging.Handler):
             self.handleError(record)
 
 
-def install_reporter_logging(reporter: Reporter) -> None:
+def install_reporter_logging(reporter: Reporter, *, level: str | int | None = None) -> None:
+    resolved_level = parse_log_level(
+        level if level is not None else os.environ.get("FEVERSLOP_LOG_LEVEL"),
+    )
     root = logging.getLogger()
     handler = next(
         (item for item in root.handlers if isinstance(item, ReporterLoggingHandler)),
         None,
     )
     if handler is None:
-        root.addHandler(ReporterLoggingHandler(reporter))
+        handler = ReporterLoggingHandler(reporter)
+        root.addHandler(handler)
     else:
         handler.reporter = reporter
-    root.setLevel(logging.INFO)
+    handler.setLevel(resolved_level)
+    root.setLevel(resolved_level)
+    for name in ("litellm", "httpx", "httpcore"):
+        logging.getLogger(name).setLevel(resolved_level)
     logging.captureWarnings(True)
