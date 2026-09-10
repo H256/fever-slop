@@ -583,7 +583,28 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
             value = str(item.get(key) or "").strip()
             if value:
                 shot[key] = value
-        events = item.get("vocal_events") or []
+        # Uncertain evidence must never become invented lip-sync. Preserve the
+        # measured interval for diagnostics, but render this phase safely as a
+        # non-vocal performance so scene preparation can continue.
+        reasons = {
+            str(item.get("reason_code") or "").strip().casefold()
+            for item in shot.get("performance_conflicts") or ()
+            if isinstance(item, dict)
+        }
+        reasons.update(str(item).strip().casefold() for item in shot.get("reason_codes") or ())
+        if shot.get("performance_phase") and (
+            shot.get("acoustically_verified") is False
+            or reasons.intersection({
+                "uncertain_vocal_evidence", "missing_performance_evidence",
+                "legacy_timing_unverified", "unresolved_lyric_alignment",
+            })
+        ):
+            shot.update(
+                state="instrumental", lyrics="", dialogue="", text="",
+                performance_fallback="non_vocal_uncertain_evidence",
+                prompt="Use non-vocal performance only; keep the mouth closed and do not create lip-sync.",
+            )
+        events = [] if shot.get("performance_fallback") else (item.get("vocal_events") or [])
         if events:
             labels = {actor: f"<Subject {i}>" for i, actor in enumerate((segment.get("references") or {}).get("actor_ids") or [], 1)}
             for event in events:

@@ -396,6 +396,7 @@ class PromptGenerationPipeline:
             stage1_segments=stage1_segments,
             global_context=global_context,
             progress_callback=lambda current, total: scene_details_progress.update(current),
+            skip_llm=get_config_value(config, "video_pipeline") == "minimax-h3-r2v",
         )
         reporter.message("[green]Scene details finished.[/green]")
         prompt_pipeline.save_json(

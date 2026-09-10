@@ -37,10 +37,11 @@ from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.planning_payload import compact_planning_payload
 from feverslop.prompting.h3_user_messages import renderer_recovery_message
+from feverslop.prompting.llm_policy import H3_JUDGE_MAX_TOKENS, H3_PLANNER_MAX_TOKENS
 
 logger = logging.getLogger(__name__)
 
-_H3_JUDGE_MAX_TOKENS = 8192
+_H3_JUDGE_MAX_TOKENS = H3_JUDGE_MAX_TOKENS
 
 
 def _subjects_from_references(refs: list[ResolvedReference]) -> list[SubjectDefinition]:
@@ -264,10 +265,13 @@ class VideoPromptGenerator:
         self.judge_attempts = 1
         self.prompt_judge_blocking = False
         self.warning_callback = warning_callback
-        self.lm = self.dspy_runtime.make_lm(llm)
+        self.lm = self.dspy_runtime.make_lm(llm, max_tokens=H3_PLANNER_MAX_TOKENS)
         self.judge_lm = self.dspy_runtime.make_lm(
             llm,
-            max_tokens=int(getattr(llm, "prompt_judge_max_tokens", _H3_JUDGE_MAX_TOKENS)),
+            max_tokens=min(
+                int(getattr(llm, "prompt_judge_max_tokens", _H3_JUDGE_MAX_TOKENS)),
+                _H3_JUDGE_MAX_TOKENS,
+            ),
         )
 
     def set_warning_callback(self, callback: Callable[..., None] | None) -> None:
