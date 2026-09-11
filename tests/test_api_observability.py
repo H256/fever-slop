@@ -68,6 +68,30 @@ class APIMetricsTests(unittest.TestCase):
             record_api_call(APIMetrics(), logger, "llm", "chat", 0.0, success=False)
         self.assertEqual(logging.ERROR, captured.records[0].levelno)
 
+    def test_successful_api_event_defaults_to_debug(self):
+        import logging
+
+        logger = logging.getLogger("feverslop.test.api.success")
+        with self.assertLogs(logger, level=logging.DEBUG) as captured:
+            record_api_call(APIMetrics(), logger, "llm", "chat", 0.0, success=True)
+        self.assertEqual(logging.DEBUG, captured.records[0].levelno)
+
+    def test_noisy_dependency_logs_are_hidden_at_info(self):
+        import logging
+
+        root = logging.getLogger()
+        previous = root.level
+        dependency_loggers = [logging.getLogger(name) for name in ("litellm", "LiteLLM")]
+        previous_dependency_levels = [logger.level for logger in dependency_loggers]
+        try:
+            install_reporter_logging(MagicMock(), level="info")
+            self.assertEqual(logging.WARNING, logging.getLogger("litellm").level)
+            self.assertEqual(logging.WARNING, logging.getLogger("LiteLLM").level)
+        finally:
+            root.setLevel(previous)
+            for logger, level in zip(dependency_loggers, previous_dependency_levels):
+                logger.setLevel(level)
+
     def test_info_level_hides_trace_events(self):
         import logging
 
@@ -150,7 +174,7 @@ class APIMetricsTests(unittest.TestCase):
         import logging
 
         logger = logging.getLogger("feverslop.test.api.context")
-        with self.assertLogs(logger, level=logging.INFO) as captured:
+        with self.assertLogs(logger, level=logging.DEBUG) as captured:
             with api_observability_context(
                 correlation_id="corr-1", stage="h3_prompt", scene_id="segment_019",
                 operation="planner", attempt=2, checkpoint="miss",

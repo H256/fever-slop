@@ -45,6 +45,7 @@ class TestScaffoldMovieCli(unittest.TestCase):
                 (Path(temp_dir) / "cli-regression-movie" / "config.json").read_text(encoding="utf-8"),
             )
             self.assertEqual({"width": 640, "height": 960, "fps": 24}, config["video"])
+            self.assertEqual("narrative_film", config["content_mode"])
             self.assertEqual(
                 {"min_duration": 1.0, "max_duration": 1.0},
                 {
