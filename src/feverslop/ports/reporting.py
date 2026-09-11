@@ -182,6 +182,11 @@ def install_reporter_logging(reporter: Reporter, *, level: str | int | None = No
         handler.reporter = reporter
     handler.setLevel(resolved_level)
     root.setLevel(resolved_level)
-    for name in ("litellm", "httpx", "httpcore"):
-        logging.getLogger(name).setLevel(resolved_level)
+    dependency_level = (
+        resolved_level
+        if resolved_level <= logging.DEBUG
+        else max(resolved_level, logging.WARNING)
+    )
+    for name in ("litellm", "LiteLLM", "httpx", "httpcore"):
+        logging.getLogger(name).setLevel(dependency_level)
     logging.captureWarnings(True)

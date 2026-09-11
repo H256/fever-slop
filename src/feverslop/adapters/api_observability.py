@@ -336,7 +336,7 @@ def record_api_call(
     )
     if logger is not None:
         logger.log(
-            level if level is not None else (logging.INFO if success else logging.ERROR),
+            level if level is not None else (logging.DEBUG if success else logging.ERROR),
             "api_call service=%s operation=%s duration_ms=%.1f success=%s correlation_id=%s "
             "stage=%s scene_id=%s attempt=%s checkpoint=%s retry_attempts=%d",
             service,
