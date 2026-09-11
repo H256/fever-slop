@@ -370,6 +370,7 @@ class H3PromptPipeline:
             reporter.message(
                 f"[cyan]H3 judge output budget: {judge_output_budget} tokens per verdict.[/cyan]",
             )
+        if reporter is not None and model_spec is not None and model_spec.is_minimax_h3:
             judge_enabled = bool(getattr(llm, "prompt_judge_enabled", True))
             reporter.message(
                 "[cyan]H3 judge mode: "

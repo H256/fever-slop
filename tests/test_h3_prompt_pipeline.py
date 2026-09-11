@@ -414,6 +414,7 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
             llm_factory=lambda _: SimpleNamespace(
                 max_tokens=65536,
                 prompt_judge_max_tokens=8192,
+                prompt_judge_enabled=False,
             ),
             h3_prompt_builder_factory=lambda _: Builder(),
             dspy_prompt_builder_factory=lambda _: Builder(),
@@ -429,6 +430,10 @@ class DspyPromptPipelineSelectionTests(unittest.TestCase):
         ))
         self.assertTrue(any(
             "H3 judge output budget: 8192 tokens" in message
+            for message in messages
+        ))
+        self.assertTrue(any(
+            "H3 judge mode: disabled; deterministic prompt validation remains active." in message
             for message in messages
         ))
         self.assertTrue(any(

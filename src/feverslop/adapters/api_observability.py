@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import hashlib
 import math
 import re
 import time
@@ -276,21 +277,29 @@ class RequestRateLimiter:
 default_api_metrics = APIMetrics()
 
 
+def request_fingerprint(payload: object) -> tuple[str, int]:
+    """Return non-reversible request diagnostics without retaining the payload."""
+    encoded = repr(payload).encode("utf-8", errors="replace")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest(), len(encoded)
+
+
 def log_api_call_start(
     logger: logging.Logger | None,
     service: str,
     operation: str,
     *,
-    level: int = logging.DEBUG,
+    level: int | None = None,
+    request_hash: str = "",
+    input_size: int | None = None,
 ) -> None:
     """Log safe request-start metadata; never include payloads or credentials."""
     if logger is None:
         return
     context = _observability_context.get()
     logger.log(
-        level,
+        level if level is not None else (logging.INFO if context and context.stage else logging.DEBUG),
         "api_call_start service=%s operation=%s correlation_id=%s stage=%s "
-        "scene_id=%s attempt=%s checkpoint=%s",
+        "scene_id=%s attempt=%s checkpoint=%s request_hash=%s input_size=%s",
         service,
         operation,
         context.correlation_id if context else "",
@@ -298,6 +307,8 @@ def log_api_call_start(
         context.scene_id if context else "",
         context.attempt if context and context.attempt is not None else "",
         context.checkpoint if context else "",
+        request_hash,
+        input_size if input_size is not None else "",
     )
 
 
@@ -317,6 +328,9 @@ def record_api_call(
     retry_attempts: int = 0,
     correlation_id: str | None = None,
     level: int | None = None,
+    request_hash: str = "",
+    input_size: int | None = None,
+    error_class: str | None = None,
 ) -> None:
     duration_ms = (perf_counter() - started_at) * 1000
     context = _observability_context.get()
@@ -338,7 +352,8 @@ def record_api_call(
         logger.log(
             level if level is not None else (logging.DEBUG if success else logging.ERROR),
             "api_call service=%s operation=%s duration_ms=%.1f success=%s correlation_id=%s "
-            "stage=%s scene_id=%s attempt=%s checkpoint=%s retry_attempts=%d",
+            "stage=%s scene_id=%s attempt=%s checkpoint=%s retry_attempts=%d "
+            "request_hash=%s input_size=%s error_class=%s",
             service,
             operation,
             duration_ms,
@@ -349,6 +364,9 @@ def record_api_call(
             context.attempt if context and context.attempt is not None else "",
             context.checkpoint if context else "",
             retry_attempts,
+            request_hash,
+            input_size if input_size is not None else "",
+            error_class or "",
         )
 
 
