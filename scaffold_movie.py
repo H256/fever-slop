@@ -151,6 +151,7 @@ def main() -> None:
             max_scene_duration=args.max_duration,
             config={
                 "project_name": name,
+                "content_mode": "narrative_film",
                 "input_audio": "",
                 "silent_mode": False,
                 "lyrics": "",
