@@ -263,6 +263,10 @@ def _scene_audio_copy_mode(name: str, description: str) -> str:
     return "reference" if "full_mix" in identity else "partially_copy"
 
 
+def _audio_semantic_role(copy_mode: str) -> str:
+    return "audio_reuse" if copy_mode in {"fully_copy", "partially_copy"} else "rhythm"
+
+
 def _is_full_mix_audio(name: str, description: str) -> bool:
     return "full_mix" in f"{name} {description}".casefold()
 
@@ -285,11 +289,12 @@ def _normalize_resolved_scene_references(
                 if audio_delivery and audio_delivery.copies_to_output
                 else "reference"
             )
-            item["semantic_role"] = (
-                "audio_reuse"
-                if item["copy_mode"] in {"fully_copy", "partially_copy"}
-                else "rhythm"
-            )
+        if item.get("kind") == "audio" and item.get("copy_mode") in {
+            "fully_copy", "partially_copy", "reference",
+        }:
+            item["semantic_role"] = _audio_semantic_role(item["copy_mode"])
+            item["role"] = item["semantic_role"]
+            item.setdefault("delivery_role", "audio_reuse")
         normalized.append(item)
     return normalized
 
@@ -487,27 +492,35 @@ def _scene_references(
             kind="audio",
             name=path.stem,
             description=description,
-            role="audio_reuse",
-        ) | {"copy_mode": copy_mode})
+            role=_audio_semantic_role(copy_mode),
+        ) | {
+            "copy_mode": copy_mode,
+            "semantic_role": _audio_semantic_role(copy_mode),
+            "delivery_role": "audio_reuse",
+        })
 
     for index, (name, source) in enumerate(selected_audio_paths.items(), start=1):
         if fully_instrumental and name == "vocals":
             continue
+        description = _audio_description(name, audio_bindings.get(name))
+        copy_mode = (
+            "fully_copy"
+            if audio_delivery is not None
+            and audio_delivery.copies_to_output
+            and _is_full_mix_audio(name, description)
+            else _scene_audio_copy_mode(name, description)
+        )
         add_reference(_reference(
             label=f"<Audio {len([ref for ref in result if ref['kind'] == 'audio']) + 1}>",
             source=source,
             kind="audio",
             name=name,
-            description=_audio_description(name, audio_bindings.get(name)),
-            role="audio_reuse",
+            description=description,
+            role=_audio_semantic_role(copy_mode),
         ) | {
-            "copy_mode": (
-                "fully_copy"
-                if audio_delivery is not None
-                and audio_delivery.copies_to_output
-                and _is_full_mix_audio(name, _audio_description(name, audio_bindings.get(name)))
-                else _scene_audio_copy_mode(name, _audio_description(name, audio_bindings.get(name)))
-            ),
+            "copy_mode": copy_mode,
+            "semantic_role": _audio_semantic_role(copy_mode),
+            "delivery_role": "audio_reuse",
         })
 
     for reference in pending_audio_references:
@@ -743,14 +756,14 @@ class DspyH3PromptBuilder:
                 source = by_label[item["label"]]
                 item["audio_delivery"] = source
                 item["delivery_roles"] = source["roles"]
+                item["delivery_role"] = "audio_reuse"
                 item["copy_mode"] = (
                     "fully_copy" if source["name"] == "full_mix" else "partially_copy"
                 ) if "output_copy" in source["roles"] else "reference"
                 item["semantic_role"] = (
-                    "audio_reuse"
-                    if item["copy_mode"] in {"fully_copy", "partially_copy"}
-                    else "rhythm"
+                    _audio_semantic_role(item["copy_mode"])
                 )
+                item["role"] = item["semantic_role"]
             result.append(item)
         if self.reporter is not None:
             self.reporter.message(f"Validated H3 audio roles for {len(sources)} sources")
@@ -944,7 +957,9 @@ class DspyH3PromptBuilder:
             "audio_subject_bindings": audio_subject_bindings,
         }
         has_reused_audio_reference = any(
-            reference.get("kind") == "audio" and reference.get("role") == "audio_reuse"
+            reference.get("kind") == "audio"
+            and reference.get("delivery_role") == "audio_reuse"
+            and reference.get("copy_mode") != "reference"
             for reference in references
         )
         if (
@@ -1320,17 +1335,24 @@ class DspyH3PromptBuilder:
             }
             judge_compiled = getattr(self.generator, "judge_compiled_prompt", None)
             if judge and callable(judge_compiled):
-                judged = judge_compiled(
-                    request={
-                        "mode": mode,
-                        "user_prompt": str(concept),
-                        "duration_seconds": duration,
-                        "strict_fidelity": True,
-                    },
-                    plan=plan,
-                    references=resolved_references,
-                    final_prompt=prompt,
-                )
+                with api_observability_context(
+                    stage="h3_prompt",
+                    scene_id=str(segment.get("segment_id") or ""),
+                    operation="judge",
+                    attempt=1,
+                    checkpoint="hit",
+                ):
+                    judged = judge_compiled(
+                        request={
+                            "mode": mode,
+                            "user_prompt": str(concept),
+                            "duration_seconds": duration,
+                            "strict_fidelity": True,
+                        },
+                        plan=plan,
+                        references=resolved_references,
+                        final_prompt=prompt,
+                    )
                 if judged is not None:
                     result["prompt_judge"] = judged.model_dump()
                     result["prompt_judge_attempts"] = [judged.model_dump()]

@@ -13,10 +13,19 @@ from feverslop.llm_concurrency import limit_dspy_lm
 from feverslop.adapters.api_observability import (
     default_api_metrics,
     log_api_call_start,
+    request_fingerprint,
     record_api_call,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _usage_value(usage, name: str) -> int:
+    value = usage.get(name) if isinstance(usage, dict) else getattr(usage, name, 0)
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _instrument_openai_client(client, metrics):
@@ -28,18 +37,29 @@ def _instrument_openai_client(client, metrics):
 
     def create(*args, **kwargs):
         started_at = perf_counter()
-        log_api_call_start(logger, "llm", "chat_completions")
+        request_hash, input_size = request_fingerprint((args, kwargs))
+        log_api_call_start(
+            logger, "llm", "chat_completions",
+            request_hash=request_hash, input_size=input_size,
+        )
         try:
             response = original_create(*args, **kwargs)
-        except Exception:
+        except Exception as exc:
             record_api_call(
                 metrics, logger, "llm", "chat_completions", started_at,
                 success=False,
+                request_hash=request_hash, input_size=input_size,
+                error_class=type(exc).__name__,
             )
             raise
+        usage = getattr(response, "usage", None)
         record_api_call(
             metrics, logger, "llm", "chat_completions", started_at,
             success=True,
+            usage_units=_usage_value(usage, "total_tokens"),
+            prompt_tokens=_usage_value(usage, "prompt_tokens"),
+            completion_tokens=_usage_value(usage, "completion_tokens"),
+            request_hash=request_hash, input_size=input_size,
         )
         return response
     completions.create = create

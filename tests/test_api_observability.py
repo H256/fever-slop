@@ -1,3 +1,4 @@
+import logging
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -5,6 +6,8 @@ from feverslop.adapters.api_observability import (
     APIMetrics,
     RequestRateLimiter,
     api_observability_context,
+    log_api_call_start,
+    request_fingerprint,
     record_api_call,
     redact_secrets,
     require_json_object,
@@ -64,6 +67,30 @@ class APIMetricsTests(unittest.TestCase):
         with self.assertLogs(logger, level=logging.ERROR) as captured:
             record_api_call(APIMetrics(), logger, "llm", "chat", 0.0, success=False)
         self.assertEqual(logging.ERROR, captured.records[0].levelno)
+
+    def test_successful_api_event_defaults_to_debug(self):
+        import logging
+
+        logger = logging.getLogger("feverslop.test.api.success")
+        with self.assertLogs(logger, level=logging.DEBUG) as captured:
+            record_api_call(APIMetrics(), logger, "llm", "chat", 0.0, success=True)
+        self.assertEqual(logging.DEBUG, captured.records[0].levelno)
+
+    def test_noisy_dependency_logs_are_hidden_at_info(self):
+        import logging
+
+        root = logging.getLogger()
+        previous = root.level
+        dependency_loggers = [logging.getLogger(name) for name in ("litellm", "LiteLLM")]
+        previous_dependency_levels = [logger.level for logger in dependency_loggers]
+        try:
+            install_reporter_logging(MagicMock(), level="info")
+            self.assertEqual(logging.WARNING, logging.getLogger("litellm").level)
+            self.assertEqual(logging.WARNING, logging.getLogger("LiteLLM").level)
+        finally:
+            root.setLevel(previous)
+            for logger, level in zip(dependency_loggers, previous_dependency_levels):
+                logger.setLevel(level)
 
     def test_info_level_hides_trace_events(self):
         import logging
@@ -147,7 +174,7 @@ class APIMetricsTests(unittest.TestCase):
         import logging
 
         logger = logging.getLogger("feverslop.test.api.context")
-        with self.assertLogs(logger, level=logging.INFO) as captured:
+        with self.assertLogs(logger, level=logging.DEBUG) as captured:
             with api_observability_context(
                 correlation_id="corr-1", stage="h3_prompt", scene_id="segment_019",
                 operation="planner", attempt=2, checkpoint="miss",
@@ -157,6 +184,26 @@ class APIMetricsTests(unittest.TestCase):
         self.assertIn("scene_id=segment_019", captured.output[0])
         self.assertIn("attempt=2", captured.output[0])
         self.assertIn("checkpoint=miss", captured.output[0])
+
+    def test_request_fingerprint_is_stable_without_exposing_payload(self):
+        from feverslop.adapters.api_observability import record_api_call
+
+        fingerprint, size = request_fingerprint({"prompt": "secret"})
+        self.assertTrue(fingerprint.startswith("sha256:"))
+        self.assertGreater(size, 0)
+        logger = logging.getLogger("feverslop.test.api.start")
+        with self.assertLogs(logger, level=logging.INFO) as captured:
+            with api_observability_context(stage="h3_prompt", scene_id="s1"):
+                log_api_call_start(
+                    logger, "llm", "chat_completions",
+                    request_hash=fingerprint, input_size=size,
+                )
+                record_api_call(
+                    APIMetrics(), logger, "llm", "chat_completions", 0.0,
+                    success=True, request_hash=fingerprint, input_size=size,
+                )
+        self.assertEqual(2, len(captured.records))
+        self.assertNotIn("secret", "\n".join(captured.output))
 
     def test_exposes_percentiles_retry_count_and_time_window(self):
         metrics = APIMetrics()
@@ -194,13 +241,12 @@ class APIMetricsTests(unittest.TestCase):
         session_class.return_value = session
         metrics = APIMetrics()
 
-        with self.assertLogs("feverslop.adapters.comfyui_client", level="INFO") as logs:
+        with self.assertNoLogs("feverslop.adapters.comfyui_client"):
             ComfyUIClient(metrics=metrics).queue_prompt({})
 
         stats = metrics.snapshot()[("comfyui", "queue_prompt")]
         self.assertEqual((1, 1, 0), (stats.calls, stats.successes, stats.failures))
-        self.assertIn("api_call service=comfyui operation=queue_prompt", logs.output[0])
-        self.assertIn(f"correlation_id={metrics.export_snapshot()['entries'][0]['correlation_id']}", logs.output[0])
+        self.assertEqual(1, len(metrics.export_snapshot()["entries"]))
 
     @patch("requests.Session")
     def test_comfyui_health_check_uses_read_only_probe(self, session_class):
