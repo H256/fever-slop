@@ -182,6 +182,9 @@ class FullAutoUseCase:
             visual_story_idea=str(request.idea).strip(),
             visual_style=str(request.style).strip(),
             music_style=str(request.music_style or spec.music_style or request.style or "").strip(),
+            visual_cast_idea=str(request.cast_idea or getattr(spec, "visual_cast_idea", "")).strip(),
+            visual_cast_mode=str(request.cast_mode or getattr(spec, "visual_cast_mode", "")).strip(),
+            visual_cast_target_size=request.cast_target_size if request.cast_target_size is not None else getattr(spec, "visual_cast_target_size", None),
         )
 
 

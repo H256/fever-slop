@@ -39,6 +39,14 @@ def get_config_value(config: Any, name: str, default: Any = None) -> Any:
     return getattr(config, name, default)
 
 
+def _create_subject_and_locations(prompt_pipeline: Any, *, story_idea: str, notes: str, cast_idea: str) -> Any:
+    method = prompt_pipeline.create_subject_and_locations
+    kwargs = {"story_idea": story_idea, "notes": notes}
+    if "cast_idea" in inspect.signature(method).parameters:
+        kwargs["cast_idea"] = cast_idea
+    return method(**kwargs)
+
+
 def _report_subject_staging_retry(
     reporter: Any,
     *,
@@ -100,7 +108,9 @@ def _actor_needs_llm_enrichment(actor: dict[str, Any]) -> bool:
     ))
 
 
-def _merge_configured_actors(configured: list[dict], generated: Any) -> list[dict]:
+def _merge_configured_actors(
+    configured: list[dict], generated: Any, *, mode: str = "extend", target_size: int | None = None,
+) -> list[dict]:
     generated_items = config_items_as_dicts(generated)
     by_key = {
         key: item
@@ -122,6 +132,20 @@ def _merge_configured_actors(configured: list[dict], generated: Any) -> list[dic
                 if value:
                     actor[field] = value
         merged.append(actor)
+    if mode == "extend":
+        configured_keys = {
+            str(actor.get("id") or actor.get("name") or "").strip().casefold()
+            for actor in configured
+        }
+        for actor in generated_items:
+            key = str(actor.get("id") or actor.get("name") or "").strip().casefold()
+            if key and key not in configured_keys:
+                merged.append(dict(actor))
+                configured_keys.add(key)
+    if target_size is not None and len(merged) != target_size:
+        raise FeverSlopValidationError(
+            f"Resolved cast has {len(merged)} actors, expected {target_size} from cast policy",
+        )
     return merged
 
 
@@ -654,6 +678,10 @@ class PromptGenerationPipeline:
         config_subject = str(get_config_value(config, "subject", "") or "").strip()
         config_locations = get_config_value(config, "locations", []) or []
         config_actors = get_config_value(config, "actors", []) or []
+        cast_idea = str(get_config_value(config, "cast_idea", "") or "").strip()
+        cast_policy = get_config_value(config, "cast_policy", None)
+        cast_mode = str(getattr(cast_policy, "mode", "extend") or "extend").strip().lower()
+        cast_target_size = getattr(cast_policy, "target_size", None)
         config_structured_locations = get_config_value(config, "structured_locations", []) or []
         subject_mode = str(get_config_value(config, "subject_mode", "multi") or "multi")
         max_scene_actors = int(get_config_value(config, "max_scene_actors", 1 if subject_mode == "single" else 4) or 4)
@@ -698,9 +726,11 @@ class PromptGenerationPipeline:
             and not any(_actor_needs_llm_enrichment(actor) for actor in configured_actor_items)
             else run_spinner(
                 "Generating subject and locations fallback...",
-                lambda: prompt_pipeline.create_subject_and_locations(
+                lambda: _create_subject_and_locations(
+                    prompt_pipeline,
                     story_idea=story_idea,
                     notes=subject_location_notes,
+                    cast_idea=cast_idea,
                 ),
             )
         )
@@ -720,9 +750,13 @@ class PromptGenerationPipeline:
         actors = config_items_as_dicts(config_actors)
         generated_actors = config_items_as_dicts(subject_locations.get("actors", []))
         actors = (
-            _merge_configured_actors(actors, generated_actors)
+            _merge_configured_actors(actors, generated_actors, mode=cast_mode, target_size=cast_target_size)
             if actors else generated_actors
         )
+        if not actors and cast_target_size is not None:
+            raise FeverSlopValidationError(
+                f"Resolved cast has 0 actors, expected {cast_target_size} from cast policy",
+            )
         enforce_explicit_cast_attributes(actors, configured_actor_items)
         structured_locations = (
             config_items_as_dicts(config_structured_locations)
@@ -742,6 +776,9 @@ class PromptGenerationPipeline:
             )
             actors = list(global_resolution.actors) + actors
             structured_locations = list(global_resolution.locations) + structured_locations
+        actor_ids = [str(actor.get("id") or "").strip() for actor in actors]
+        if "" in actor_ids or len(actor_ids) != len(set(actor_ids)):
+            raise FeverSlopValidationError("Resolved cast contains missing or duplicate actor ids")
 
         audio_refs = get_config_value(config, "minimax_h3_audio_refs", None)
         audio_subject_bindings = (
@@ -756,6 +793,14 @@ class PromptGenerationPipeline:
             "subject": subject,
             "locations": locations,
             "actors": actors,
+            "cast_idea": cast_idea,
+            "cast_policy": {"mode": cast_mode, "target_size": cast_target_size},
+            "cast_contract": {
+                "target_size": cast_target_size,
+                "resolved_size": len(actors),
+                "configured_ids": [str(actor.get("id")) for actor in configured_actor_items],
+                "source": "configured_and_cast_idea" if cast_idea else "configured_or_generated",
+            },
             "structured_locations": structured_locations,
             "props": list(global_resolution.props) if global_resolution else [],
             "styles": list(global_resolution.styles) if global_resolution else [],

@@ -76,8 +76,8 @@ class MusicVideoPromptModules:
     def style_block(self, lyrics: str, notes: str = "") -> str:
         return str(self._call(STYLE_BLOCK, load_markdown_guide("music-video-style"), {"lyrics": lyrics, "notes": notes}, "style_block")).strip()
 
-    def subject_locations(self, story_idea: str, notes: str = "") -> Any:
-        return self._call(SUBJECT_LOCATIONS, load_markdown_guide("music-video-subject-locations"), {"story_idea": story_idea, "notes": notes}, "result")
+    def subject_locations(self, story_idea: str, notes: str = "", cast_idea: str = "") -> Any:
+        return self._call(SUBJECT_LOCATIONS, load_markdown_guide("music-video-subject-locations"), {"story_idea": story_idea, "notes": notes, "cast_idea": cast_idea}, "result")
 
     def concepts(self, payload: dict[str, Any], *, batch: bool = False, silent_mode: bool = False, timeout=None) -> Any:
         guide = load_markdown_guide("music-video-concepts")

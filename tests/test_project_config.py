@@ -8,6 +8,34 @@ from feverslop.config.project_config import ProjectConfig
 
 
 class ProjectConfigTests(unittest.TestCase):
+    def test_cast_brief_and_policy_round_trip_into_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(json.dumps({
+                "content_mode": "narrative_film",
+                "cast_idea": "four grotesque musicians",
+                "cast_policy": {"mode": "fixed", "target_size": 4},
+            }), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual("four grotesque musicians", config.cast_idea)
+        self.assertEqual("fixed", config.cast_policy.mode)
+        self.assertEqual(4, config.cast_policy.target_size)
+
+    def test_cast_policy_rejects_invalid_mode_and_target_size(self):
+        for policy, message in [
+            ({"mode": "invent"}, "cast_policy.mode"),
+            ({"mode": "extend", "target_size": 0}, "target_size"),
+            ({"mode": "extend", "target_size": True}, "target_size"),
+        ]:
+            with self.subTest(policy=policy), tempfile.TemporaryDirectory() as temp_dir:
+                config_path = Path(temp_dir) / "config.json"
+                config_path.write_text(json.dumps({"content_mode": "narrative_film", "cast_policy": policy}), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, message):
+                    ProjectConfig.load(config_path)
+
     def test_content_mode_defaults_to_music_video(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

@@ -8,6 +8,19 @@ from feverslop.domain.visual_consistency import PreflightMode
 
 
 class FullAutoCliTests(unittest.TestCase):
+    def test_request_from_args_maps_cast_brief_and_policy(self):
+        args = full_auto.build_arg_parser().parse_args([
+            "--idea", "story", "--style", "cinematic",
+            "--cast-idea", "four grotesque musicians",
+            "--cast-mode", "fixed", "--cast-size", "4",
+        ])
+
+        request = full_auto.request_from_args(args)
+
+        self.assertEqual("four grotesque musicians", request.cast_idea)
+        self.assertEqual("fixed", request.cast_mode)
+        self.assertEqual(4, request.cast_target_size)
+
     def test_root_cli_is_a_compatibility_facade_for_package_cli(self):
         self.assertIs(full_auto.build_arg_parser, canonical_full_auto.build_arg_parser)
         self.assertIs(full_auto.parse_optional_bool, canonical_full_auto.parse_optional_bool)

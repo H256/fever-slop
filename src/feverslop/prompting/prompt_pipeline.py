@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import json
+import inspect
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -41,8 +42,12 @@ class MusicVideoPromptPipeline:
         self,
         story_idea: str,
         notes: str = "",
+        cast_idea: str = "",
     ) -> dict:
-        response = self.prompt_modules.subject_locations(story_idea, notes)
+        if "cast_idea" in inspect.signature(self.prompt_modules.subject_locations).parameters:
+            response = self.prompt_modules.subject_locations(story_idea, notes, cast_idea)
+        else:
+            response = self.prompt_modules.subject_locations(story_idea, notes)
         if not isinstance(response, str):
             response = response.model_dump_json() if hasattr(response, "model_dump_json") else json.dumps(response)
 

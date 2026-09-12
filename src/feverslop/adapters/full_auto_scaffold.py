@@ -96,6 +96,8 @@ class LocalProjectScaffold:
                     "story_idea": spec.visual_story_idea,
                     "style": spec.visual_style,
                     "music_style": spec.music_style or spec.tags,
+                    **({"cast_idea": spec.visual_cast_idea} if getattr(spec, "visual_cast_idea", "") else {}),
+                    **({"cast_policy": {"mode": spec.visual_cast_mode or "extend", **({"target_size": spec.visual_cast_target_size} if spec.visual_cast_target_size is not None else {})}} if (getattr(spec, "visual_cast_idea", "") or getattr(spec, "visual_cast_mode", "")) else {}),
                     "subject": "",
                     "locations": [],
                     "steering": {
