@@ -254,8 +254,8 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         self.assertEqual(Path("keyframes/scene_0002_start.png"), output)
         self.assertIn("-vf", cmd)
         self.assertIn("select=eq(n\\,239)", cmd)
-        self.assertIn("-vsync", cmd)
-        self.assertIn("0", cmd)
+        self.assertIn("-fps_mode", cmd)
+        self.assertIn("passthrough", cmd)
         self.assertIn("-frames:v", cmd)
         self.assertIn("1", cmd)
 
