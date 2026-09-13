@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,7 @@ from feverslop.application.render_video import (
     RenderVideoScenesRequest,
     RenderVideoScenesUseCase,
 )
+from feverslop.application.generate_render_plan import GenerateRenderPlanUseCase
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.h3_audio_delivery import load_h3_audio_delivery
 from feverslop.domain.performance_timeline import (
@@ -28,6 +30,8 @@ from feverslop.prompting.dspy_h3_models import (
     SubjectDefinition,
 )
 from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder
+from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
+from tests.prompt_fakes import GeneralModulesFake
 
 from feverslop.tools.regression_fixture import (
     evaluate_regression_invariants,
@@ -61,6 +65,47 @@ class _FixedConceptModules:
     def summary(self, _payload, *, timeout=None):
         del timeout
         return "Ravena reaches the fountain."
+
+
+class _SequenceConceptModules:
+    def __init__(self, responses):
+        self.responses = iter(responses)
+
+    def concepts(self, _payload, *, batch=False, silent_mode=False, timeout=None):
+        del batch, silent_mode, timeout
+        return next(self.responses)
+
+    def repair_concepts(self, _payload, *, timeout=None):
+        del timeout
+        return next(self.responses)
+
+    def summary(self, _payload, *, timeout=None):
+        del timeout
+        return next(self.responses)
+
+
+class _ConceptValidationService:
+    def __init__(self, batcher, *, segments, global_context):
+        self.batcher = batcher
+        self.segments = segments
+        self.global_context = global_context
+
+    def execute(self, context):
+        context["concept_prompts"] = self.batcher.create_concept_prompts_batched(
+            stage1_segments=self.segments,
+            story_idea="Ravena completes the fountain rite once.",
+            global_context=self.global_context,
+        )
+        return context
+
+
+class _RecordingService:
+    def __init__(self):
+        self.calls = 0
+
+    def execute(self, context):
+        self.calls += 1
+        return context
 
 
 class _FixedH3Generator:
@@ -121,6 +166,161 @@ class _OfflineClient:
 
 
 class FailedRunRegressionFixtureTests(unittest.TestCase):
+    @staticmethod
+    def _cup_concept(scene, *, story_beat, action, action_phase="completed"):
+        return {
+            "concept": f"Ravena performs {action.replace('_', ' ')} at the fountain.",
+            "references": {
+                "actor_ids": ["ravena"],
+                "location_id": "fountain_grotto",
+            },
+            "narrative": {
+                **scene["narrative"],
+                "story_beat": story_beat,
+                "objective": "complete_the_fountain_rite",
+                "action": action,
+                "action_phase": action_phase,
+                "reset_events": scene["narrative"].get("reset_events", []),
+            },
+        }
+
+    def test_known_bad_cup_slice_stops_before_h3_and_render_services(self):
+        fixture = load_regression_fixture(FIXTURE)
+        by_scene = {
+            scene["scene"]: scene
+            for scene in fixture["projections"]["known_bad"]["scenes"]
+        }
+        segments = [
+            {"segment_id": f"segment_{number:03d}", "scene": number}
+            for number in (10, 11, 15)
+        ]
+        bad = {
+            "segment_010": self._cup_concept(
+                by_scene[10], story_beat="raise_cup", action="raise_cup",
+            ),
+            "segment_011": self._cup_concept(
+                by_scene[11], story_beat="raise_cup", action="raise_cup",
+            ),
+            "segment_015": self._cup_concept(
+                by_scene[15], story_beat="drink_from_cup", action="drink_from_cup",
+            ),
+        }
+        modules = _SequenceConceptModules([bad, {
+            "segment_011": bad["segment_011"],
+            "segment_015": bad["segment_015"],
+        }])
+        h3_service = _RecordingService()
+        render_service = _RecordingService()
+        validator = _ConceptValidationService(
+            ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=3),
+            segments=segments,
+            global_context={
+                "actors": [{"id": "ravena", "name": "Ravena"}],
+                "invariant_contract": fixture["invariant_contract"],
+            },
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"segment_011.*duplicates segment_010.*cup_raised.*segment_010",
+        ):
+            GenerateRenderPlanUseCase(
+                pipeline_services=[validator, h3_service, render_service],
+            ).execute_services({"request": SimpleNamespace(defer_h3_until_references=False)})
+
+        self.assertEqual(0, h3_service.calls)
+        self.assertEqual(0, render_service.calls)
+
+    def test_three_scene_cup_progression_reaches_distinct_render_plan_requests(self):
+        fixture = load_regression_fixture(FIXTURE)
+        control = fixture["projections"]["corrected_control"]
+        control_by_scene = {scene["scene"]: scene for scene in control["scenes"]}
+        scene_numbers = (10, 11, 15)
+        actions = {
+            10: ("acquire_cup", "acquire_cup"),
+            11: ("raise_cup", "raise_cup"),
+            15: ("drink_from_cup", "drink_from_cup"),
+        }
+        segments = [{
+            "segment_id": f"segment_{number:03d}",
+            "scene": number,
+            "type": "instrumental",
+            "start": float(index),
+            "end": float(index + 1),
+            "duration": 1.0,
+        } for index, number in enumerate(scene_numbers)]
+        generated = {
+            segment["segment_id"]: self._cup_concept(
+                control_by_scene[segment["scene"]],
+                story_beat=actions[segment["scene"]][0],
+                action=actions[segment["scene"]][1],
+            )
+            for segment in segments
+        }
+        global_context = {
+            "actors": [{"id": "ravena", "name": "Ravena"}],
+            "subject": "Ravena",
+            "story_idea": "Ravena completes the fountain rite once.",
+            "style": "cinematic grotto",
+            "locations": ["fountain_grotto"],
+            "structured_locations": [{"id": "fountain_grotto"}],
+            "prompt_guidance": {},
+            "invariant_contract": fixture["invariant_contract"],
+        }
+        concepts = ConceptPromptBatcher(
+            object(),
+            prompt_modules=_SequenceConceptModules([generated, "control summary"]),
+            batch_size=3,
+        ).create_concept_prompts_batched(
+            stage1_segments=segments,
+            story_idea=global_context["story_idea"],
+            global_context=global_context,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            plan_path = temp / "render_plan.json"
+            ScenePromptBuilder(
+                object(),
+                modules=GeneralModulesFake(
+                    zimage="Ravena handles the silver cup at the fountain.",
+                    i2v="Ravena completes one deliberate action with the silver cup.",
+                ),
+            ).build_scene_prompts(
+                stage1_segments=segments,
+                concept_prompts=concepts,
+                scene_details={segment["segment_id"]: {} for segment in segments},
+                global_context=global_context,
+                output_json_path=scene_path,
+                artifact_store=JsonArtifactStore(),
+            )
+            relay_path.write_text(json.dumps([
+                {"scene": number, "prompt_relay": []}
+                for number in scene_numbers
+            ]), encoding="utf-8")
+            build_render_plan(
+                scene_path,
+                relay_path,
+                plan_path,
+                VideoSettings(fps=24, width=640, height=352, megapixels=0.2),
+                artifact_store=JsonArtifactStore(),
+                seed=117210,
+            )
+            requests = json.loads(plan_path.read_text(encoding="utf-8"))
+
+        validations = [scene["metadata"]["semantic_validation"] for scene in requests]
+        self.assertEqual(list(scene_numbers), [scene["scene"] for scene in requests])
+        self.assertEqual([117210, 117210, 117210], [scene["seed"] for scene in requests])
+        self.assertEqual(3, len({item["state_signature"] for item in validations}))
+        self.assertTrue(all(item["outcome"] == "accepted" for item in validations))
+        self.assertTrue(all(not item["authorized_reprise"] for item in validations))
+        self.assertEqual(
+            ["acquired", "raised", "consumed"],
+            [scene["metadata"]["narrative"]["props"]["silver_cup"] for scene in requests],
+        )
+
     def test_fixture_is_compact_portable_and_covers_only_reviewed_slices(self):
         fixture = load_regression_fixture(FIXTURE)
 

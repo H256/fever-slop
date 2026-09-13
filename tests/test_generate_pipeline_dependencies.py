@@ -448,6 +448,10 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             self.assertEqual(2, concept_batcher.batch_size)
             self.assertEqual(180.0, concept_batcher.request_timeout_seconds)
             self.assertEqual({"segment_001": "batched concept"}, result.concept_prompts)
+            self.assertEqual(
+                {"one_shot_milestones": ["cup_raised"]},
+                result.global_context["narrative_contract"],
+            )
 
 
 def _prompt_context(temp: Path, concept_batch_size: int) -> GenerateRenderPlanContext:
@@ -470,6 +474,7 @@ def _prompt_context(temp: Path, concept_batch_size: int) -> GenerateRenderPlanCo
                 final_prompts="",
             ),
             prompt_guidance=SimpleNamespace(as_prompt_context=dict),
+            narrative_contract={"one_shot_milestones": ["cup_raised"]},
         ),
         app_config=SimpleNamespace(llm=SimpleNamespace(
             base_url="http://fake",

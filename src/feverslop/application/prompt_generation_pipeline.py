@@ -807,6 +807,9 @@ class PromptGenerationPipeline:
             "global_asset_snapshots": list(global_resolution.snapshots) if global_resolution else [],
             "subject_mode": subject_mode,
             "max_scene_actors": max_scene_actors,
+            "narrative_contract": dict(
+                get_config_value(config, "narrative_contract", {}) or {},
+            ),
             "audio_subject_bindings": audio_subject_bindings,
             "video_pipeline": str(get_config_value(config, "video_pipeline", "ltx_i2v") or "ltx_i2v").strip(),
             "language": language,

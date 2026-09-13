@@ -419,6 +419,7 @@ class ProjectConfig:
     global_props: tuple[GlobalAssetConfig, ...] = field(default_factory=tuple)
     subject_mode: str = "multi"
     max_scene_actors: int = 4
+    narrative_contract: dict[str, Any] = field(default_factory=dict)
 
     steering: SteeringConfig = field(default_factory=SteeringConfig)
     prompt_guidance: PromptGuidanceConfig = field(default_factory=PromptGuidanceConfig)
@@ -445,6 +446,10 @@ class ProjectConfig:
         vocal_raw = _ensure_dict(raw.get("vocal_detection", {}), "vocal_detection")
         steering_raw = _ensure_dict(raw.get("steering", {}), "steering")
         guidance_raw = _ensure_dict(raw.get("prompt_guidance", {}), "prompt_guidance")
+        narrative_contract = _ensure_dict(
+            raw.get("narrative_contract", raw.get("invariant_contract", {})),
+            "narrative_contract",
+        )
         lora_1_raw = _ensure_dict(raw.get("lora_1", {}), "lora_1")
         loras_raw = raw.get("loras")
         actors_raw = _ensure_list(raw.get("actors", []), "actors")
@@ -664,6 +669,7 @@ class ProjectConfig:
             global_props=_load_global_assets(raw.get("global_props", global_raw.get("props")), "global_props"),
             subject_mode=subject_mode,
             max_scene_actors=max_scene_actors,
+            narrative_contract=narrative_contract,
 
             steering=SteeringConfig(
                 global_=steering_raw.get("global", ""),

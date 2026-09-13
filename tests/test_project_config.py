@@ -8,6 +8,42 @@ from feverslop.config.project_config import ProjectConfig
 
 
 class ProjectConfigTests(unittest.TestCase):
+    def test_loads_invariant_contract_alias(self):
+        contract = {
+            "one_shot_milestones": ["cup_acquired"],
+            "prop_state_order": {
+                "silver_cup": ["unseen", "acquired"],
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(json.dumps({
+                "content_mode": "narrative_film",
+                "invariant_contract": contract,
+            }), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual(contract, config.narrative_contract)
+
+    def test_loads_narrative_invariant_contract(self):
+        contract = {
+            "one_shot_milestones": ["cup_acquired", "cup_raised"],
+            "prop_state_order": {
+                "silver_cup": ["unseen", "acquired", "raised"],
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(json.dumps({
+                "content_mode": "narrative_film",
+                "narrative_contract": contract,
+            }), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual(contract, config.narrative_contract)
+
     def test_cast_brief_and_policy_round_trip_into_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
