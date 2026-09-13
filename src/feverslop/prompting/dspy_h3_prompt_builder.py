@@ -581,7 +581,7 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
             "state": str(item.get("state") or "").strip(),
             "prompt": str(item.get("prompt") or "").strip(),
         }
-        for key in ("performance_phase", "performance_intervals_version", "word_timestamps", "acoustically_verified", "reason_codes", "performance_conflicts"):
+        for key in ("performance_phase", "performance_intervals_version", "transcript_status", "word_timestamps", "acoustically_verified", "reason_codes", "performance_conflicts"):
             if key in item:
                 shot[key] = item[key]
         if item.get("performance_phase"):
@@ -605,13 +605,21 @@ def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
             if isinstance(item, dict)
         }
         reasons.update(str(item).strip().casefold() for item in shot.get("reason_codes") or ())
+        accepted_timed_transcript = (
+            shot.get("transcript_status") == "accepted"
+            and bool(shot.get("word_timestamps"))
+            and all(
+                str(word.get("source") or "").strip() in {"whisper", "corrected_from_whisper"}
+                for word in shot["word_timestamps"]
+            )
+        )
         if shot.get("performance_phase") and (
             shot.get("acoustically_verified") is False
             or reasons.intersection({
                 "uncertain_vocal_evidence", "missing_performance_evidence",
                 "legacy_timing_unverified", "unresolved_lyric_alignment",
             })
-        ):
+        ) and not accepted_timed_transcript:
             shot.update(
                 state="instrumental", lyrics="", dialogue="", text="",
                 performance_fallback="non_vocal_uncertain_evidence",

@@ -134,6 +134,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         - ``#SAVE_VIDEO`` → ``filename_prefix``
         """
         self._validate_scene(scene)
+        self._validate_vocal_prompt_consistency(scene, prompt)
         scene_number = int(scene.get("scene", 0))
         continuity_manifest = self._continuity_manifest(scene)
         continuity_anchor = self._resolve_continuity_anchor_path(scene)
@@ -938,6 +939,63 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 f"Scene {scene_number} requires at least one actor or location reference",
             )
         self._validate_h3_reference_contract(scene)
+
+    @staticmethod
+    def _validate_vocal_prompt_consistency(scene: dict, prompt: str) -> None:
+        """Reject no-vocal directions that overlap accepted bound vocal timing."""
+        references = scene.get("references") or {}
+        binding = (references.get("audio_subject_bindings") or {}).get("vocals") or {}
+        subject_id = str(binding.get("subject_id") or "").strip()
+        speaker_id = str(binding.get("speaker_id") or "").strip()
+        if not subject_id or not speaker_id or subject_id not in (references.get("actor_ids") or []):
+            return
+        stem_paths = (scene.get("stem_audio") or {}).get("paths") or {}
+        prepared_sources = scene.get("h3_audio_sources") or []
+        has_vocal_guide = bool(stem_paths.get("vocals")) or any(
+            str(source.get("name") or "").strip() == "vocals"
+            and bool(set(source.get("roles") or ()) & {"reference", "conditioning", "output_copy"})
+            for source in prepared_sources
+            if isinstance(source, dict)
+        )
+        if not has_vocal_guide:
+            return
+
+        accepted_windows = []
+        origin = float(scene.get("abs_start_seconds") or 0.0)
+        for phase in scene.get("performance_intervals") or ():
+            if (
+                str(phase.get("state") or "").strip().casefold() not in {"singing", "vocals", "vocal"}
+                or phase.get("transcript_status") != "accepted"
+                or not phase.get("word_timestamps")
+            ):
+                continue
+            start = float(phase.get("start_seconds", float(phase.get("start") or 0.0) - origin))
+            end = float(phase.get("end_seconds", float(phase.get("end") or 0.0) - origin))
+            if end > start:
+                accepted_windows.append((start, end))
+        if not accepted_windows:
+            return
+
+        lowered = str(prompt or "").casefold()
+        window_matches = list(re.finditer(
+            r"\bfrom\s+([0-9]+(?:\.[0-9]+)?)-([0-9]+(?:\.[0-9]+)?)\s+seconds\b",
+            lowered,
+        ))
+        contradictions = (
+            "no sung vocal performance", "no vocal performance", "does not sing",
+            "mouth closed", "do not create lip-sync", "no singing mouth movement",
+        )
+        for index, match in enumerate(window_matches):
+            block_end = window_matches[index + 1].start() if index + 1 < len(window_matches) else len(lowered)
+            block = lowered[match.end():block_end]
+            if not any(phrase in block for phrase in contradictions):
+                continue
+            start, end = float(match.group(1)), float(match.group(2))
+            if any(start < accepted_end and end > accepted_start for accepted_start, accepted_end in accepted_windows):
+                raise FeverSlopValidationError(
+                    f"Scene {scene.get('scene', '?')} H3 prompt contradicts accepted vocal timing "
+                    f"for bound performer {subject_id}/{speaker_id}",
+                )
 
     def _validate_h3_reference_contract(self, scene: dict) -> None:
         """Reject structured H3 prompts that do not match bound workflow slots."""

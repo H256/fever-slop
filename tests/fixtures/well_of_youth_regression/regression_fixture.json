@@ -78,17 +78,37 @@
             {
               "word": "through",
               "start": 74.453,
-              "end": 74.72
+              "end": 74.72,
+              "source": "whisper",
+              "word_id": "whisper:6:7"
             },
             {
               "word": "the",
               "start": 74.72,
-              "end": 75.18
+              "end": 75.18,
+              "source": "whisper",
+              "word_id": "whisper:6:8"
             },
             {
               "word": "fire",
               "start": 75.18,
-              "end": 75.78
+              "end": 75.78,
+              "source": "whisper",
+              "word_id": "whisper:6:9"
+            },
+            {
+              "word": "Higher",
+              "start": 75.78,
+              "end": 77.14,
+              "source": "whisper",
+              "word_id": "whisper:7:0"
+            },
+            {
+              "word": "and",
+              "start": 77.14,
+              "end": 78.06,
+              "source": "whisper",
+              "word_id": "whisper:7:1"
             }
           ],
           "reason_codes": [

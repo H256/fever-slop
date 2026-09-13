@@ -141,7 +141,11 @@ def _vocal_delivery_failures(
     prompt = str(request.get("prompt") or "")
     lowered = prompt.casefold()
     has_singing = re.search(r"\b(sing|sings|singing|sung)\b", lowered) is not None
-    has_lip_sync = "lip sync" in lowered or "lip-sync" in lowered
+    has_lip_sync = (
+        "lip sync" in lowered
+        or "lip-sync" in lowered
+        or "visible mouth movements precisely synchronized to the vocal" in lowered
+    )
     contradictions = (
         "no sung vocal performance",
         "no vocal performance",
