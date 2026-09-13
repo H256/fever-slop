@@ -1,0 +1,633 @@
+{
+  "schema": "feverslop.failed-run-regression/v1",
+  "issue": 1172,
+  "provenance": {
+    "source_project": "projects/well-of-youth-gothic-trio",
+    "extraction_policy": "Reviewed structured metadata only; generated media and machine-specific paths are excluded.",
+    "baseline_files": [
+      {
+        "path": "projects/well-of-youth-gothic-trio/config.json",
+        "sha256": "4b6ab4ecae4c1426403dbfc91f753a782fc65bbb78c65f6504eafa21d3744f0b"
+      },
+      {
+        "path": "projects/well-of-youth-gothic-trio/output/timeline/stage1_segments_song.json",
+        "sha256": "2777a49bcc693edbbf2bc4f183d3b198cc4b11bb74027b2b377b04572c60c568"
+      },
+      {
+        "path": "projects/well-of-youth-gothic-trio/output/prompts/concept_prompts_song.json",
+        "sha256": "9bc5d51a7479afc67bf5ba16fbbc4afb74ec16b4e3df7a2bb50dbd073e0486fa"
+      },
+      {
+        "path": "projects/well-of-youth-gothic-trio/output/prompts/h3_prompts_song.json",
+        "sha256": "2577601ca820f9feeccbce0bf8c7d0dce4eec4761a12547b1ebe4acbd24541fe"
+      },
+      {
+        "path": "projects/well-of-youth-gothic-trio/output/render/plans/references.json",
+        "sha256": "58de0ce0a7d24c3ceef3a3a936490a0c4d415d2946ee37226f70a3076d6446f3"
+      },
+      {
+        "path": "projects/well-of-youth-gothic-trio/output/render/scenes/scene_0015/workflow.json",
+        "sha256": "c02e32b51671373ecad0c075c9436332315bd7a6816e2d3f0fc64090f9f6f147"
+      }
+    ]
+  },
+  "invariant_contract": {
+    "one_shot_milestones": [
+      "cup_acquired",
+      "cup_raised",
+      "drink_completed",
+      "ascent_complete"
+    ],
+    "prop_state_order": {
+      "silver_cup": [
+        "unseen",
+        "acquired",
+        "raised",
+        "at_lips",
+        "consumed",
+        "lowered"
+      ]
+    },
+    "terminal_states": {
+      "ravena": {
+        "milestone": "ascent_complete",
+        "state": "ascended_absent",
+        "reset_event": "ravena_returns"
+      }
+    },
+    "actor_allowed_locations": {
+      "well_guardian": [
+        "fountain_grotto"
+      ]
+    }
+  },
+  "projections": {
+    "known_bad": {
+      "vocal_case": {
+        "scene": 15,
+        "interval_seconds": [
+          74.458,
+          78.0
+        ],
+        "timeline_evidence": {
+          "type": "vocals",
+          "transcript_status": "accepted",
+          "performer_id": "ravena",
+          "speaker_id": "S1",
+          "word_timestamps": [
+            {
+              "word": "through",
+              "start": 74.453,
+              "end": 74.72
+            },
+            {
+              "word": "the",
+              "start": 74.72,
+              "end": 75.18
+            },
+            {
+              "word": "fire",
+              "start": 75.18,
+              "end": 75.78
+            }
+          ],
+          "reason_codes": [
+            "uncertain_vocal_evidence",
+            "unresolved_lyric_alignment"
+          ]
+        },
+        "final_request": {
+          "prompt": "From 0.003-3.540 seconds, No sung vocal performance occurs; continue the established camera movement.",
+          "audio_subject_binding": {
+            "subject_id": "ravena",
+            "speaker_id": "S1"
+          },
+          "audio_inputs": [
+            {
+              "name": "vocals",
+              "roles": [
+                "reference",
+                "conditioning",
+                "output_copy"
+              ]
+            }
+          ]
+        }
+      },
+      "scenes": [
+        {
+          "scene": 10,
+          "narrative": {
+            "milestone_rank": 3,
+            "milestones": [
+              "cup_raised"
+            ],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "corporeal",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "raised"
+            }
+          }
+        },
+        {
+          "scene": 11,
+          "narrative": {
+            "milestone_rank": 3,
+            "milestones": [
+              "cup_raised"
+            ],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "corporeal",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "raised"
+            }
+          }
+        },
+        {
+          "scene": 14,
+          "narrative": {
+            "milestone_rank": 3,
+            "milestones": [],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "corporeal",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "unseen"
+            }
+          }
+        },
+        {
+          "scene": 15,
+          "narrative": {
+            "milestone_rank": 4,
+            "milestones": [
+              "cup_raised",
+              "drink_completed"
+            ],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "corporeal",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "at_lips"
+            }
+          }
+        },
+        {
+          "scene": 20,
+          "narrative": {
+            "milestone_rank": 5,
+            "milestones": [
+              "ascent_complete"
+            ],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "ascended_absent",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          }
+        },
+        {
+          "scene": 21,
+          "narrative": {
+            "milestone_rank": 5,
+            "milestones": [],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "ascended_absent",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          }
+        },
+        {
+          "scene": 37,
+          "narrative": {
+            "milestone_rank": 5,
+            "milestones": [],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "ascended_absent",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          }
+        },
+        {
+          "scene": 38,
+          "narrative": {
+            "milestone_rank": 0,
+            "milestones": [],
+            "location": "weeping_caves",
+            "cast_states": {
+              "ravena": "ascended_absent",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          }
+        },
+        {
+          "scene": 51,
+          "narrative": {
+            "milestone_rank": 0,
+            "milestones": [],
+            "location": "weeping_caves",
+            "cast_states": {
+              "ravena": "corporeal",
+              "well_guardian": "absent"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          }
+        }
+      ],
+      "boundaries": [
+        {
+          "from_scene": 14,
+          "to_scene": 15,
+          "outgoing": {
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "corporeal"
+            },
+            "props": {
+              "silver_cup": "unseen"
+            }
+          },
+          "incoming": {
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "corporeal"
+            },
+            "props": {
+              "silver_cup": "at_lips"
+            }
+          },
+          "transition_events": [],
+          "continuation_required": true,
+          "request": {
+            "continuation_intents": [],
+            "canonical_dependencies": null,
+            "startframe_mode": null,
+            "startframe_source_scene": null
+          }
+        },
+        {
+          "from_scene": 37,
+          "to_scene": 38,
+          "outgoing": {
+            "location": "fountain_grotto",
+            "cast_states": {
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          },
+          "incoming": {
+            "location": "weeping_caves",
+            "cast_states": {
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          },
+          "transition_events": [
+            "exit_grotto"
+          ],
+          "continuation_required": false,
+          "request": {}
+        }
+      ]
+    },
+    "corrected_control": {
+      "vocal_case": {
+        "scene": 15,
+        "interval_seconds": [
+          74.458,
+          78.0
+        ],
+        "timeline_evidence": {
+          "type": "vocals",
+          "transcript_status": "accepted",
+          "performer_id": "ravena",
+          "speaker_id": "S1",
+          "word_timestamps": [
+            {
+              "word": "through",
+              "start": 74.453,
+              "end": 74.72
+            }
+          ],
+          "reason_codes": [
+            "uncertain_vocal_evidence"
+          ]
+        },
+        "final_request": {
+          "prompt": "Ravena remains visible and sings with controlled lip sync during the accepted vocal interval.",
+          "audio_subject_binding": {
+            "subject_id": "ravena",
+            "speaker_id": "S1"
+          },
+          "audio_inputs": [
+            {
+              "name": "vocals",
+              "roles": [
+                "reference",
+                "conditioning",
+                "output_copy"
+              ]
+            }
+          ]
+        }
+      },
+      "scenes": [
+        {
+          "scene": 10,
+          "narrative": {
+            "milestone_rank": 3,
+            "milestones": [
+              "cup_acquired"
+            ],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "corporeal",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "acquired"
+            }
+          }
+        },
+        {
+          "scene": 11,
+          "narrative": {
+            "milestone_rank": 3,
+            "milestones": [
+              "cup_raised"
+            ],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "corporeal",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "raised"
+            }
+          }
+        },
+        {
+          "scene": 14,
+          "narrative": {
+            "milestone_rank": 3,
+            "milestones": [],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "corporeal",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "at_lips"
+            }
+          }
+        },
+        {
+          "scene": 15,
+          "narrative": {
+            "milestone_rank": 4,
+            "milestones": [
+              "drink_completed"
+            ],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "corporeal",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          }
+        },
+        {
+          "scene": 20,
+          "narrative": {
+            "milestone_rank": 5,
+            "milestones": [
+              "ascent_complete"
+            ],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "ascended_absent",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          }
+        },
+        {
+          "scene": 21,
+          "narrative": {
+            "milestone_rank": 5,
+            "milestones": [],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "ascended_absent",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          }
+        },
+        {
+          "scene": 37,
+          "narrative": {
+            "milestone_rank": 5,
+            "milestones": [],
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "ascended_absent",
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          }
+        },
+        {
+          "scene": 38,
+          "narrative": {
+            "milestone_rank": 5,
+            "milestones": [],
+            "location": "surface_passage",
+            "cast_states": {
+              "ravena": "ascended_absent",
+              "well_guardian": "absent"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          }
+        },
+        {
+          "scene": 51,
+          "narrative": {
+            "milestone_rank": 5,
+            "milestones": [],
+            "location": "surface_passage",
+            "cast_states": {
+              "ravena": "ascended_absent",
+              "well_guardian": "absent"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          }
+        }
+      ],
+      "boundaries": [
+        {
+          "from_scene": 14,
+          "to_scene": 15,
+          "outgoing": {
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "corporeal"
+            },
+            "props": {
+              "silver_cup": "at_lips"
+            }
+          },
+          "incoming": {
+            "location": "fountain_grotto",
+            "cast_states": {
+              "ravena": "corporeal"
+            },
+            "props": {
+              "silver_cup": "at_lips"
+            }
+          },
+          "transition_events": [],
+          "continuation_required": true,
+          "request": {
+            "continuation_intents": [
+              "continue_cup_at_lips"
+            ],
+            "canonical_dependencies": {
+              "predecessor_scene": 14
+            },
+            "startframe_mode": "previous_last_frame",
+            "startframe_source_scene": 14
+          }
+        },
+        {
+          "from_scene": 37,
+          "to_scene": 38,
+          "outgoing": {
+            "location": "fountain_grotto",
+            "cast_states": {
+              "well_guardian": "present"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          },
+          "incoming": {
+            "location": "surface_passage",
+            "cast_states": {
+              "well_guardian": "absent"
+            },
+            "props": {
+              "silver_cup": "consumed"
+            }
+          },
+          "transition_events": [
+            "exit_grotto"
+          ],
+          "continuation_required": false,
+          "request": {}
+        }
+      ]
+    }
+  },
+  "smoke_specifications": {
+    "timed_vocal": {
+      "scenes": [
+        15
+      ],
+      "duration_seconds": 3.542,
+      "fixed_seed": 117215,
+      "profile": "minimax-h3-r2v-lowest-cost",
+      "request_assertions": [
+        "accepted words and Ravena/S1 binding reach #PROMPT and the conditioning vocal guide"
+      ],
+      "visual_review": [
+        "human confirms visible articulation near the asserted onset; this is not inferred from request metadata"
+      ]
+    },
+    "cup_progression": {
+      "scenes": [
+        10,
+        11,
+        15
+      ],
+      "fixed_seed": 117210,
+      "profile": "minimax-h3-r2v-lowest-cost",
+      "request_assertions": [
+        "unique cup milestones and monotonic prop states reach three ordered requests"
+      ],
+      "visual_review": [
+        "human confirms acquire, raise, and drink/lower are visually distinct"
+      ]
+    },
+    "terminal_state": {
+      "scenes": [
+        20,
+        21
+      ],
+      "fixed_seed": 117220,
+      "profile": "minimax-h3-r2v-lowest-cost",
+      "request_assertions": [
+        "post-ascent requests contain no corporeal Ravena reference without a return event"
+      ],
+      "visual_review": [
+        "human confirms the ascent boundary and continued absence"
+      ]
+    },
+    "grotto_cave_boundary": {
+      "scenes": [
+        37,
+        38
+      ],
+      "fixed_seed": 117237,
+      "profile": "minimax-h3-r2v-lowest-cost",
+      "request_assertions": [
+        "the location transition removes the location-bound Well-Guardian"
+      ],
+      "visual_review": [
+        "human confirms compatible lighting, geography, and cast across the cut"
+      ]
+    }
+  }
+}

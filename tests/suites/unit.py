@@ -58,6 +58,7 @@ UNIT_MODULES = (
     "facefix_crop_pipeline",
     "facefix_pipeline",
     "facefix_rendering",
+    "failed_run_regression_fixture",
     "frozen_dataclass_immutability",
     "full_auto_llm_chain",
     "full_auto_song_brief",
