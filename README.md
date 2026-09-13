@@ -345,6 +345,7 @@ Start here:
 - [Pipelines](documentation/pipelines.md) — Classic, MSR, Ingredients, MiniMax H3, Full-Auto, and Movie workflows.
 - [Projects](documentation/projects.md) — directory layout, configuration, and artifacts.
 - [Examples](documentation/examples.md) — worked standard and Full-Auto commands.
+- [Cast briefs](documentation/cast-brief.md) — free cast direction, roster policies, and CLI examples.
 
 Project and contributor references:
 
