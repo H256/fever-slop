@@ -10,6 +10,9 @@ class FullAutoRequest:
     idea: str
     style: str
     music_style: str | None = None
+    cast_idea: str | None = None
+    cast_mode: str | None = None
+    cast_target_size: int | None = None
     project_name: str | None = None
     projects_dir: Path = Path("projects")
     duration_seconds: float = 120.0
@@ -37,6 +40,9 @@ class SongSpec:
     visual_story_idea: str
     visual_style: str
     music_style: str = ""
+    visual_cast_idea: str = ""
+    visual_cast_mode: str = ""
+    visual_cast_target_size: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

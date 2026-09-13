@@ -185,3 +185,106 @@ Do not use for: refactoring, writing scripts from scratch, debugging business lo
 3. `query-docs` with the selected library ID and what to look up in the library's documentation (not single words), scoped to a single concept. If the question spans multiple distinct concepts (e.g. routing and auth and caching), make a separate `query-docs` call per concept with the same library ID, unless the question is about how the concepts interact — combined queries dilute ranking and return shallow results for each topic
 4. Answer using the fetched docs
 
+---
+# Engineering Workflow and Verification Rules
+
+These instructions apply to feature work, bug fixes, and changes to
+production pipelines.
+
+## Scope and Planning
+
+Before changing code:
+
+1. Read the referenced issue or ticket.
+2. Identify the real production entry point, the relevant data flow,
+   and the final consumer or visible output.
+3. Keep the implementation within the requested scope.
+4. Do not perform unrelated refactoring unless it is necessary to
+   complete the requested change.
+5. Do not use subagents unless the task explicitly requires independent
+   research or parallel verification.
+
+## End-to-End Wiring Requirement
+
+A feature is not complete merely because a helper function exists or
+unit tests pass.
+
+For every new option, field, transformation, or behavior, verify that it:
+
+1. Is accepted by the real production entry point.
+2. Is passed through every required boundary, configuration layer,
+   and pipeline stage.
+3. Is consumed by the intended downstream component.
+4. Produces the expected observable result.
+
+Before reporting completion, document the complete path from input to
+consumer in the final report.
+
+## Verification Levels
+
+Use the smallest verification level that proves the requested behavior.
+
+### 1. Wiring Test
+
+Run a fast test that verifies the production data flow without invoking
+expensive generation, rendering, or external services.
+
+The test must prove that the relevant input reaches the final request,
+configuration object, or consumer.
+
+### 2. Smoke Test
+
+For changes affecting the generation or rendering pipeline, run one
+representative minimal scenario.
+
+Use:
+
+- one small scene or fixture,
+- a deterministic test cast when relevant,
+- the lowest-cost local model or render profile,
+- an isolated local output directory,
+- no unnecessary external side effects.
+
+The smoke test must verify the behavior requested by the ticket, not
+only that the process exits successfully.
+
+### 3. Full End-to-End Run
+
+Run a full production-like pipeline only when required by the ticket,
+when changing a critical pipeline boundary, or when the smoke test
+cannot prove correctness.
+
+## Logging and Test Output
+
+Avoid sending large raw logs to the agent context.
+
+Tests should:
+
+1. Print only a concise summary to standard output:
+   test name, pass/fail status, duration, key assertions, and output path.
+2. Write detailed logs to a file when needed.
+3. On failure, print the relevant error excerpt and the path to the
+   detailed log file.
+4. Produce a small machine-readable result file when practical.
+
+For pipeline smoke tests, include explicit result fields such as:
+
+- `cast_applied`
+- `prompt_corrections_applied`
+- `request_created`
+- `consumer_received_expected_data`
+- `render_completed`
+- `output_path`
+
+## Definition of Done
+
+Do not mark a ticket as complete until all applicable items are true:
+
+- The requested behavior is implemented.
+- The complete production path is wired from entry point to consumer.
+- Unit tests pass where relevant.
+- A wiring test or integration test passes.
+- A smoke test passes when the change affects the generation pipeline.
+- No unrelated changes were introduced.
+- The final report includes changed files, the verified data flow,
+  commands run, results, output locations, and remaining risks.

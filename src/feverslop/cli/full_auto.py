@@ -37,6 +37,9 @@ def add_full_auto_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--idea", required=True)
     parser.add_argument("--style", required=True)
     parser.add_argument("--music-style", default=None)
+    parser.add_argument("--cast-idea", default=None)
+    parser.add_argument("--cast-mode", choices=["extend", "fixed"], default=None)
+    parser.add_argument("--cast-size", type=int, default=None)
     parser.add_argument("--project-name", default=None)
     parser.add_argument("--projects-dir", default="projects")
     parser.add_argument("--workflow", default=str(Path("workflows/audio/audio-model") / "audio_song_v2.json"))
@@ -65,6 +68,9 @@ def request_from_args(args: argparse.Namespace) -> FullAutoRequest:
         idea=args.idea,
         style=args.style,
         music_style=args.music_style,
+        cast_idea=args.cast_idea,
+        cast_mode=args.cast_mode,
+        cast_target_size=args.cast_size,
         project_name=args.project_name,
         projects_dir=Path(args.projects_dir),
         duration_seconds=float(args.duration_seconds),

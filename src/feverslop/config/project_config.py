@@ -205,6 +205,29 @@ class ActorConfig:
 
 
 @dataclass(frozen=True)
+class CastPolicyConfig:
+    mode: str = "extend"
+    target_size: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"extend", "fixed"}:
+            raise ValueError("cast_policy.mode must be 'extend' or 'fixed'")
+        if self.target_size is not None and (type(self.target_size) is not int or self.target_size < 1):
+            raise ValueError("cast_policy.target_size must be a positive integer")
+
+
+def _load_cast_policy(raw) -> CastPolicyConfig:
+    if raw is None:
+        return CastPolicyConfig()
+    if not isinstance(raw, dict):
+        raise ValueError("cast_policy must be an object")
+    target = raw.get("target_size")
+    if target is not None and type(target) is not int:
+        raise ValueError("cast_policy.target_size must be a positive integer")
+    return CastPolicyConfig(mode=str(raw.get("mode", "extend") or "extend").strip().lower(), target_size=target)
+
+
+@dataclass(frozen=True)
 class StructuredLocationConfig:
     id: str
     name: str
@@ -387,6 +410,8 @@ class ProjectConfig:
     subject: str = ""
     locations: list[str] = field(default_factory=list)
     actors: tuple[ActorConfig, ...] = field(default_factory=tuple)
+    cast_idea: str = ""
+    cast_policy: CastPolicyConfig = field(default_factory=CastPolicyConfig)
     structured_locations: tuple[StructuredLocationConfig, ...] = field(default_factory=tuple)
     global_cast: tuple[GlobalAssetConfig, ...] = field(default_factory=tuple)
     global_locations: tuple[GlobalAssetConfig, ...] = field(default_factory=tuple)
@@ -423,6 +448,7 @@ class ProjectConfig:
         lora_1_raw = _ensure_dict(raw.get("lora_1", {}), "lora_1")
         loras_raw = raw.get("loras")
         actors_raw = _ensure_list(raw.get("actors", []), "actors")
+        cast_policy = _load_cast_policy(raw.get("cast_policy"))
         locations_raw = _ensure_list(raw.get("locations", []), "locations")
         audio_refs_raw = _ensure_dict(raw.get("minimax_h3_audio_refs", {}), "minimax_h3_audio_refs")
         global_raw = _ensure_dict(raw.get("global_assets", {}), "global_assets")
@@ -538,6 +564,9 @@ class ProjectConfig:
             _load_actor(item, index)
             for index, item in enumerate(actors_raw, start=1)
         )
+        actor_ids = [actor.id.casefold() for actor in actors]
+        if len(actor_ids) != len(set(actor_ids)):
+            raise ValueError("actors must not contain duplicate ids")
 
         return cls(
             project_dir=project_dir,
@@ -623,6 +652,8 @@ class ProjectConfig:
                 for item in locations_raw
             ],
             actors=actors,
+            cast_idea=_load_multiline_text(raw.get("cast_idea", "")),
+            cast_policy=cast_policy,
             structured_locations=tuple(
                 _load_structured_location(item, index)
                 for index, item in enumerate(locations_raw, start=1)
