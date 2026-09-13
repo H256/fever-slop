@@ -577,6 +577,12 @@ def build_render_plan(
                 "spatial_relations": scene.get("spatial_relations", ""),
             },
         }
+        if isinstance(scene.get("narrative"), dict):
+            render_scene["metadata"]["narrative"] = deepcopy(scene["narrative"])
+        if isinstance(scene.get("semantic_validation"), dict):
+            render_scene["metadata"]["semantic_validation"] = deepcopy(
+                scene["semantic_validation"],
+            )
         intervals_source = relay_scene.get("performance_intervals") or relay_scene.get("prompt_relay")
         if intervals_source:
             intervals = deepcopy(intervals_source)

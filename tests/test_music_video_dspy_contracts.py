@@ -165,6 +165,21 @@ class MusicVideoDspyContractTests(unittest.TestCase):
         self.assertIn("every available performer", guide)
         self.assertIn("role-defining instrument", guide)
 
+    def test_concept_and_repair_guides_require_semantic_scene_state(self):
+        for name in ("music-video-concepts", "music-video-concept-repair"):
+            with self.subTest(name=name):
+                guide = load_markdown_guide(name).lower()
+                self.assertIn('"narrative"', guide)
+                self.assertIn('"story_beat"', guide)
+                self.assertIn('"objective"', guide)
+                self.assertIn('"action_phase"', guide)
+                self.assertIn('"milestones"', guide)
+                self.assertIn('"cast_states"', guide)
+                self.assertIn('"props"', guide)
+                self.assertIn('"reset_events"', guide)
+                self.assertIn("one-shot", guide)
+                self.assertIn("explicit causal reset", guide)
+
     def test_all_classic_guides_are_package_resources(self):
         for name in (
             "music-video-story-idea", "music-video-style", "music-video-subject-locations",

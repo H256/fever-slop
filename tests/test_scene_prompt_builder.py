@@ -14,6 +14,64 @@ from tests.prompt_fakes import GeneralModulesFake
 
 
 class ScenePromptBuilderTests(unittest.TestCase):
+    def test_scene_prompt_preserves_accepted_narrative_identity(self):
+        modules = GeneralModulesFake(
+            zimage="Ravena raises the silver cup.",
+            i2v="Ravena completes one deliberate cup raise.",
+        )
+        builder = ScenePromptBuilder(object(), modules=modules)
+        narrative = {
+            "story_beat": "raise_cup",
+            "objective": "complete_the_rite",
+            "action": "raise_cup",
+            "action_phase": "completed",
+            "milestones": ["cup_raised"],
+            "location": "fountain_grotto",
+            "cast_states": {"ravena": "corporeal"},
+            "props": {"silver_cup": "raised"},
+            "reset_events": [],
+        }
+        validation = {
+            "outcome": "accepted",
+            "scene_id": "segment_011",
+            "story_beat": "raise_cup",
+            "state_signature": "fixture-signature",
+            "authorized_reprise": False,
+            "authorized_reset_events": [],
+            "reprise_of": None,
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "scene_prompts.json"
+            builder.build_scene_prompts(
+                stage1_segments=[{
+                    "segment_id": "segment_011", "scene": 11,
+                    "type": "instrumental", "start": 0.0, "end": 1.0,
+                    "duration": 1.0,
+                }],
+                concept_prompts={"segment_011": {
+                    "concept": "Ravena raises the silver cup.",
+                    "references": {"actor_ids": ["ravena"]},
+                    "narrative": narrative,
+                    "semantic_validation": validation,
+                }},
+                scene_details={"segment_011": {}},
+                global_context={
+                    "subject": "Ravena",
+                    "story_idea": "Ravena completes the rite once.",
+                    "style": "cinematic",
+                    "locations": ["fountain_grotto"],
+                    "prompt_guidance": {},
+                    "actors": [{"id": "ravena", "name": "Ravena"}],
+                },
+                output_json_path=output_path,
+                artifact_store=JsonArtifactStore(),
+            )
+            data = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(narrative, data[0]["narrative"])
+        self.assertEqual(validation, data[0]["semantic_validation"])
+
     def test_scene_prompt_persists_structured_llm_vocal_performer(self):
         modules = GeneralModulesFake(i2v={
             "prompt": "The vocalist performs with precise lip sync.",

@@ -130,6 +130,61 @@ class OriginalStylePromptTests(unittest.TestCase):
 
 
 class BuildRenderPlanTests(unittest.TestCase):
+    def test_semantic_validation_metadata_reaches_render_plan(self):
+        narrative = {
+            "story_beat": "raise_cup",
+            "objective": "complete_the_rite",
+            "action": "raise_cup",
+            "action_phase": "completed",
+            "milestones": ["cup_raised"],
+            "location": "fountain_grotto",
+            "cast_states": {"ravena": "corporeal"},
+            "props": {"silver_cup": "raised"},
+            "reset_events": [],
+        }
+        validation = {
+            "outcome": "accepted",
+            "scene_id": "segment_011",
+            "story_beat": "raise_cup",
+            "state_signature": "fixture-signature",
+            "authorized_reprise": False,
+            "authorized_reset_events": [],
+            "reprise_of": None,
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            output_path = temp / "render_plan.json"
+            scene_prompts_path.write_text(json.dumps([{
+                "scene": 11,
+                "segment_id": "segment_011",
+                "type": "instrumental",
+                "start": 0.0,
+                "end": 1.0,
+                "duration": 1.0,
+                "zimage_prompt": "Ravena raises the cup.",
+                "ltx_base_prompt": "Ravena raises the cup once.",
+                "narrative": narrative,
+                "semantic_validation": validation,
+            }]), encoding="utf-8")
+            relay_path.write_text(
+                json.dumps([{"scene": 11, "prompt_relay": []}]),
+                encoding="utf-8",
+            )
+
+            build_render_plan(
+                scene_prompts_path,
+                relay_path,
+                output_path,
+                VideoSettings(fps=24, width=640, height=352),
+                artifact_store=JsonArtifactStore(),
+            )
+            scene = json.loads(output_path.read_text(encoding="utf-8"))[0]
+
+        self.assertEqual(narrative, scene["metadata"]["narrative"])
+        self.assertEqual(validation, scene["metadata"]["semantic_validation"])
+
     def test_continuation_intents_are_materialized_with_profile_aligned_segments(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

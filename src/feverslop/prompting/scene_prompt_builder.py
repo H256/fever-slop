@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Callable
+from copy import deepcopy
 from pathlib import Path
 
 from feverslop.config.project_config import (
@@ -341,7 +342,11 @@ class ScenePromptBuilder:
             segment_id = segment["segment_id"]
             concept = concept_prompts[segment_id]
             references = {}
+            narrative = None
+            semantic_validation = None
             if isinstance(concept, dict):
+                narrative = concept.get("narrative")
+                semantic_validation = concept.get("semantic_validation")
                 references = normalize_scene_references(
                     dict(concept.get("references") or {}),
                     global_context,
@@ -406,6 +411,10 @@ class ScenePromptBuilder:
                 "i2v_prompt_from_t2i": i2v_prompt_from_t2i,
                 "original_style_i2v_prompt": i2v_prompt_from_t2i,
             }
+            if isinstance(narrative, dict):
+                scene_output["narrative"] = deepcopy(narrative)
+            if isinstance(semantic_validation, dict):
+                scene_output["semantic_validation"] = deepcopy(semantic_validation)
             if str(segment.get("type") or "").strip().casefold() in {"vocals", "mixed"}:
                 allowed_actor_ids = set(references.get("actor_ids") or [])
                 vocal_performers = [
