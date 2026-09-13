@@ -1796,6 +1796,107 @@ class AudioPromptSuffixTests(unittest.TestCase):
         self.assertFalse(hasattr(backend, "_patch_prompt_with_audio_tags"))
         self.assertFalse(hasattr(backend, "_inject_audio_subjects"))
 
+    def test_preflight_rejects_no_vocal_prompt_for_accepted_bound_interval(self):
+        backend = self._backend()
+        scene = {
+            "scene": 15,
+            "references": {
+                "actor_ids": ["ravena"],
+                "actor_sheet_paths": ["actor.png"],
+                "audio_subject_bindings": {
+                    "vocals": {"subject_id": "ravena", "speaker_id": "S1"},
+                },
+            },
+            "stem_audio": {
+                "stems": ["vocals"],
+                "paths": {"vocals": "vocals.wav"},
+            },
+            "performance_intervals": [{
+                "performance_phase": True,
+                "start_seconds": 0.0,
+                "end_seconds": 2.0,
+                "state": "singing",
+                "transcript_status": "accepted",
+                "word_timestamps": [{
+                    "word": "Ashes", "start": 0.0, "end": 2.0,
+                    "source": "whisper",
+                }],
+            }],
+        }
+
+        with self.assertRaisesRegex(FeverSlopValidationError, "contradicts accepted vocal timing"):
+            backend.build_workflow(
+                scene,
+                prompt=(
+                    "Within this continuous camera shot, From 0.000-2.000 seconds, "
+                    "No sung vocal performance occurs; continue the established camera movement."
+                ),
+                ref_audio_paths=["vocals.wav"],
+            )
+
+    def test_preflight_allows_no_vocal_prompt_outside_accepted_interval(self):
+        backend = self._backend()
+        scene = {
+            "scene": 15,
+            "references": {
+                "actor_ids": ["ravena"],
+                "actor_sheet_paths": ["actor.png"],
+                "audio_subject_bindings": {
+                    "vocals": {"subject_id": "ravena", "speaker_id": "S1"},
+                },
+            },
+            "stem_audio": {"paths": {"vocals": "vocals.wav"}},
+            "performance_intervals": [{
+                "performance_phase": True,
+                "start_seconds": 1.0,
+                "end_seconds": 2.0,
+                "state": "singing",
+                "transcript_status": "accepted",
+                "word_timestamps": [{
+                    "word": "Ashes", "start": 1.0, "end": 2.0,
+                    "source": "whisper",
+                }],
+            }],
+        }
+
+        backend.build_workflow(
+            scene,
+            prompt=(
+                "From 0.000-1.000 seconds, No sung vocal performance occurs. "
+                "From 1.000-2.000 seconds, <Subject 1> (S1) sings with visible mouth "
+                "movements precisely synchronized to the vocal, <d>[English] Ashes.</d>"
+            ),
+            ref_audio_paths=["vocals.wav"],
+        )
+
+    def test_preflight_keeps_missing_transcript_non_vocal_fallback(self):
+        backend = self._backend()
+        scene = {
+            "scene": 15,
+            "references": {
+                "actor_ids": ["ravena"],
+                "actor_sheet_paths": ["actor.png"],
+                "audio_subject_bindings": {
+                    "vocals": {"subject_id": "ravena", "speaker_id": "S1"},
+                },
+            },
+            "stem_audio": {"paths": {"vocals": "vocals.wav"}},
+            "performance_intervals": [{
+                "performance_phase": True,
+                "start_seconds": 0.0,
+                "end_seconds": 2.0,
+                "state": "instrumental",
+                "transcript_status": "missing",
+                "word_timestamps": [],
+            }],
+        }
+
+        backend.build_workflow(
+            scene,
+            prompt="From 0.000-2.000 seconds, No sung vocal performance occurs.",
+            ref_audio_paths=["vocals.wav"],
+        )
+
     def test_stem_audio_does_not_mutate_prompt(self):
         """Stem wiring leaves the DSPy-generated prompt untouched."""
         backend = self._backend()

@@ -185,16 +185,26 @@ def project_performance(timeline: list[dict], start: float, end: float) -> list[
         reasons = list(dict.fromkeys(reason for source_reasons in covering for reason in source_reasons))
         if not covering:
             reasons.append("missing_performance_evidence")
-        phases.append({"start": a, "end": b, "state": "singing" if active else "instrumental",
-                       "lyrics": " ".join(lyrics), "word_timestamps": clipped,
-                       "vocal_sources": vocal_sources, "vocal_events": events, "performance_phase": True,
-                       "timeline_indices": timeline_indices,
-                       "alignment_refs": [alignment_reference(index)
-                                          for index in timeline_indices],
-                       "performance_intervals_version": PERFORMANCE_TIMELINE_VERSION,
-                       "acoustically_verified": not reasons,
-                       "reason_codes": reasons,
-                       "performance_conflicts": [{"reason_code": reason} for reason in reasons]})
+        transcript_statuses = {
+            str((segment.get("evidence") or {}).get("transcript_status") or "").strip()
+            for _index, segment, _words, _reasons in active
+        } - {""}
+        phase = {"start": a, "end": b, "state": "singing" if active else "instrumental",
+                 "lyrics": " ".join(lyrics), "word_timestamps": clipped,
+                 "vocal_sources": vocal_sources, "vocal_events": events, "performance_phase": True,
+                 "timeline_indices": timeline_indices,
+                 "alignment_refs": [alignment_reference(index) for index in timeline_indices],
+                 "performance_intervals_version": PERFORMANCE_TIMELINE_VERSION,
+                 "acoustically_verified": not reasons,
+                 "reason_codes": reasons,
+                 "performance_conflicts": [{"reason_code": reason} for reason in reasons]}
+        if transcript_statuses:
+            phase["transcript_status"] = (
+                next(iter(transcript_statuses))
+                if len(transcript_statuses) == 1
+                else "uncertain"
+            )
+        phases.append(phase)
         if len(events) == 1:
             for key in ("subject_id", "subject_label", "speaker_id", "offscreen"):
                 if key in events[0]:

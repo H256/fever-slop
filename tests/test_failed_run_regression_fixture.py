@@ -15,9 +15,18 @@ from feverslop.application.render_video import (
 )
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.h3_audio_delivery import load_h3_audio_delivery
+from feverslop.domain.performance_timeline import (
+    lean_performance_projection,
+    project_performance,
+)
 from feverslop.pipeline.render_plan_builder import build_render_plan
 from feverslop.prompting.concept_prompt_batcher import ConceptPromptBatcher
-from feverslop.prompting.dspy_h3_models import MusicIntent, PlannedShot, ResolvedPromptPlan
+from feverslop.prompting.dspy_h3_models import (
+    MusicIntent,
+    PlannedShot,
+    ResolvedPromptPlan,
+    SubjectDefinition,
+)
 from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder
 
 from feverslop.tools.regression_fixture import (
@@ -64,6 +73,12 @@ class _FixedH3Generator:
             plan=ResolvedPromptPlan(
                 creative_intent="Ravena drinks from the silver cup.",
                 style_opening="Live-action cinematic imagery uses cool grotto light.",
+                subjects=[SubjectDefinition(
+                    label="<Subject 1>",
+                    name="Ravena",
+                    description="Ravena is the visible vocalist.",
+                    source_references=["<Picture 1>"],
+                )],
                 shots=[
                     PlannedShot(
                         shot_number=1,
@@ -199,6 +214,24 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
             actor.write_bytes(b"deterministic actor reference")
             vocals.write_bytes(b"deterministic vocal guide")
             song.write_bytes(b"deterministic full mix")
+            performance = lean_performance_projection(project_performance([{
+                "type": "vocals",
+                "start": bad_case["interval_seconds"][0],
+                "end": bad_case["interval_seconds"][1],
+                "evidence": {
+                    "activity_status": "conflict",
+                    "transcript_status": evidence["transcript_status"],
+                    "reason_codes": ["transcript_crosses_rms_boundary"],
+                },
+                "alignment": {
+                    "timed_words": evidence["word_timestamps"],
+                    "targets": [{"word": "unresolved", "source": "unresolved"}],
+                },
+            }], *bad_case["interval_seconds"]))
+            self.assertEqual("accepted", performance[0].get("transcript_status"))
+            self.assertIn("uncertain_vocal_evidence", performance[0]["reason_codes"])
+            self.assertIn("unresolved_lyric_alignment", performance[0]["reason_codes"])
+
             segment = {
                 "segment_id": "segment_015",
                 "scene": 15,
@@ -216,26 +249,7 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
                         }
                     },
                 },
-                "performance_intervals": [
-                    {
-                        "performance_phase": True,
-                        "start_seconds": 0.0,
-                        "end_seconds": 3.542,
-                        "state": "singing",
-                        "lyrics": "through the fire",
-                        "word_timestamps": evidence["word_timestamps"],
-                        "acoustically_verified": False,
-                        "reason_codes": evidence["reason_codes"],
-                        "vocal_events": [
-                            {
-                                "lyrics": "through the fire",
-                                "subject_id": evidence["performer_id"],
-                                "speaker_id": evidence["speaker_id"],
-                                "word_timestamps": evidence["word_timestamps"],
-                            }
-                        ],
-                    }
-                ],
+                "performance_intervals": performance,
             }
             concepts = ConceptPromptBatcher(
                 object(), prompt_modules=_FixedConceptModules(), batch_size=1,
@@ -260,10 +274,10 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
                 mode="r2v",
                 audio_paths={"vocals": vocals},
             )
-            self.assertEqual(
-                "non_vocal_uncertain_evidence",
-                generator.requests[0]["relay_segments"][0]["performance_fallback"],
-            )
+            relay_phase = generator.requests[0]["relay_segments"][0]
+            self.assertEqual("singing", relay_phase["state"])
+            self.assertNotIn("performance_fallback", relay_phase)
+            self.assertEqual("accepted", relay_phase["transcript_status"])
 
             store = JsonArtifactStore()
             scene_prompts_path = project / "scene_prompts.json"
@@ -325,6 +339,19 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
                 node for node in prepared.values()
                 if (node.get("_meta") or {}).get("title") == "#PROMPT"
             )
+            audio_node_id, audio_node = next(
+                (node_id, node) for node_id, node in prepared.items()
+                if (node.get("_meta") or {}).get("title") == "#AUDIO_1"
+            )
+            trim_node_id, trim_node = next(
+                (node_id, node) for node_id, node in prepared.items()
+                if (node.get("_meta") or {}).get("title") == "#TRIM_AUDIO_1"
+            )
+            guide_node = next(
+                node for node in prepared.values()
+                if (node.get("_meta") or {}).get("title")
+                == "#EXPERIMENTAL_FULLMIX_AUDIO_GUIDE_FRAME_0"
+            )
             plan_scene = store.read_render_plan(render_plan_path)[0]
             prepared_request = {
                 "prompt": prompt_node["inputs"]["value"],
@@ -342,11 +369,38 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
             result_path = render_output / "scene_0015" / "workflow.json"
             result = {
                 "cast_applied": plan_scene["references"]["actor_ids"] == ["ravena"],
-                "prompt_corrections_applied": "No sung vocal performance" in prepared_request["prompt"],
+                "prompt_corrections_applied": "sings with visible mouth movements" in prepared_request["prompt"],
                 "request_created": result_path.is_file(),
                 "consumer_received_expected_data": prepared_request["prompt"] == h3["prompt"],
                 "render_completed": False,
                 "output_path": result_path.as_posix(),
+                "accepted_transcript_preserved": relay_phase["transcript_status"] == "accepted",
+                "word_timing_preserved": [
+                    (word["word"], word["start"], word["end"])
+                    for word in relay_phase["word_timestamps"]
+                ] == [
+                    (
+                        word["word"],
+                        max(word["start"], bad_case["interval_seconds"][0]),
+                        min(word["end"], bad_case["interval_seconds"][1]),
+                    )
+                    for word in evidence["word_timestamps"]
+                ],
+                "s1_binding_preserved": prepared_request["audio_subject_binding"] == {
+                    "subject_id": "ravena", "speaker_id": "S1",
+                },
+                "vocal_guide_bound": (
+                    audio_node["inputs"]["audio"] == "fixture/vocals.wav"
+                    and trim_node["inputs"]["audio"] == [audio_node_id, 0]
+                    and guide_node["inputs"]["audio"] == [trim_node_id, 0]
+                ),
+                "prompt_contradiction_absent": not any(
+                    text in prepared_request["prompt"].casefold()
+                    for text in (
+                        "no sung vocal performance", "no vocal performance",
+                        "mouth closed", "do not create lip-sync",
+                    )
+                ),
             }
 
             self.assertEqual(
@@ -357,11 +411,15 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
                     "consumer_received_expected_data": True,
                     "render_completed": False,
                     "output_path": result_path.as_posix(),
+                    "accepted_transcript_preserved": True,
+                    "word_timing_preserved": True,
+                    "s1_binding_preserved": True,
+                    "vocal_guide_bound": True,
+                    "prompt_contradiction_absent": True,
                 },
                 result,
             )
-            self.assertFalse(report.groups["vocal_delivery"].passed)
-            self.assertIn("scene_015.h3.prompt", "\n".join(report.failures))
+            self.assertTrue(report.groups["vocal_delivery"].passed, "\n".join(report.failures))
             self.assertFalse((render_output / "scene_0015" / "raw.mp4").exists())
 
 
