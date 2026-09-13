@@ -40,19 +40,20 @@ class SrtScene:
 def parse_srt_timestamp(value: str) -> float:
     """Parse SRT timestamp 'HH:MM:SS,mmm' to seconds.
 
+    The millisecond separator may be ',' (standard), ';' or '.' (common
+    ffmpeg variant); the millisecond group may be omitted.
+
     Raises:
         ValueError: If timestamp format is invalid.
 
     """
-    value = value.strip()
-    hours, minutes, rest = value.split(":")
-    seconds, millis = re.split(r"[,;]", rest, maxsplit=1)
-    return (
-        int(hours) * 3600
-        + int(minutes) * 60
-        + int(seconds)
-        + int(millis) / 1000.0
+    match = re.fullmatch(r"(\d+):(\d+):(\d+)(?:[,.;](\d+))?", value.strip())
+    if match is None:
+        raise ValueError(f"Invalid SRT timestamp: {value!r}")
+    hours, minutes, seconds, millis = (
+        int(part) if part is not None else 0 for part in match.groups()
     )
+    return hours * 3600 + minutes * 60 + seconds + millis / 1000.0
 
 
 def format_srt_timestamp(seconds: float) -> str:
@@ -95,8 +96,12 @@ def parse_srt_text(text: str) -> list[SrtBlock]:
         if not match:
             continue
 
-        start = parse_srt_timestamp(match.group(1))
-        end = parse_srt_timestamp(match.group(2))
+        try:
+            start = parse_srt_timestamp(match.group(1))
+            end = parse_srt_timestamp(match.group(2))
+        except ValueError:
+            continue
+
         body = "\n".join(lines[2:]) if len(lines) > 2 else ""
 
         result.append(SrtBlock(index=index, start=start, end=end, text=body))

@@ -77,6 +77,32 @@ class SrtDomainTests(unittest.TestCase):
         self.assertAlmostEqual(0.0, parse_srt_timestamp("00:00:00,000"))
         self.assertAlmostEqual(61.5, parse_srt_timestamp("00:01:01,500"))
 
+    def test_parse_srt_timestamp_dot_milliseconds(self):
+        from feverslop.domain.srt import parse_srt_timestamp
+        self.assertAlmostEqual(1.5, parse_srt_timestamp("00:00:01.500"))
+        self.assertAlmostEqual(61.5, parse_srt_timestamp("00:01:01.500"))
+
+    def test_parse_srt_timestamp_semicolon_and_missing_milliseconds(self):
+        from feverslop.domain.srt import parse_srt_timestamp
+        self.assertAlmostEqual(1.5, parse_srt_timestamp("00:00:01;500"))
+        self.assertAlmostEqual(71.0, parse_srt_timestamp("00:01:11"))
+
+    def test_parse_srt_timestamp_invalid_raises(self):
+        from feverslop.domain.srt import parse_srt_timestamp
+        with self.assertRaises(ValueError):
+            parse_srt_timestamp("not-a-timestamp")
+        with self.assertRaises(ValueError):
+            parse_srt_timestamp("00:00")
+
+    def test_parse_srt_text_skips_blocks_with_bad_timestamps(self):
+        content = (
+            "1\n00:00:01.500 --> 00:00:02.500\nDot ok\n\n"
+            "2\n00:00:02.500 --> oops\nBroken end\n\n"
+            "3\n00:00:03,000 --> 00:00:04,000\nComma ok\n"
+        )
+        blocks = parse_srt_text(content)
+        self.assertEqual([1, 3], [block.index for block in blocks])
+
     def test_format_srt_timestamp_roundtrip(self):
         from feverslop.domain.srt import format_srt_timestamp, parse_srt_timestamp
         original = "01:23:45,678"
