@@ -9,6 +9,7 @@ Start here:
 - [Pipelines](pipelines.md) — pipeline modes, stages, progress, and logs.
 - [Projects](projects.md) — project layout, configuration, and artifacts.
 - [Examples](examples.md) — standard and Full-Auto workflows.
+- [Cast briefs](cast-brief.md) — free cast direction, fixed and extend rosters, and Full-Auto options.
 - [Studio ownership](studio-ownership.md) — target package ownership and the
   compatibility policy for the deprecated Studio namespace.
 - [Workflow model requirements](workflow-models.md) — model filenames, loader roles, and workflow coverage.
