@@ -1,4 +1,5 @@
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,9 +7,11 @@ from unittest.mock import patch
 
 from feverslop.composition.seedvr2_pipeline import (
     SeedVR2CompositionOptions,
+    _probe_size,
     run_seedvr2,
 )
 from feverslop.domain.seedvr2 import plan_seedvr2_segments
+from feverslop.errors import FeverSlopValidationError
 from feverslop.scene_artifacts import SceneArtifactLayout
 
 
@@ -278,3 +281,47 @@ class SeedVR2PipelineTests(unittest.TestCase):
             ))
 
         self.assertEqual(legacy_source, backend.calls[0]["source_video"])
+
+
+class ProbeSizeTests(unittest.TestCase):
+    def _probe_stdout(self, streams):
+        result = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps({"streams": streams}), stderr="")
+        return result
+
+    def test_probe_size_returns_width_and_height(self):
+        path = Path("/tmp/scene_0001.mp4")
+        with patch("feverslop.composition.seedvr2_pipeline.subprocess.run",
+                   return_value=self._probe_stdout([{"width": "1280", "height": "720"}])):
+            size = _probe_size(path)
+
+        self.assertEqual((1280, 720), size)
+
+    def test_probe_size_raises_domain_error_on_missing_video_stream(self):
+        path = Path("/tmp/scene_0002.mp4")
+        with patch("feverslop.composition.seedvr2_pipeline.subprocess.run",
+                   return_value=self._probe_stdout([])):
+            with self.assertRaises(FeverSlopValidationError) as ctx:
+                _probe_size(path)
+
+        self.assertIn(str(path), str(ctx.exception))
+
+    def test_probe_size_raises_domain_error_on_missing_streams_key(self):
+        path = Path("/tmp/scene_0003.mp4")
+        result = subprocess.CompletedProcess(args=[], returncode=0, stdout="{}", stderr="")
+        with patch("feverslop.composition.seedvr2_pipeline.subprocess.run", return_value=result):
+            with self.assertRaises(FeverSlopValidationError) as ctx:
+                _probe_size(path)
+
+        self.assertIn(str(path), str(ctx.exception))
+
+    def test_probe_size_raises_domain_error_on_ffprobe_timeout(self):
+        path = Path("/tmp/scene_0004.mp4")
+        with patch(
+            "feverslop.composition.seedvr2_pipeline.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="ffprobe", timeout=30),
+        ):
+            with self.assertRaises(FeverSlopValidationError) as ctx:
+                _probe_size(path)
+
+        self.assertIn(str(path), str(ctx.exception))
+        self.assertIn("timed out", str(ctx.exception))

@@ -105,7 +105,10 @@ class LimitedDspyLM(dspy.BaseLM):
         self.llm_limiter = limiter
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(self._lm, name)
+        # object.__getattribute__ instead of self._lm: a plain lookup would
+        # re-enter __getattr__("_lm") and recurse when _lm is not set yet.
+        lm = object.__getattribute__(self, "_lm")
+        return getattr(lm, name)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         # Keep lightweight test/integration callables usable while real DSPy
