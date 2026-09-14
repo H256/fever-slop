@@ -118,6 +118,7 @@ UNIT_MODULES = (
     "msr_prompt_enrichment",
     "multi_item_dspy_limits",
     "music_prepared_workflows",
+    "narrative_continuity",
     "music_video_dspy_contracts",
     "music_video_prompt_style",
     "openshot_exporter",

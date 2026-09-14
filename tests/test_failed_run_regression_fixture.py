@@ -22,15 +22,23 @@ from feverslop.domain.performance_timeline import (
     project_performance,
 )
 from feverslop.pipeline.render_plan_builder import build_render_plan
-from feverslop.prompting.concept_prompt_batcher import ConceptPromptBatcher
+from feverslop.prompting.concept_prompt_batcher import (
+    ConceptPromptBatcher,
+    validate_and_annotate_concept_chronology,
+)
 from feverslop.prompting.dspy_h3_models import (
     MusicIntent,
     PlannedShot,
     ResolvedPromptPlan,
     SubjectDefinition,
 )
-from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder
-from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
+from feverslop.prompting.dspy_h3_prompt_builder import (
+    DspyH3PromptBuilder,
+    apply_narrative_continuity_to_h3,
+)
+from feverslop.prompting.scene_prompt_builder import (
+    ScenePromptBuilder,
+)
 from tests.prompt_fakes import GeneralModulesFake
 
 from feverslop.tools.regression_fixture import (
@@ -334,6 +342,173 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
             self.assertFalse(Path(source["path"]).is_absolute())
             self.assertRegex(source["sha256"], r"^[0-9a-f]{64}$")
 
+    def test_chronology_fixture_requires_machine_readable_evidence(self):
+        payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        del payload["chronology_cases"]["corrected_sequence"]["evidence"][
+            "milestone_allocation"
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fixture_path = Path(temp_dir) / "regression_fixture.json"
+            fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                "chronology case 'corrected_sequence'.*milestone_allocation",
+            ):
+                load_regression_fixture(fixture_path)
+
+    def test_six_scene_chronology_reaches_the_final_render_plan(self):
+        fixture = load_regression_fixture(FIXTURE)
+        case = fixture["chronology_cases"]["corrected_sequence"]
+        segments = []
+        generated = {}
+        for index, item in enumerate(case["scenes"]):
+            scene_number = item["scene"]
+            segment_id = f"segment_{scene_number:03d}"
+            milestone = item["narrative"]["milestones"][0]
+            segments.append({
+                "segment_id": segment_id,
+                "scene": scene_number,
+                "type": "instrumental",
+                "start": float(index),
+                "end": float(index + 1),
+                "duration": 1.0,
+            })
+            generated[segment_id] = {
+                "concept": f"Ravena completes {milestone.replace('_', ' ')}.",
+                "references": {
+                    "actor_ids": ["ravena"],
+                    "location_id": item["narrative"]["location"],
+                },
+                "narrative": {
+                    **item["narrative"],
+                    "story_beat": milestone,
+                    "objective": "complete_the_well_of_youth_journey",
+                    "action": milestone,
+                    "action_phase": "completed",
+                    "props": {},
+                    "reset_events": [],
+                },
+            }
+
+        global_context = {
+            "actors": [{"id": "ravena", "name": "Ravena"}],
+            "subject": "Ravena",
+            "story_idea": "Ravena completes the ordered Well of Youth journey.",
+            "style": "cinematic gothic fantasy",
+            "locations": [entry["id"] for entry in fixture["chronology_contract"]["location_order"]],
+            "structured_locations": fixture["chronology_contract"]["location_order"],
+            "prompt_guidance": {},
+            "narrative_contract": fixture["chronology_contract"],
+        }
+        concepts = ConceptPromptBatcher(
+            object(),
+            prompt_modules=_SequenceConceptModules([generated, "journey complete"]),
+            batch_size=6,
+        ).create_concept_prompts_batched(
+            stage1_segments=segments,
+            story_idea=global_context["story_idea"],
+            global_context=global_context,
+        )
+        concepts = validate_and_annotate_concept_chronology(
+            concepts,
+            fixture["chronology_contract"],
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            plan_path = temp / "render_plan.json"
+            ScenePromptBuilder(
+                object(),
+                modules=GeneralModulesFake(
+                    zimage="Ravena advances through the ordered journey.",
+                    i2v="Ravena completes the current ordered milestone.",
+                ),
+            ).build_scene_prompts(
+                stage1_segments=segments,
+                concept_prompts=concepts,
+                scene_details={segment["segment_id"]: {} for segment in segments},
+                global_context=global_context,
+                output_json_path=scene_path,
+                artifact_store=JsonArtifactStore(),
+            )
+            relay_path.write_text(json.dumps([
+                {"scene": segment["scene"], "prompt_relay": []}
+                for segment in segments
+            ]), encoding="utf-8")
+            build_render_plan(
+                scene_path,
+                relay_path,
+                plan_path,
+                VideoSettings(fps=24, width=640, height=352, megapixels=0.2),
+                artifact_store=JsonArtifactStore(),
+                seed=1175,
+            )
+            render_plan = json.loads(plan_path.read_text(encoding="utf-8"))
+
+        expected = case["evidence"]
+        final_chronology = render_plan[-1]["metadata"]["semantic_validation"]["chronology"]
+        self.assertEqual(expected["scene_order"], [item["scene"] for item in render_plan])
+        self.assertEqual(
+            list(expected["milestone_allocation"]),
+            [item["metadata"]["narrative"]["milestones"][0] for item in render_plan],
+        )
+        self.assertEqual(
+            [f"segment_{scene:03d}" for scene in expected["scene_order"]],
+            final_chronology["scene_order"],
+        )
+        self.assertEqual(
+            {
+                milestone: f"segment_{scene:03d}"
+                for milestone, scene in expected["milestone_allocation"].items()
+            },
+            final_chronology["milestone_allocation"],
+        )
+        self.assertEqual("accepted", final_chronology["validation_result"])
+        self.assertIsNone(final_chronology["approved_exception"])
+        self.assertEqual(
+            "ascended_absent",
+            render_plan[-1]["metadata"]["narrative"]["cast_states"]["ravena"],
+        )
+
+    def test_fixture_authorized_flashback_passes_complete_story_validation(self):
+        fixture = load_regression_fixture(FIXTURE)
+        case = fixture["chronology_cases"]["authorized_flashback"]
+        concepts = {}
+        for item in case["scenes"]:
+            milestone = item["narrative"]["milestones"][0]
+            concepts[f"segment_{item['scene']:03d}"] = {
+                "concept": f"Ravena completes {milestone.replace('_', ' ')}.",
+                "narrative": {
+                    **item["narrative"],
+                    "story_beat": (
+                        "cave_flashback"
+                        if item["narrative"].get("causal_events")
+                        else milestone
+                    ),
+                    "objective": "complete_the_well_of_youth_journey",
+                    "action": (
+                        "remember_descent"
+                        if item["narrative"].get("causal_events")
+                        else milestone
+                    ),
+                    "action_phase": "completed",
+                    "props": {},
+                    "reset_events": [],
+                },
+            }
+
+        accepted = validate_and_annotate_concept_chronology(
+            concepts,
+            fixture["chronology_contract"],
+        )
+
+        flashback = accepted["segment_005"]["semantic_validation"]["chronology"]
+        self.assertEqual("accepted", case["evidence"]["validation_result"])
+        self.assertEqual(case["evidence"]["approved_exception"], flashback["approved_exception"])
+
     def test_available_preserved_baseline_matches_recorded_hashes(self):
         fixture = load_regression_fixture(FIXTURE)
 
@@ -393,6 +568,200 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
                 self.assertTrue(spec["request_assertions"])
                 self.assertTrue(spec["visual_review"])
                 self.assertNotEqual(spec["request_assertions"], spec["visual_review"])
+
+    def test_continuity_evidence_contract_fails_closed_on_missing_scene_field(self):
+        payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        payload["continuity_evidence"]["post_ascent_vocal_scenes"][0].pop(
+            "predecessor_id", None,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fixture_path = Path(temp_dir) / "regression_fixture.json"
+            fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                r"continuity evidence scene 24.*predecessor_id",
+            ):
+                load_regression_fixture(fixture_path)
+
+    def test_post_ascent_final_request_evidence_rejects_invalid_transport_facts(self):
+        mutations = {
+            "missing final request evidence": lambda item: item.pop(
+                "final_request_evidence", None,
+            ),
+            "corporeal visual presence": lambda item: item[
+                "final_request_evidence"
+            ].update({"ravena_visual_presence": "visible"}),
+            "onscreen vocal delivery": lambda item: item[
+                "final_request_evidence"
+            ].update({"ravena_vocal_delivery": "onscreen"}),
+            "wrong audio subject": lambda item: item[
+                "final_request_evidence"
+            ]["audio_subject_binding"].update({"subject_id": "varen"}),
+            "wrong speaker identity": lambda item: (
+                item["offscreen_audio_subject_bindings"]["vocals"].update(
+                    {"speaker_id": "S2"},
+                ),
+                item["final_request_evidence"]["audio_subject_binding"].update(
+                    {"speaker_id": "S2"},
+                ),
+            ),
+        }
+
+        for name, mutate in mutations.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+                mutate(payload["continuity_evidence"]["post_ascent_vocal_scenes"][0])
+                fixture_path = Path(temp_dir) / "regression_fixture.json"
+                fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+
+                with self.assertRaisesRegex(ValueError, r"continuity evidence scene 24"):
+                    load_regression_fixture(fixture_path)
+
+    def test_post_ascent_visual_review_cannot_be_claimed_by_request_evidence(self):
+        payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        payload["continuity_evidence"]["post_ascent_vocal_scenes"][0][
+            "visual_quality_review"
+        ] = {"status": "passed", "machine_verifiable": True}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fixture_path = Path(temp_dir) / "regression_fixture.json"
+            fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                r"continuity evidence scene 24.*visual quality",
+            ):
+                load_regression_fixture(fixture_path)
+
+    def test_each_post_ascent_vocal_scene_keeps_ravena_offscreen_through_h3(self):
+        fixture = load_regression_fixture(FIXTURE)
+
+        evidence = fixture["continuity_evidence"]
+        self.assertEqual(
+            [24, 25, 27, 28, 40, 41, 42, 43, 44, 45, 46],
+            [item["scene"] for item in evidence["post_ascent_vocal_scenes"]],
+        )
+        self.assertEqual(
+            {
+                "predecessor_id", "incoming", "outgoing",
+                "transition_events", "requires_continuation",
+            },
+            set(evidence["continuity_state_fields"]),
+        )
+        continuity_by_scene = {}
+        concepts = {}
+        segments = []
+        for item in evidence["post_ascent_vocal_scenes"]:
+            continuity = {
+                "schema": "feverslop.narrative-continuity/v1",
+                "scene_id": item["segment_id"],
+                **{
+                    field: item[field]
+                    for field in evidence["continuity_state_fields"]
+                },
+                "transition": "continuous" if item["requires_continuation"] else "cut",
+                "continuation_intent": None,
+                "validation_result": "compatible",
+            }
+            continuity_by_scene[item["scene"]] = continuity
+            segments.append({
+                "segment_id": item["segment_id"],
+                "scene": item["scene"],
+                "type": "vocals",
+                "start": float(item["scene"]),
+                "end": float(item["scene"] + 1),
+                "duration": 1.0,
+            })
+            concepts[item["segment_id"]] = {
+                "concept": "Varen and Silas cross the cavern while Ravena sings off-screen.",
+                "references": {"actor_ids": item["visual_actor_ids"]},
+                "narrative": {
+                    "location": item["incoming"]["location"],
+                    "cast_states": {"varen": "present", "silas": "present"},
+                },
+                "semantic_validation": {"continuity": continuity},
+            }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scene_path = Path(temp_dir) / "scene_prompts.json"
+            ScenePromptBuilder(
+                object(),
+                modules=GeneralModulesFake(
+                    zimage="Varen and Silas cross the cavern.",
+                    i2v="Varen and Silas move through the same light.",
+                ),
+            ).build_scene_prompts(
+                stage1_segments=segments,
+                concept_prompts=concepts,
+                scene_details={item["segment_id"]: {} for item in evidence["post_ascent_vocal_scenes"]},
+                global_context={
+                    "actors": [
+                        {"id": "ravena", "name": "Ravena"},
+                        {"id": "varen", "name": "Varen"},
+                        {"id": "silas", "name": "Silas"},
+                        {"id": "well_guardian", "name": "Well-Guardian"},
+                    ],
+                    "subject": "Varen and Silas",
+                    "story_idea": "The companions leave after Ravena ascends.",
+                    "style": "cinematic gothic fantasy",
+                    "locations": ["fountain_grotto", "weeping_caves"],
+                    "structured_locations": [
+                        {"id": "fountain_grotto"},
+                        {"id": "weeping_caves"},
+                    ],
+                    "audio_subject_bindings": {
+                        "vocals": {"subject_id": "ravena", "speaker_id": "S1"},
+                    },
+                    "prompt_guidance": {},
+                },
+                output_json_path=scene_path,
+                artifact_store=JsonArtifactStore(),
+            )
+            rendered_scenes = {
+                item["scene"]: item
+                for item in json.loads(scene_path.read_text(encoding="utf-8"))
+            }
+
+        for item in evidence["post_ascent_vocal_scenes"]:
+            with self.subTest(scene=item["scene"]):
+                references = rendered_scenes[item["scene"]]["references"]
+                continuity = continuity_by_scene[item["scene"]]
+                h3 = apply_narrative_continuity_to_h3(
+                    {"prompt": "Varen and Silas cross the cavern."},
+                    {"semantic_validation": {"continuity": continuity}},
+                )
+
+                self.assertEqual(item["visual_actor_ids"], references["actor_ids"])
+                self.assertNotIn("ravena", references["actor_ids"])
+                self.assertNotIn("audio_subject_bindings", references)
+                self.assertEqual(
+                    item["offscreen_audio_subject_bindings"],
+                    references["offscreen_audio_subject_bindings"],
+                )
+                self.assertEqual(continuity, h3["continuity_plan"])
+                self.assertIn("Ravena remains ascended and absent", h3["prompt"])
+                self.assertIn("off-screen", h3["prompt"])
+                observed_request_evidence = {
+                    "ravena_visual_presence": (
+                        "absent"
+                        if "ravena" not in references["actor_ids"]
+                        else "visible"
+                    ),
+                    "ravena_vocal_delivery": (
+                        "offscreen" if "off-screen" in h3["prompt"] else "unspecified"
+                    ),
+                    "audio_subject_binding": references[
+                        "offscreen_audio_subject_bindings"
+                    ]["vocals"],
+                }
+                self.assertEqual(
+                    item["final_request_evidence"],
+                    observed_request_evidence,
+                )
+                self.assertEqual(
+                    {"status": "not_evaluated", "machine_verifiable": False},
+                    item["visual_quality_review"],
+                )
 
     def test_scene_15_reaches_the_final_workflow_consumer_with_machine_readable_result(self):
         fixture = load_regression_fixture(FIXTURE)

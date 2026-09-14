@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from copy import deepcopy
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, TypedDict
 
@@ -29,6 +30,7 @@ class BoundaryFrameManifest:
     extractor_revision: str
     frame_path: str
     frame_sha256: str
+    continuity_state: dict[str, Any] | None = None
 
     @classmethod
     def create(
@@ -40,6 +42,7 @@ class BoundaryFrameManifest:
         extractor_revision: str,
         frame_path: str,
         frame_sha256: str,
+        continuity_state: dict[str, Any] | None = None,
     ) -> "BoundaryFrameManifest":
         def path(value: str, field: str) -> str:
             raw = str(value).strip().replace("\\", "/")
@@ -66,16 +69,27 @@ class BoundaryFrameManifest:
             extractor_revision=revision,
             frame_path=path(frame_path, "frame_path"),
             frame_sha256=digest(frame_sha256, "frame_sha256"),
+            continuity_state=(
+                None if continuity_state is None else deepcopy(continuity_state)
+            ),
         )
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "BoundaryFrameManifest":
         if not isinstance(payload, dict):
             raise ValueError("boundary frame manifest must be an object")
-        return cls.create(**payload)
+        return cls.create(
+            source_clip_path=payload["source_clip_path"],
+            source_clip_sha256=payload["source_clip_sha256"],
+            frame_index=payload["frame_index"],
+            extractor_revision=payload["extractor_revision"],
+            frame_path=payload["frame_path"],
+            frame_sha256=payload["frame_sha256"],
+            continuity_state=payload.get("continuity_state"),
+        )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "source_clip_path": self.source_clip_path,
             "source_clip_sha256": self.source_clip_sha256,
             "frame_index": self.frame_index,
@@ -83,6 +97,9 @@ class BoundaryFrameManifest:
             "frame_path": self.frame_path,
             "frame_sha256": self.frame_sha256,
         }
+        if self.continuity_state is not None:
+            payload["continuity_state"] = deepcopy(self.continuity_state)
+        return payload
 
     def matches(self, *, source_clip_sha256: str, frame_sha256: str) -> bool:
         return (
