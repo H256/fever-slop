@@ -32,8 +32,13 @@ from feverslop.prompting.dspy_h3_models import (
     ResolvedPromptPlan,
     SubjectDefinition,
 )
-from feverslop.prompting.dspy_h3_prompt_builder import DspyH3PromptBuilder
-from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
+from feverslop.prompting.dspy_h3_prompt_builder import (
+    DspyH3PromptBuilder,
+    apply_narrative_continuity_to_h3,
+)
+from feverslop.prompting.scene_prompt_builder import (
+    ScenePromptBuilder,
+)
 from tests.prompt_fakes import GeneralModulesFake
 
 from feverslop.tools.regression_fixture import (
@@ -563,6 +568,200 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
                 self.assertTrue(spec["request_assertions"])
                 self.assertTrue(spec["visual_review"])
                 self.assertNotEqual(spec["request_assertions"], spec["visual_review"])
+
+    def test_continuity_evidence_contract_fails_closed_on_missing_scene_field(self):
+        payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        payload["continuity_evidence"]["post_ascent_vocal_scenes"][0].pop(
+            "predecessor_id", None,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fixture_path = Path(temp_dir) / "regression_fixture.json"
+            fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                r"continuity evidence scene 24.*predecessor_id",
+            ):
+                load_regression_fixture(fixture_path)
+
+    def test_post_ascent_final_request_evidence_rejects_invalid_transport_facts(self):
+        mutations = {
+            "missing final request evidence": lambda item: item.pop(
+                "final_request_evidence", None,
+            ),
+            "corporeal visual presence": lambda item: item[
+                "final_request_evidence"
+            ].update({"ravena_visual_presence": "visible"}),
+            "onscreen vocal delivery": lambda item: item[
+                "final_request_evidence"
+            ].update({"ravena_vocal_delivery": "onscreen"}),
+            "wrong audio subject": lambda item: item[
+                "final_request_evidence"
+            ]["audio_subject_binding"].update({"subject_id": "varen"}),
+            "wrong speaker identity": lambda item: (
+                item["offscreen_audio_subject_bindings"]["vocals"].update(
+                    {"speaker_id": "S2"},
+                ),
+                item["final_request_evidence"]["audio_subject_binding"].update(
+                    {"speaker_id": "S2"},
+                ),
+            ),
+        }
+
+        for name, mutate in mutations.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+                mutate(payload["continuity_evidence"]["post_ascent_vocal_scenes"][0])
+                fixture_path = Path(temp_dir) / "regression_fixture.json"
+                fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+
+                with self.assertRaisesRegex(ValueError, r"continuity evidence scene 24"):
+                    load_regression_fixture(fixture_path)
+
+    def test_post_ascent_visual_review_cannot_be_claimed_by_request_evidence(self):
+        payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        payload["continuity_evidence"]["post_ascent_vocal_scenes"][0][
+            "visual_quality_review"
+        ] = {"status": "passed", "machine_verifiable": True}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fixture_path = Path(temp_dir) / "regression_fixture.json"
+            fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                r"continuity evidence scene 24.*visual quality",
+            ):
+                load_regression_fixture(fixture_path)
+
+    def test_each_post_ascent_vocal_scene_keeps_ravena_offscreen_through_h3(self):
+        fixture = load_regression_fixture(FIXTURE)
+
+        evidence = fixture["continuity_evidence"]
+        self.assertEqual(
+            [24, 25, 27, 28, 40, 41, 42, 43, 44, 45, 46],
+            [item["scene"] for item in evidence["post_ascent_vocal_scenes"]],
+        )
+        self.assertEqual(
+            {
+                "predecessor_id", "incoming", "outgoing",
+                "transition_events", "requires_continuation",
+            },
+            set(evidence["continuity_state_fields"]),
+        )
+        continuity_by_scene = {}
+        concepts = {}
+        segments = []
+        for item in evidence["post_ascent_vocal_scenes"]:
+            continuity = {
+                "schema": "feverslop.narrative-continuity/v1",
+                "scene_id": item["segment_id"],
+                **{
+                    field: item[field]
+                    for field in evidence["continuity_state_fields"]
+                },
+                "transition": "continuous" if item["requires_continuation"] else "cut",
+                "continuation_intent": None,
+                "validation_result": "compatible",
+            }
+            continuity_by_scene[item["scene"]] = continuity
+            segments.append({
+                "segment_id": item["segment_id"],
+                "scene": item["scene"],
+                "type": "vocals",
+                "start": float(item["scene"]),
+                "end": float(item["scene"] + 1),
+                "duration": 1.0,
+            })
+            concepts[item["segment_id"]] = {
+                "concept": "Varen and Silas cross the cavern while Ravena sings off-screen.",
+                "references": {"actor_ids": item["visual_actor_ids"]},
+                "narrative": {
+                    "location": item["incoming"]["location"],
+                    "cast_states": {"varen": "present", "silas": "present"},
+                },
+                "semantic_validation": {"continuity": continuity},
+            }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scene_path = Path(temp_dir) / "scene_prompts.json"
+            ScenePromptBuilder(
+                object(),
+                modules=GeneralModulesFake(
+                    zimage="Varen and Silas cross the cavern.",
+                    i2v="Varen and Silas move through the same light.",
+                ),
+            ).build_scene_prompts(
+                stage1_segments=segments,
+                concept_prompts=concepts,
+                scene_details={item["segment_id"]: {} for item in evidence["post_ascent_vocal_scenes"]},
+                global_context={
+                    "actors": [
+                        {"id": "ravena", "name": "Ravena"},
+                        {"id": "varen", "name": "Varen"},
+                        {"id": "silas", "name": "Silas"},
+                        {"id": "well_guardian", "name": "Well-Guardian"},
+                    ],
+                    "subject": "Varen and Silas",
+                    "story_idea": "The companions leave after Ravena ascends.",
+                    "style": "cinematic gothic fantasy",
+                    "locations": ["fountain_grotto", "weeping_caves"],
+                    "structured_locations": [
+                        {"id": "fountain_grotto"},
+                        {"id": "weeping_caves"},
+                    ],
+                    "audio_subject_bindings": {
+                        "vocals": {"subject_id": "ravena", "speaker_id": "S1"},
+                    },
+                    "prompt_guidance": {},
+                },
+                output_json_path=scene_path,
+                artifact_store=JsonArtifactStore(),
+            )
+            rendered_scenes = {
+                item["scene"]: item
+                for item in json.loads(scene_path.read_text(encoding="utf-8"))
+            }
+
+        for item in evidence["post_ascent_vocal_scenes"]:
+            with self.subTest(scene=item["scene"]):
+                references = rendered_scenes[item["scene"]]["references"]
+                continuity = continuity_by_scene[item["scene"]]
+                h3 = apply_narrative_continuity_to_h3(
+                    {"prompt": "Varen and Silas cross the cavern."},
+                    {"semantic_validation": {"continuity": continuity}},
+                )
+
+                self.assertEqual(item["visual_actor_ids"], references["actor_ids"])
+                self.assertNotIn("ravena", references["actor_ids"])
+                self.assertNotIn("audio_subject_bindings", references)
+                self.assertEqual(
+                    item["offscreen_audio_subject_bindings"],
+                    references["offscreen_audio_subject_bindings"],
+                )
+                self.assertEqual(continuity, h3["continuity_plan"])
+                self.assertIn("Ravena remains ascended and absent", h3["prompt"])
+                self.assertIn("off-screen", h3["prompt"])
+                observed_request_evidence = {
+                    "ravena_visual_presence": (
+                        "absent"
+                        if "ravena" not in references["actor_ids"]
+                        else "visible"
+                    ),
+                    "ravena_vocal_delivery": (
+                        "offscreen" if "off-screen" in h3["prompt"] else "unspecified"
+                    ),
+                    "audio_subject_binding": references[
+                        "offscreen_audio_subject_bindings"
+                    ]["vocals"],
+                }
+                self.assertEqual(
+                    item["final_request_evidence"],
+                    observed_request_evidence,
+                )
+                self.assertEqual(
+                    {"status": "not_evaluated", "machine_verifiable": False},
+                    item["visual_quality_review"],
+                )
 
     def test_scene_15_reaches_the_final_workflow_consumer_with_machine_readable_result(self):
         fixture = load_regression_fixture(FIXTURE)

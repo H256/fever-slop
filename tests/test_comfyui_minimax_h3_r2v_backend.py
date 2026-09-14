@@ -764,6 +764,45 @@ class BuildWorkflowTests(unittest.TestCase):
             instruction,
         )
 
+    def test_structured_prompt_preflight_reserves_verified_boundary_picture(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            source_clip = project / "output/scene_0014/raw.mp4"
+            boundary_frame = project / "output/keyframes/scene_0014_to_0015_start.png"
+            source_clip.parent.mkdir(parents=True)
+            boundary_frame.parent.mkdir(parents=True)
+            source_clip.write_bytes(b"clip")
+            boundary_frame.write_bytes(b"frame")
+            digest = __import__("hashlib").sha256
+            backend = object.__new__(ComfyUIMiniMaxH3R2VBackend)
+            backend.project_dir = project
+            backend.output_dir = project / "output"
+            backend.audio_ref_stems = []
+            scene = {
+                "scene": 15,
+                "references": {
+                    "actor_sheet_paths": ["refs/varen.png", "refs/silas.png"],
+                    "location_sheet_path": "refs/grotto.png",
+                },
+                "h3": {"prompt": (
+                    "subject_definitions:\n"
+                    "<Subject 1> is Varen in <Picture 1>.\n"
+                    "<Subject 2> is Silas in <Picture 2>.\n"
+                    "<Subject 3> is the grotto in <Picture 3>.\n\n"
+                    "summary: <Subject 1> raises the lantern in <Subject 3>."
+                )},
+                "keyframes": {"boundary_frame_manifest": {
+                    "source_clip_path": source_clip.relative_to(project).as_posix(),
+                    "source_clip_sha256": digest(b"clip").hexdigest(),
+                    "frame_index": 47,
+                    "extractor_revision": "last-frame-v1",
+                    "frame_path": boundary_frame.relative_to(project).as_posix(),
+                    "frame_sha256": digest(b"frame").hexdigest(),
+                }},
+            }
+
+            backend._validate_h3_reference_contract(scene)
+
     def test_seed_set(self):
         backend = self._backend(workflow=_native_r2v_workflow())
         backend.seed_offset = 50000

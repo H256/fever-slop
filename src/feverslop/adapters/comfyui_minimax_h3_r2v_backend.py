@@ -272,12 +272,20 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         picture_slot: int,
     ) -> str:
         """Compile deterministic H3 instructions from a verified boundary."""
-        return (
+        instruction = (
             f"Start state: <Picture {picture_slot}> is the verified predecessor boundary "
             f"frame {manifest.frame_index} from extractor {manifest.extractor_revision}. "
             "Preserve composition, subject identity, spatial layout, lighting, "
             "and motion direction."
         )
+        continuity = manifest.continuity_state or {}
+        cast_states = (continuity.get("incoming") or {}).get("cast_states") or {}
+        if cast_states.get("ravena") == "ascended_absent":
+            instruction += (
+                " Ravena remains ascended and absent; do not depict a corporeal "
+                "Ravena unless the authored ravena_returns event occurs."
+            )
+        return instruction
 
     def _continuity_manifest(self, scene: dict) -> BoundaryFrameManifest | None:
         payload = (scene.get("keyframes") or {}).get("boundary_frame_manifest")
@@ -1012,6 +1020,8 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         expected_pictures = {f"<Picture {index}>" for index in range(1, picture_count + 1)}
         bound_picture_list = re.findall(r"<Picture\s+\d+>", definitions)
         bound_pictures = set(bound_picture_list)
+        if self._continuity_manifest(scene) is not None and picture_count:
+            bound_pictures.add(f"<Picture {picture_count}>")
         used_pictures = set(re.findall(r"<Picture\s+\d+>", prompt))
         unbound_pictures = expected_pictures - bound_pictures
         unknown_pictures = used_pictures - expected_pictures
