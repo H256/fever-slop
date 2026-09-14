@@ -627,6 +627,36 @@ def build_render_plan(
             render_scene.setdefault("metadata", {})["continuation_intents"] = list(
                 h3_entry["continuation_intents"],
             )
+        continuity_plan = (
+            h3_entry.get("continuity_plan")
+            if isinstance(h3_entry, dict)
+            else None
+        )
+        if isinstance(continuity_plan, dict):
+            render_scene["continuity_plan"] = deepcopy(continuity_plan)
+            render_scene["metadata"]["continuity_plan"] = deepcopy(
+                continuity_plan,
+            )
+            render_scene["narrative_boundary_manifest"] = {
+                field: deepcopy(continuity_plan.get(field))
+                for field in (
+                    "predecessor_id",
+                    "incoming",
+                    "outgoing",
+                    "transition_events",
+                    "requires_continuation",
+                )
+            }
+            if continuity_plan.get("requires_continuation"):
+                predecessor_id = str(
+                    continuity_plan.get("predecessor_id") or "",
+                ).strip()
+                if not predecessor_id:
+                    raise ValueError(
+                        f"Scene {scene_number} requires narrative continuation "
+                        "but has no predecessor identity",
+                    )
+                render_scene["continuation_predecessor_id"] = predecessor_id
         continuation_groups = _continuation_groups_for_scene(
             h3_entry=h3_entry,
             segment_id=segment_id,

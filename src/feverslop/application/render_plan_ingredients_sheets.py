@@ -160,7 +160,7 @@ def _enrich_scene(
         except ValueError:
             relative_sheet = output_path.as_posix()
 
-        description = generate_scene_sheet_description(images, num_cols, sheet_size)
+        description = generate_scene_sheet_description(images, num_cols)
         anchors = generate_scene_sheet_anchors(images, num_cols)
         enriched["ingredients_scene_sheet"] = relative_sheet
         enriched["ingredients_scene_sheet_description"] = description

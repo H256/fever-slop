@@ -990,7 +990,7 @@ def _type_label(item_type: str) -> str:
     return labels.get(item_type, item_type.title())
 
 
-def generate_scene_sheet_description(images: list[dict], num_cols: int, size: tuple[int, int]) -> str:
+def generate_scene_sheet_description(images: list[dict], num_cols: int) -> str:
     """Generate a structured description of the scene reference sheet layout.
 
     Each image dict should contain 'type' and 'visual_description'.

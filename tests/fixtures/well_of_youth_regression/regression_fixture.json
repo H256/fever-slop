@@ -61,6 +61,257 @@
       ]
     }
   },
+  "chronology_contract": {
+    "milestone_order": [
+      {
+        "id": "caves_entered",
+        "source": "story_idea: descend through the Weeping Caves"
+      },
+      {
+        "id": "lich_encounter",
+        "source": "story_idea: confront the Lich before proceeding"
+      },
+      {
+        "id": "dragon_encounter",
+        "source": "story_idea: pass the Dragon before reaching the fountain"
+      },
+      {
+        "id": "fountain_arrival",
+        "source": "story_idea: reach the fountain after the guardians"
+      },
+      {
+        "id": "drink_completed",
+        "source": "story_idea: drink and rejuvenate at the fountain"
+      },
+      {
+        "id": "ascent_complete",
+        "source": "story_idea: complete the final ascent and disappearance"
+      }
+    ],
+    "location_order": [
+      {
+        "id": "weeping_caves",
+        "source": "story_idea: initial cave descent"
+      },
+      {
+        "id": "lich_chamber",
+        "source": "story_idea: Lich encounter"
+      },
+      {
+        "id": "dragon_passage",
+        "source": "story_idea: Dragon encounter"
+      },
+      {
+        "id": "fountain_grotto",
+        "source": "story_idea: fountain rite"
+      },
+      {
+        "id": "surface_passage",
+        "source": "story_idea: final ascent"
+      }
+    ],
+    "terminal_states": {
+      "ravena": {
+        "milestone": "ascent_complete",
+        "state": "ascended_absent",
+        "reset_event": "ravena_returns",
+        "source": "story_idea: Ravena ascends and disappears"
+      }
+    },
+    "chronology_exceptions": {
+      "flashback_to_caves": {
+        "allows": [
+          "milestone_order",
+          "location_order"
+        ],
+        "source": "explicitly authored flashback to the cave descent"
+      }
+    }
+  },
+  "chronology_cases": {
+    "corrected_sequence": {
+      "scenes": [
+        {
+          "scene": 1,
+          "narrative": {
+            "milestones": ["caves_entered"],
+            "location": "weeping_caves",
+            "cast_states": {"ravena": "corporeal"},
+            "causal_events": []
+          }
+        },
+        {
+          "scene": 2,
+          "narrative": {
+            "milestones": ["lich_encounter"],
+            "location": "lich_chamber",
+            "cast_states": {"ravena": "corporeal"},
+            "causal_events": []
+          }
+        },
+        {
+          "scene": 3,
+          "narrative": {
+            "milestones": ["dragon_encounter"],
+            "location": "dragon_passage",
+            "cast_states": {"ravena": "corporeal"},
+            "causal_events": []
+          }
+        },
+        {
+          "scene": 4,
+          "narrative": {
+            "milestones": ["fountain_arrival"],
+            "location": "fountain_grotto",
+            "cast_states": {"ravena": "corporeal"},
+            "causal_events": []
+          }
+        },
+        {
+          "scene": 5,
+          "narrative": {
+            "milestones": ["drink_completed"],
+            "location": "fountain_grotto",
+            "cast_states": {"ravena": "rejuvenated"},
+            "causal_events": []
+          }
+        },
+        {
+          "scene": 6,
+          "narrative": {
+            "milestones": ["ascent_complete"],
+            "location": "surface_passage",
+            "cast_states": {"ravena": "ascended_absent"},
+            "causal_events": []
+          }
+        }
+      ],
+      "evidence": {
+        "scene_order": [1, 2, 3, 4, 5, 6],
+        "milestone_allocation": {
+          "caves_entered": 1,
+          "lich_encounter": 2,
+          "dragon_encounter": 3,
+          "fountain_arrival": 4,
+          "drink_completed": 5,
+          "ascent_complete": 6
+        },
+        "validation_result": "accepted",
+        "approved_exception": null
+      }
+    },
+    "known_bad_sequence": {
+      "scenes": [
+        {
+          "scene": 1,
+          "narrative": {
+            "milestones": ["caves_entered"],
+            "location": "weeping_caves",
+            "cast_states": {"ravena": "corporeal"},
+            "causal_events": []
+          }
+        },
+        {
+          "scene": 2,
+          "narrative": {
+            "milestones": ["fountain_arrival"],
+            "location": "fountain_grotto",
+            "cast_states": {"ravena": "corporeal"},
+            "causal_events": []
+          }
+        }
+      ],
+      "evidence": {
+        "scene_order": [1, 2],
+        "milestone_allocation": {
+          "caves_entered": 1,
+          "fountain_arrival": 2
+        },
+        "validation_result": "rejected",
+        "approved_exception": null
+      }
+    },
+    "authorized_flashback": {
+      "scenes": [
+        {
+          "scene": 1,
+          "narrative": {
+            "milestones": ["caves_entered"],
+            "location": "weeping_caves",
+            "cast_states": {"ravena": "corporeal"},
+            "causal_events": []
+          }
+        },
+        {
+          "scene": 2,
+          "narrative": {
+            "milestones": ["lich_encounter"],
+            "location": "lich_chamber",
+            "cast_states": {"ravena": "corporeal"},
+            "causal_events": []
+          }
+        },
+        {
+          "scene": 3,
+          "narrative": {
+            "milestones": ["dragon_encounter"],
+            "location": "dragon_passage",
+            "cast_states": {"ravena": "corporeal"},
+            "causal_events": []
+          }
+        },
+        {
+          "scene": 4,
+          "narrative": {
+            "milestones": ["fountain_arrival"],
+            "location": "fountain_grotto",
+            "cast_states": {"ravena": "corporeal"},
+            "causal_events": []
+          }
+        },
+        {
+          "scene": 5,
+          "narrative": {
+            "milestones": ["caves_entered"],
+            "location": "weeping_caves",
+            "cast_states": {"ravena": "corporeal"},
+            "causal_events": ["flashback_to_caves"]
+          }
+        },
+        {
+          "scene": 6,
+          "narrative": {
+            "milestones": ["drink_completed"],
+            "location": "fountain_grotto",
+            "cast_states": {"ravena": "rejuvenated"},
+            "causal_events": []
+          }
+        },
+        {
+          "scene": 7,
+          "narrative": {
+            "milestones": ["ascent_complete"],
+            "location": "surface_passage",
+            "cast_states": {"ravena": "ascended_absent"},
+            "causal_events": []
+          }
+        }
+      ],
+      "evidence": {
+        "scene_order": [1, 2, 3, 4, 5, 6, 7],
+        "milestone_allocation": {
+          "fountain_arrival": 4,
+          "caves_entered": 1,
+          "lich_encounter": 2,
+          "dragon_encounter": 3,
+          "drink_completed": 6,
+          "ascent_complete": 7
+        },
+        "validation_result": "accepted",
+        "approved_exception": "flashback_to_caves"
+      }
+    }
+  },
   "projections": {
     "known_bad": {
       "vocal_case": {
@@ -590,6 +841,160 @@
         }
       ]
     }
+  },
+  "continuity_evidence": {
+    "continuity_state_fields": [
+      "predecessor_id",
+      "incoming",
+      "outgoing",
+      "transition_events",
+      "requires_continuation"
+    ],
+    "post_ascent_vocal_scenes": [
+      {
+        "scene": 24,
+        "segment_id": "segment_024",
+        "predecessor_id": "segment_023",
+        "incoming": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas", "well_guardian"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
+      },
+      {
+        "scene": 25,
+        "segment_id": "segment_025",
+        "predecessor_id": "segment_024",
+        "incoming": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas", "well_guardian"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
+      },
+      {
+        "scene": 27,
+        "segment_id": "segment_027",
+        "predecessor_id": "segment_026",
+        "incoming": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas", "well_guardian"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
+      },
+      {
+        "scene": 28,
+        "segment_id": "segment_028",
+        "predecessor_id": "segment_027",
+        "incoming": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas", "well_guardian"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
+      },
+      {
+        "scene": 40,
+        "segment_id": "segment_040",
+        "predecessor_id": "segment_039",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
+      },
+      {
+        "scene": 41,
+        "segment_id": "segment_041",
+        "predecessor_id": "segment_040",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
+      },
+      {
+        "scene": 42,
+        "segment_id": "segment_042",
+        "predecessor_id": "segment_041",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
+      },
+      {
+        "scene": 43,
+        "segment_id": "segment_043",
+        "predecessor_id": "segment_042",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
+      },
+      {
+        "scene": 44,
+        "segment_id": "segment_044",
+        "predecessor_id": "segment_043",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
+      },
+      {
+        "scene": 45,
+        "segment_id": "segment_045",
+        "predecessor_id": "segment_044",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
+      },
+      {
+        "scene": 46,
+        "segment_id": "segment_046",
+        "predecessor_id": "segment_045",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
+      }
+    ]
   },
   "smoke_specifications": {
     "timed_vocal": {

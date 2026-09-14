@@ -541,13 +541,6 @@ def _names_for_ids(items: list[dict], ids: list[str]) -> list[str]:
     return names
 
 
-def _name_for_id(items: list[dict], item_id: str) -> str:
-    for item in items:
-        if isinstance(item, dict) and str(item.get("id")) == str(item_id):
-            return str(item.get("name") or item_id)
-    return str(item_id or "")
-
-
 def _items_for_ids(items: list[dict], ids: list[str]) -> list[dict]:
     by_id = {str(item.get("id")): item for item in items if isinstance(item, dict)}
     return [by_id[str(item_id)] for item_id in ids if str(item_id) in by_id]
