@@ -307,7 +307,7 @@ class IngredientsSceneSheetBuilder:
         num_cols = math.ceil(math.sqrt(len(images)))
 
         relative_sheet = output_path.relative_to(self.project_dir).as_posix()
-        description = generate_scene_sheet_description(images, num_cols, self.size)
+        description = generate_scene_sheet_description(images, num_cols)
         anchors = generate_scene_sheet_anchors(images, num_cols)
         return {
             "sheet_path": relative_sheet,
