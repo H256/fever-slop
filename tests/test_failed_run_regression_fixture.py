@@ -22,7 +22,10 @@ from feverslop.domain.performance_timeline import (
     project_performance,
 )
 from feverslop.pipeline.render_plan_builder import build_render_plan
-from feverslop.prompting.concept_prompt_batcher import ConceptPromptBatcher
+from feverslop.prompting.concept_prompt_batcher import (
+    ConceptPromptBatcher,
+    validate_and_annotate_concept_chronology,
+)
 from feverslop.prompting.dspy_h3_models import (
     MusicIntent,
     PlannedShot,
@@ -333,6 +336,173 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
         for source in fixture["provenance"]["baseline_files"]:
             self.assertFalse(Path(source["path"]).is_absolute())
             self.assertRegex(source["sha256"], r"^[0-9a-f]{64}$")
+
+    def test_chronology_fixture_requires_machine_readable_evidence(self):
+        payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        del payload["chronology_cases"]["corrected_sequence"]["evidence"][
+            "milestone_allocation"
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fixture_path = Path(temp_dir) / "regression_fixture.json"
+            fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                "chronology case 'corrected_sequence'.*milestone_allocation",
+            ):
+                load_regression_fixture(fixture_path)
+
+    def test_six_scene_chronology_reaches_the_final_render_plan(self):
+        fixture = load_regression_fixture(FIXTURE)
+        case = fixture["chronology_cases"]["corrected_sequence"]
+        segments = []
+        generated = {}
+        for index, item in enumerate(case["scenes"]):
+            scene_number = item["scene"]
+            segment_id = f"segment_{scene_number:03d}"
+            milestone = item["narrative"]["milestones"][0]
+            segments.append({
+                "segment_id": segment_id,
+                "scene": scene_number,
+                "type": "instrumental",
+                "start": float(index),
+                "end": float(index + 1),
+                "duration": 1.0,
+            })
+            generated[segment_id] = {
+                "concept": f"Ravena completes {milestone.replace('_', ' ')}.",
+                "references": {
+                    "actor_ids": ["ravena"],
+                    "location_id": item["narrative"]["location"],
+                },
+                "narrative": {
+                    **item["narrative"],
+                    "story_beat": milestone,
+                    "objective": "complete_the_well_of_youth_journey",
+                    "action": milestone,
+                    "action_phase": "completed",
+                    "props": {},
+                    "reset_events": [],
+                },
+            }
+
+        global_context = {
+            "actors": [{"id": "ravena", "name": "Ravena"}],
+            "subject": "Ravena",
+            "story_idea": "Ravena completes the ordered Well of Youth journey.",
+            "style": "cinematic gothic fantasy",
+            "locations": [entry["id"] for entry in fixture["chronology_contract"]["location_order"]],
+            "structured_locations": fixture["chronology_contract"]["location_order"],
+            "prompt_guidance": {},
+            "narrative_contract": fixture["chronology_contract"],
+        }
+        concepts = ConceptPromptBatcher(
+            object(),
+            prompt_modules=_SequenceConceptModules([generated, "journey complete"]),
+            batch_size=6,
+        ).create_concept_prompts_batched(
+            stage1_segments=segments,
+            story_idea=global_context["story_idea"],
+            global_context=global_context,
+        )
+        concepts = validate_and_annotate_concept_chronology(
+            concepts,
+            fixture["chronology_contract"],
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            plan_path = temp / "render_plan.json"
+            ScenePromptBuilder(
+                object(),
+                modules=GeneralModulesFake(
+                    zimage="Ravena advances through the ordered journey.",
+                    i2v="Ravena completes the current ordered milestone.",
+                ),
+            ).build_scene_prompts(
+                stage1_segments=segments,
+                concept_prompts=concepts,
+                scene_details={segment["segment_id"]: {} for segment in segments},
+                global_context=global_context,
+                output_json_path=scene_path,
+                artifact_store=JsonArtifactStore(),
+            )
+            relay_path.write_text(json.dumps([
+                {"scene": segment["scene"], "prompt_relay": []}
+                for segment in segments
+            ]), encoding="utf-8")
+            build_render_plan(
+                scene_path,
+                relay_path,
+                plan_path,
+                VideoSettings(fps=24, width=640, height=352, megapixels=0.2),
+                artifact_store=JsonArtifactStore(),
+                seed=1175,
+            )
+            render_plan = json.loads(plan_path.read_text(encoding="utf-8"))
+
+        expected = case["evidence"]
+        final_chronology = render_plan[-1]["metadata"]["semantic_validation"]["chronology"]
+        self.assertEqual(expected["scene_order"], [item["scene"] for item in render_plan])
+        self.assertEqual(
+            list(expected["milestone_allocation"]),
+            [item["metadata"]["narrative"]["milestones"][0] for item in render_plan],
+        )
+        self.assertEqual(
+            [f"segment_{scene:03d}" for scene in expected["scene_order"]],
+            final_chronology["scene_order"],
+        )
+        self.assertEqual(
+            {
+                milestone: f"segment_{scene:03d}"
+                for milestone, scene in expected["milestone_allocation"].items()
+            },
+            final_chronology["milestone_allocation"],
+        )
+        self.assertEqual("accepted", final_chronology["validation_result"])
+        self.assertIsNone(final_chronology["approved_exception"])
+        self.assertEqual(
+            "ascended_absent",
+            render_plan[-1]["metadata"]["narrative"]["cast_states"]["ravena"],
+        )
+
+    def test_fixture_authorized_flashback_passes_complete_story_validation(self):
+        fixture = load_regression_fixture(FIXTURE)
+        case = fixture["chronology_cases"]["authorized_flashback"]
+        concepts = {}
+        for item in case["scenes"]:
+            milestone = item["narrative"]["milestones"][0]
+            concepts[f"segment_{item['scene']:03d}"] = {
+                "concept": f"Ravena completes {milestone.replace('_', ' ')}.",
+                "narrative": {
+                    **item["narrative"],
+                    "story_beat": (
+                        "cave_flashback"
+                        if item["narrative"].get("causal_events")
+                        else milestone
+                    ),
+                    "objective": "complete_the_well_of_youth_journey",
+                    "action": (
+                        "remember_descent"
+                        if item["narrative"].get("causal_events")
+                        else milestone
+                    ),
+                    "action_phase": "completed",
+                    "props": {},
+                    "reset_events": [],
+                },
+            }
+
+        accepted = validate_and_annotate_concept_chronology(
+            concepts,
+            fixture["chronology_contract"],
+        )
+
+        flashback = accepted["segment_005"]["semantic_validation"]["chronology"]
+        self.assertEqual("accepted", case["evidence"]["validation_result"])
+        self.assertEqual(case["evidence"]["approved_exception"], flashback["approved_exception"])
 
     def test_available_preserved_baseline_matches_recorded_hashes(self):
         fixture = load_regression_fixture(FIXTURE)

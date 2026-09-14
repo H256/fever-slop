@@ -358,6 +358,12 @@ class ConceptPromptBatcher:
                 "authorized_reprise": authorized,
                 "authorized_reset_events": sorted(set(repeated) & set(reset_events)),
                 "reprise_of": reprise_of if authorized else None,
+                "chronology": _chronology_evidence(
+                    segment_id,
+                    narrative,
+                    accepted,
+                    contract or {},
+                ),
             }
             annotated[segment_id] = value
             accepted[segment_id] = value
@@ -410,6 +416,39 @@ class ConceptPromptBatcher:
 
 def save_concepts(path: str | Path, concepts: dict, *, artifact_store: ArtifactStore) -> Path:
     return artifact_store.write_json(path, concepts)
+
+
+def validate_and_annotate_concept_chronology(
+    concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate the complete ordered concept sequence before downstream prompts."""
+    accepted: dict[str, Any] = {}
+    failures: list[str] = []
+    for segment_id, value in concepts.items():
+        if isinstance(value, dict):
+            conflict = _semantic_conflicts(value, accepted, contract=contract)
+            if conflict:
+                failures.append(f"{segment_id}: {'; '.join(conflict['reasons'])}")
+                continue
+        accepted[segment_id] = value
+    if failures:
+        raise ValueError("Concept chronology validation failed: " + failures[0])
+    allocated = {
+        milestone
+        for value in concepts.values()
+        for milestone in _normalized_list(_narrative(value).get("milestones"))
+    }
+    for milestone, source in _ordered_contract_entries(contract, "milestone_order"):
+        if milestone not in allocated:
+            raise ValueError(
+                "Concept chronology validation failed: required milestone "
+                f"{milestone!r} is unallocated (source: {source})",
+            )
+    return ConceptPromptBatcher._annotate_semantic_validation(
+        concepts,
+        contract=contract,
+    )
 
 
 _SEMANTIC_DIMENSIONS = (
@@ -543,6 +582,187 @@ def _narrative_contract(global_context: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def _ordered_contract_entries(
+    contract: dict[str, Any], key: str,
+) -> list[tuple[str, str]]:
+    entries = []
+    for raw in contract.get(key) or ():
+        if isinstance(raw, dict):
+            item_id = str(_normalize_semantic_value(raw.get("id")))
+            source = str(raw.get("source") or key)
+        else:
+            item_id = str(_normalize_semantic_value(raw))
+            source = key
+        if item_id:
+            entries.append((item_id, source))
+    return entries
+
+
+def _approved_chronology_exception(
+    narrative: dict[str, Any],
+    contract: dict[str, Any],
+    dimension: str,
+) -> str:
+    causal_events = set(_normalized_list(narrative.get("causal_events")))
+    exceptions = contract.get("chronology_exceptions") or {}
+    if not isinstance(exceptions, dict):
+        return ""
+    for event in causal_events:
+        rule = exceptions.get(event)
+        if not isinstance(rule, dict):
+            continue
+        allowed = set(_normalized_list(rule.get("allows")))
+        if dimension in allowed:
+            return event
+    return ""
+
+
+def _chronology_conflicts(
+    narrative: dict[str, Any],
+    prior_concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> tuple[list[str], str, str]:
+    reasons: list[str] = []
+    prior_segment_id = next(reversed(prior_concepts), "")
+    approved_exception = ""
+
+    milestone_entries = _ordered_contract_entries(contract, "milestone_order")
+    milestone_ids = [item_id for item_id, _source in milestone_entries]
+    highest_rank = -1
+    for concept in prior_concepts.values():
+        for milestone in _normalized_list(_narrative(concept).get("milestones")):
+            if milestone in milestone_ids:
+                highest_rank = max(highest_rank, milestone_ids.index(milestone))
+
+    for milestone in _normalized_list(narrative.get("milestones")):
+        if milestone not in milestone_ids:
+            continue
+        rank = milestone_ids.index(milestone)
+        exception = _approved_chronology_exception(
+            narrative, contract, "milestone_order",
+        )
+        if rank < highest_rank and not exception:
+            previous_id = milestone_ids[highest_rank]
+            source = milestone_entries[rank][1]
+            reasons.append(
+                f"milestone {milestone!r} reverses current milestone {previous_id!r}; "
+                f"observed rank {rank} after rank {highest_rank} (source: {source})",
+            )
+        elif rank > highest_rank + 1:
+            missing_id, source = milestone_entries[highest_rank + 1]
+            reasons.append(
+                f"milestone {milestone!r} observed before required predecessor "
+                f"{missing_id!r} is unresolved (source: {source})",
+            )
+        else:
+            approved_exception = approved_exception or exception
+            highest_rank = max(highest_rank, rank)
+
+    location_entries = _ordered_contract_entries(contract, "location_order")
+    location_ids = [item_id for item_id, _source in location_entries]
+    current_location = str(_normalize_semantic_value(narrative.get("location")))
+    previous_location = ""
+    for concept in reversed(list(prior_concepts.values())):
+        candidate = str(_normalize_semantic_value(_narrative(concept).get("location")))
+        if candidate in location_ids:
+            previous_location = candidate
+            break
+    if current_location in location_ids and previous_location in location_ids:
+        current_rank = location_ids.index(current_location)
+        previous_rank = location_ids.index(previous_location)
+        exception = _approved_chronology_exception(
+            narrative, contract, "location_order",
+        )
+        if current_rank < previous_rank and not exception:
+            source = location_entries[current_rank][1]
+            reasons.append(
+                f"location {current_location!r} reverses current location "
+                f"{previous_location!r}; observed rank {current_rank} after rank "
+                f"{previous_rank} (source: {source})",
+            )
+        else:
+            approved_exception = approved_exception or exception
+
+    terminal_contract = contract.get("terminal_states") or {}
+    cast_states = narrative.get("cast_states") or {}
+    if isinstance(terminal_contract, dict) and isinstance(cast_states, dict):
+        for actor, raw_rule in terminal_contract.items():
+            if not isinstance(raw_rule, dict):
+                continue
+            terminal_milestone = str(_normalize_semantic_value(raw_rule.get("milestone")))
+            required_state = str(_normalize_semantic_value(raw_rule.get("state")))
+            reset_event = str(_normalize_semantic_value(raw_rule.get("reset_event")))
+            terminal_segment = ""
+            for segment_id, concept in prior_concepts.items():
+                prior_narrative = _narrative(concept)
+                if terminal_milestone in _normalized_list(prior_narrative.get("milestones")):
+                    terminal_segment = segment_id
+                if reset_event in _normalized_list(prior_narrative.get("causal_events")):
+                    terminal_segment = ""
+            current_milestones = _normalized_list(narrative.get("milestones"))
+            current_terminal = terminal_milestone in current_milestones
+            if current_terminal:
+                terminal_segment = terminal_segment or "current scene"
+            normalized_states = {
+                str(_normalize_semantic_value(key)): str(_normalize_semantic_value(value))
+                for key, value in cast_states.items()
+            }
+            normalized_actor = str(_normalize_semantic_value(actor))
+            if current_terminal and normalized_actor not in normalized_states:
+                source = str(raw_rule.get("source") or "terminal_states")
+                reasons.append(
+                    f"terminal milestone {terminal_milestone!r} requires explicit "
+                    f"cast state {required_state!r} for actor {normalized_actor!r} "
+                    f"(source: {source})",
+                )
+                continue
+            if not terminal_segment or normalized_actor not in normalized_states:
+                continue
+            observed_state = normalized_states[normalized_actor]
+            causal_events = set(_normalized_list(narrative.get("causal_events")))
+            if observed_state != required_state and reset_event not in causal_events:
+                source = str(raw_rule.get("source") or "terminal_states")
+                subject = (
+                    f"terminal milestone {terminal_milestone!r}"
+                    if terminal_segment == "current scene"
+                    else f"actor {normalized_actor!r}"
+                )
+                reasons.append(
+                    f"{subject} requires terminal state "
+                    f"{required_state!r} from {terminal_segment}; observed "
+                    f"{observed_state!r} without causal event {reset_event!r} "
+                    f"(source: {source})",
+                )
+                prior_segment_id = terminal_segment
+            elif observed_state != required_state:
+                approved_exception = approved_exception or reset_event
+
+    return reasons, prior_segment_id, approved_exception
+
+
+def _chronology_evidence(
+    segment_id: str,
+    narrative: dict[str, Any],
+    prior_concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> dict[str, Any]:
+    allocation: dict[str, str] = {}
+    for prior_id, concept in prior_concepts.items():
+        for milestone in _normalized_list(_narrative(concept).get("milestones")):
+            allocation.setdefault(milestone, prior_id)
+    for milestone in _normalized_list(narrative.get("milestones")):
+        allocation.setdefault(milestone, segment_id)
+    _reasons, _prior_id, approved_exception = _chronology_conflicts(
+        narrative, prior_concepts, contract,
+    )
+    return {
+        "scene_order": [*prior_concepts, segment_id],
+        "milestone_allocation": allocation,
+        "validation_result": "accepted",
+        "approved_exception": approved_exception or None,
+    }
+
+
 def _prop_regressions(
     narrative: dict[str, Any],
     concepts: dict[str, Any],
@@ -619,8 +839,18 @@ def _semantic_conflicts(
         contract,
     )
     unauthorized_regressions = [
-        item for item in regressions if item[0] not in reset_events
+        item for item in regressions
+        if item[0] not in reset_events
+        and not _approved_chronology_exception(
+            narrative, contract, "prop_state_order",
+        )
     ]
+
+    chronology_reasons, chronology_segment, _approved_exception = _chronology_conflicts(
+        narrative,
+        prior_concepts,
+        contract,
+    )
 
     reasons = ["narrative.props must be an object"] if malformed_props else []
     prior_segment_id = matching_segment
@@ -644,6 +874,9 @@ def _semantic_conflicts(
             f"prop {prop!r} state {state!r} regresses from {previous_state!r} "
             f"in {prop_segment} without reset_events authorization"
         )
+    if chronology_reasons:
+        prior_segment_id = prior_segment_id or chronology_segment
+        reasons.extend(chronology_reasons)
     if not reasons:
         return {}
     return {"reasons": reasons, "prior_segment_id": prior_segment_id}
