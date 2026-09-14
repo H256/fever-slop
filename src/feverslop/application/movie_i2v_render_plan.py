@@ -17,7 +17,7 @@ def write_movie_i2v_render_plan(
         raise FileNotFoundError(f"Movie visual plan not found: {visual_plan_path}")
     visual_plan = json.loads(visual_plan_path.read_text(encoding="utf-8"))
     scenes = []
-    cursor = 0.0
+    cursor_frames = 0
     for shot in visual_plan.get("shots", []):
         duration = float(shot.get("duration_seconds") or 4.0)
         frame_count = max(1, round(duration * fps))
@@ -25,7 +25,7 @@ def write_movie_i2v_render_plan(
         scenes.append({
             "scene": int(shot.get("scene") or len(scenes) + 1),
             "duration_seconds": duration,
-            "abs_start_seconds": cursor,
+            "abs_start_seconds": cursor_frames / fps,
             "fps": fps,
             "width": width,
             "height": height,
@@ -42,7 +42,7 @@ def write_movie_i2v_render_plan(
                 "selected_actor_ids": list(shot.get("selected_actor_ids") or []),
             },
         })
-        cursor += duration
+        cursor_frames += frame_count
     output_path = project_dir / "movie" / "render_plan_i2v.json"
     output_path.write_text(json.dumps(scenes, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return output_path

@@ -9,20 +9,21 @@ def write_startframe_i2v_render_plan(*, project_dir: Path, fps: int = 24) -> Pat
     project_dir = Path(project_dir)
     plan = read_json_document(project_dir / "movie" / "startframe_plan.json")
     scenes = []
-    cursor = 0.0
+    cursor_frames = 0
     for shot in plan.get("shots", []):
         duration = float(shot.get("duration_seconds") or 4.0)
+        frame_count = max(1, round(duration * fps))
         scene_number = int(shot.get("scene") or len(scenes) + 1)
         video_prompt = str((shot.get("ltx_motion") or {}).get("prompt") or "")
         scenes.append(
             {
                 "scene": scene_number,
                 "duration_seconds": duration,
-                "abs_start_seconds": cursor,
+                "abs_start_seconds": cursor_frames / fps,
                 "fps": fps,
                 "width": int(shot.get("width") or 1280),
                 "height": int(shot.get("height") or 704),
-                "frame_count": max(1, round(duration * fps)),
+                "frame_count": frame_count,
                 "z_image": {"prompt": str((shot.get("startframe_intent") or {}).get("action_moment") or "")},
                 "ltx": {
                     "original_style_i2v_prompt": video_prompt,
@@ -35,7 +36,7 @@ def write_startframe_i2v_render_plan(*, project_dir: Path, fps: int = 24) -> Pat
                 },
             },
         )
-        cursor += duration
+        cursor_frames += frame_count
     output_path = project_dir / "movie" / "render_plan_i2v.json"
     write_json_document(output_path, scenes)
     return output_path
