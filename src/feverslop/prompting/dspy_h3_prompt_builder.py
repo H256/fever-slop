@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 from collections.abc import Callable, Mapping
+from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -46,6 +47,62 @@ from feverslop.prompting.subject_directive_planning import (
 
 if TYPE_CHECKING:
     from feverslop.ports.h3_prompt_checkpoints import H3PromptCheckpointPort
+
+
+def apply_narrative_continuity_to_h3(
+    result: dict[str, Any],
+    segment: dict[str, Any],
+) -> dict[str, Any]:
+    """Attach accepted adjacent state to the deterministic H3 request data."""
+    validation = segment.get("semantic_validation") or {}
+    continuity = validation.get("continuity") or segment.get("continuity_plan")
+    if not isinstance(continuity, dict):
+        return result
+    applied = dict(result)
+    plan = deepcopy(continuity)
+    applied["continuity_plan"] = plan
+    intents = [
+        deepcopy(intent)
+        for intent in applied.get("continuation_intents") or []
+        if isinstance(intent, dict)
+    ]
+    if plan.get("requires_continuation") and not any(
+        intent.get("requires_continuation") for intent in intents
+    ):
+        intents.append({
+            "action_id": str(
+                plan.get("continuation_intent") or "continuous_action",
+            ),
+            "requires_continuation": True,
+            "rationale": (
+                "Preserve the accepted adjacent narrative state from "
+                f"{plan.get('predecessor_id')}."
+            ),
+        })
+    applied["continuation_intents"] = intents
+
+    incoming = plan.get("incoming") or {}
+    state_json = json.dumps(
+        incoming,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    instruction = (
+        "Narrative continuity: begin in this accepted incoming state "
+        f"{state_json}. Do not materialize, remove, or transform narrative "
+        "entities without an authored transition event."
+    )
+    if (incoming.get("cast_states") or {}).get("ravena") == "ascended_absent":
+        instruction += (
+            " Ravena remains ascended and absent; do not depict a corporeal "
+            "Ravena unless the authored ravena_returns event occurs. Any "
+            "continuing Ravena vocal is off-screen."
+        )
+    prompt = str(applied.get("prompt") or "").strip()
+    if instruction not in prompt:
+        applied["prompt"] = f"{prompt}\n\n{instruction}".strip()
+    return applied
 
 
 def _reference(
@@ -796,6 +853,10 @@ class DspyH3PromptBuilder:
         result = {}
         try:
             result = self._build_h3_prompt(recovery=recovery, **kwargs)
+            result = apply_narrative_continuity_to_h3(
+                result,
+                kwargs["segment"],
+            )
             self._validate_final_result(result, segment=kwargs["segment"], mode=kwargs.get("mode", "ref"))
         except PromptContractError as exc:
             if not self.allow_fallback:

@@ -87,6 +87,7 @@ class RenderVideoScenesUseCase:
             technical_segment_id = str(
                 scene_payload.get("technical_segment_id")
                 or scene_payload.get("segment_id")
+                or (scene_payload.get("metadata") or {}).get("segment_id")
                 or "",
             ).strip()
             predecessor_id = str(
@@ -268,6 +269,12 @@ def _attach_r2v_continuation_anchor(
     manifest = build_boundary_frame_manifest(
         source_clip, extracted, frame_index, project_dir=project,
     )
+    continuity_state = scene.get("continuity_plan")
+    if isinstance(continuity_state, dict):
+        manifest = replace(
+            manifest,
+            continuity_state=dict(continuity_state),
+        )
     keyframes = dict(scene.get("keyframes") or {})
     keyframes.update({
         "continuity_anchor_path": extracted.as_posix(),

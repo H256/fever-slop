@@ -89,7 +89,93 @@ def load_regression_fixture(path: str | Path) -> dict[str, Any]:
                 f"chronology case {name!r} requires evidence fields: "
                 + ", ".join(sorted(missing_evidence)),
             )
+    _validate_continuity_evidence(payload)
     return payload
+
+
+def _validate_continuity_evidence(payload: dict[str, Any]) -> None:
+    evidence = payload.get("continuity_evidence")
+    if not isinstance(evidence, dict):
+        raise ValueError("regression fixture requires continuity_evidence")
+    state_fields = evidence.get("continuity_state_fields")
+    required_state_fields = {
+        "predecessor_id",
+        "incoming",
+        "outgoing",
+        "transition_events",
+        "requires_continuation",
+    }
+    if not isinstance(state_fields, list) or set(state_fields) != required_state_fields:
+        raise ValueError(
+            "continuity_evidence.continuity_state_fields must preserve the "
+            "complete narrative continuity contract",
+        )
+
+    scenes = evidence.get("post_ascent_vocal_scenes")
+    if not isinstance(scenes, list):
+        raise ValueError("continuity_evidence requires post_ascent_vocal_scenes")
+    expected_scenes = [24, 25, 27, 28, 40, 41, 42, 43, 44, 45, 46]
+    if [item.get("scene") for item in scenes if isinstance(item, dict)] != expected_scenes:
+        raise ValueError(
+            "continuity_evidence.post_ascent_vocal_scenes must cover the 11 "
+            "reviewed scenes in ascending order",
+        )
+
+    required_scene_fields = {
+        "scene",
+        "segment_id",
+        *required_state_fields,
+        "visual_actor_ids",
+        "offscreen_audio_subject_bindings",
+    }
+    for item in scenes:
+        scene = int(item.get("scene") or 0)
+        missing = required_scene_fields - set(item)
+        if missing:
+            raise ValueError(
+                f"continuity evidence scene {scene} requires fields: "
+                + ", ".join(sorted(missing)),
+            )
+        if item["segment_id"] != f"segment_{scene:03d}":
+            raise ValueError(
+                f"continuity evidence scene {scene} has an invalid segment_id",
+            )
+        for boundary in ("incoming", "outgoing"):
+            state = item[boundary]
+            if not isinstance(state, dict) or (
+                (state.get("cast_states") or {}).get("ravena")
+                != "ascended_absent"
+            ):
+                raise ValueError(
+                    f"continuity evidence scene {scene}.{boundary} must keep "
+                    "Ravena ascended_absent",
+                )
+        if not isinstance(item["transition_events"], list):
+            raise ValueError(
+                f"continuity evidence scene {scene}.transition_events must be a list",
+            )
+        if not isinstance(item["requires_continuation"], bool):
+            raise ValueError(
+                f"continuity evidence scene {scene}.requires_continuation must be boolean",
+            )
+        visual_actors = item["visual_actor_ids"]
+        if not isinstance(visual_actors, list) or "ravena" in visual_actors:
+            raise ValueError(
+                f"continuity evidence scene {scene}.visual_actor_ids must omit Ravena",
+            )
+        vocal_binding = (
+            item["offscreen_audio_subject_bindings"].get("vocals")
+            if isinstance(item["offscreen_audio_subject_bindings"], dict)
+            else None
+        )
+        if not isinstance(vocal_binding, dict) or (
+            vocal_binding.get("subject_id") != "ravena"
+            or not str(vocal_binding.get("speaker_id") or "").strip()
+        ):
+            raise ValueError(
+                f"continuity evidence scene {scene} requires an off-screen Ravena "
+                "vocal binding",
+            )
 
 
 def verify_baseline_provenance(

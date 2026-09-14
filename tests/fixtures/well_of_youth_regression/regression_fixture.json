@@ -842,6 +842,138 @@
       ]
     }
   },
+  "continuity_evidence": {
+    "continuity_state_fields": [
+      "predecessor_id",
+      "incoming",
+      "outgoing",
+      "transition_events",
+      "requires_continuation"
+    ],
+    "post_ascent_vocal_scenes": [
+      {
+        "scene": 24,
+        "segment_id": "segment_024",
+        "predecessor_id": "segment_023",
+        "incoming": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas", "well_guardian"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+      },
+      {
+        "scene": 25,
+        "segment_id": "segment_025",
+        "predecessor_id": "segment_024",
+        "incoming": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas", "well_guardian"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+      },
+      {
+        "scene": 27,
+        "segment_id": "segment_027",
+        "predecessor_id": "segment_026",
+        "incoming": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas", "well_guardian"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+      },
+      {
+        "scene": 28,
+        "segment_id": "segment_028",
+        "predecessor_id": "segment_027",
+        "incoming": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "fountain_grotto", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas", "well_guardian"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+      },
+      {
+        "scene": 40,
+        "segment_id": "segment_040",
+        "predecessor_id": "segment_039",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+      },
+      {
+        "scene": 41,
+        "segment_id": "segment_041",
+        "predecessor_id": "segment_040",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+      },
+      {
+        "scene": 42,
+        "segment_id": "segment_042",
+        "predecessor_id": "segment_041",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+      },
+      {
+        "scene": 43,
+        "segment_id": "segment_043",
+        "predecessor_id": "segment_042",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+      },
+      {
+        "scene": 44,
+        "segment_id": "segment_044",
+        "predecessor_id": "segment_043",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+      },
+      {
+        "scene": 45,
+        "segment_id": "segment_045",
+        "predecessor_id": "segment_044",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+      },
+      {
+        "scene": 46,
+        "segment_id": "segment_046",
+        "predecessor_id": "segment_045",
+        "incoming": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "outgoing": {"location": "weeping_caves", "cast_states": {"ravena": "ascended_absent"}},
+        "transition_events": [],
+        "requires_continuation": false,
+        "visual_actor_ids": ["varen", "silas"],
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+      }
+    ]
+  },
   "smoke_specifications": {
     "timed_vocal": {
       "scenes": [
