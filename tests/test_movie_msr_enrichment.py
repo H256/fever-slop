@@ -12,9 +12,9 @@ from feverslop.application.movie_ingredients_sheets import (
     _read_json as _read_json_ingredients,
 )
 from feverslop.application.movie_msr_enrichment import (
+    _diegetic_audio_device,
+    _movie_video_prompt,
     _read_json,
-)
-from feverslop.application.movie_msr_enrichment import (
     _read_json as _read_json_msr,
 )
 from feverslop.errors import FeverSlopDataError
@@ -145,3 +145,57 @@ class TestTOCTOUReplacement(unittest.TestCase):
                 TestTOCTOUReplacement._eafp_read_default(_read_json_msr, path, {})
         finally:
             path.unlink()
+
+
+class TestDiegeticAudioHeuristic(unittest.TestCase):
+    """Issue #1190: diegetic path requires an explicit device noun; no hardcoded screaming."""
+
+    MANIFEST = {"actors": [{"id": "actor-1", "name": "Mara"}]}
+
+    def _prompt(self, dialogue: str, action: str = "") -> str:
+        shot = {
+            "description": "Close-up of Mara listening",
+            "action": action,
+            "dialogue": dialogue,
+            "actor_ids": ["actor-1"],
+        }
+        return _movie_video_prompt(shot, bible={}, manifest=self.MANIFEST)
+
+    def test_bare_voice_in_dialogue_is_not_diegetic(self):
+        prompt = self._prompt('Mara: Your voice is familiar.')
+        self.assertIn('Mara says: "Your voice is familiar."', prompt)
+        self.assertNotIn("radio", prompt.casefold())
+        self.assertNotIn("screaming", prompt.casefold())
+
+    def test_parenthetical_voice_cue_is_not_diegetic(self):
+        prompt = self._prompt('(V.O.) Your voice is familiar')
+        self.assertNotIn("radio", prompt.casefold())
+        self.assertNotIn("screaming", prompt.casefold())
+        self.assertIn("is familiar", prompt)
+
+    def test_device_noun_still_takes_diegetic_path(self):
+        prompt = self._prompt('Mara: The radio crackles to life.')
+        self.assertIn("radio", prompt.casefold())
+        self.assertNotIn("screaming", prompt.casefold())
+
+    def test_radio_direction_without_screaming(self):
+        prompt = self._prompt('Mara: Get me out of here, the radio said.')
+        self.assertIn("The radio plays a recording of Mara's voice", prompt)
+        self.assertNotIn("screaming", prompt.casefold())
+        self.assertNotIn("own voice", prompt.casefold())
+
+    def test_radio_action_phrase_preserved_without_screaming(self):
+        prompt = self._prompt(
+            'Mara: Get me out of here, said the radio.',
+            action="Mara holds the radio to her ear",
+        )
+        self.assertIn('Mara holds the radio to her ear: "Get me out of here, said the radio."', prompt)
+        self.assertNotIn("screaming", prompt.casefold())
+
+    def test_device_detection_unit(self):
+        self.assertEqual(_diegetic_audio_device("V.O.", "Your voice is familiar"), "")
+        self.assertEqual(_diegetic_audio_device("V.O.", "A distorted voice warns her"), "")
+        self.assertEqual(_diegetic_audio_device("Radio", "Stay quiet"), "radio")
+        self.assertEqual(_diegetic_audio_device("Transmitter", "Signal lost"), "radio")
+        self.assertEqual(_diegetic_audio_device("Speaker", "Attention everyone"), "speaker")
+        self.assertEqual(_diegetic_audio_device("V.O.", "The recording begins"), "radio")
