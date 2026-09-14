@@ -127,6 +127,8 @@ def _validate_continuity_evidence(payload: dict[str, Any]) -> None:
         *required_state_fields,
         "visual_actor_ids",
         "offscreen_audio_subject_bindings",
+        "final_request_evidence",
+        "visual_quality_review",
     }
     for item in scenes:
         scene = int(item.get("scene") or 0)
@@ -170,11 +172,31 @@ def _validate_continuity_evidence(payload: dict[str, Any]) -> None:
         )
         if not isinstance(vocal_binding, dict) or (
             vocal_binding.get("subject_id") != "ravena"
-            or not str(vocal_binding.get("speaker_id") or "").strip()
+            or vocal_binding.get("speaker_id") != "S1"
         ):
             raise ValueError(
                 f"continuity evidence scene {scene} requires an off-screen Ravena "
                 "vocal binding",
+            )
+        expected_request_evidence = {
+            "ravena_visual_presence": "absent",
+            "ravena_vocal_delivery": "offscreen",
+            "audio_subject_binding": {
+                "subject_id": "ravena",
+                "speaker_id": vocal_binding["speaker_id"],
+            },
+        }
+        if item["final_request_evidence"] != expected_request_evidence:
+            raise ValueError(
+                f"continuity evidence scene {scene} has invalid final request evidence",
+            )
+        if item["visual_quality_review"] != {
+            "status": "not_evaluated",
+            "machine_verifiable": False,
+        }:
+            raise ValueError(
+                f"continuity evidence scene {scene} must keep visual quality "
+                "review separate from request transport evidence",
             )
 
 

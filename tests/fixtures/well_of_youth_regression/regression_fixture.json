@@ -860,7 +860,9 @@
         "transition_events": [],
         "requires_continuation": false,
         "visual_actor_ids": ["varen", "silas", "well_guardian"],
-        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
       },
       {
         "scene": 25,
@@ -871,7 +873,9 @@
         "transition_events": [],
         "requires_continuation": false,
         "visual_actor_ids": ["varen", "silas", "well_guardian"],
-        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
       },
       {
         "scene": 27,
@@ -882,7 +886,9 @@
         "transition_events": [],
         "requires_continuation": false,
         "visual_actor_ids": ["varen", "silas", "well_guardian"],
-        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
       },
       {
         "scene": 28,
@@ -893,7 +899,9 @@
         "transition_events": [],
         "requires_continuation": false,
         "visual_actor_ids": ["varen", "silas", "well_guardian"],
-        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
       },
       {
         "scene": 40,
@@ -904,7 +912,9 @@
         "transition_events": [],
         "requires_continuation": false,
         "visual_actor_ids": ["varen", "silas"],
-        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
       },
       {
         "scene": 41,
@@ -915,7 +925,9 @@
         "transition_events": [],
         "requires_continuation": false,
         "visual_actor_ids": ["varen", "silas"],
-        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
       },
       {
         "scene": 42,
@@ -926,7 +938,9 @@
         "transition_events": [],
         "requires_continuation": false,
         "visual_actor_ids": ["varen", "silas"],
-        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
       },
       {
         "scene": 43,
@@ -937,7 +951,9 @@
         "transition_events": [],
         "requires_continuation": false,
         "visual_actor_ids": ["varen", "silas"],
-        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
       },
       {
         "scene": 44,
@@ -948,7 +964,9 @@
         "transition_events": [],
         "requires_continuation": false,
         "visual_actor_ids": ["varen", "silas"],
-        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
       },
       {
         "scene": 45,
@@ -959,7 +977,9 @@
         "transition_events": [],
         "requires_continuation": false,
         "visual_actor_ids": ["varen", "silas"],
-        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
       },
       {
         "scene": 46,
@@ -970,7 +990,9 @@
         "transition_events": [],
         "requires_continuation": false,
         "visual_actor_ids": ["varen", "silas"],
-        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}}
+        "offscreen_audio_subject_bindings": {"vocals": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "final_request_evidence": {"ravena_visual_presence": "absent", "ravena_vocal_delivery": "offscreen", "audio_subject_binding": {"subject_id": "ravena", "speaker_id": "S1"}},
+        "visual_quality_review": {"status": "not_evaluated", "machine_verifiable": false}
       }
     ]
   },
