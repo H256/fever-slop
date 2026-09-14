@@ -129,6 +129,33 @@ class MusicVideoDspyContractTests(unittest.TestCase):
 
         self.assertEqual(22528, calls[0]["config"]["max_tokens"])
 
+    def test_repair_concepts_scale_output_limit_per_expected_key(self):
+        calls = []
+
+        class Predictor:
+            def __call__(self, **kwargs):
+                calls.append(kwargs)
+                return {"concepts": {}}
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        class Runtime:
+            def make_lm(self, llm):
+                return "lm"
+
+            context = staticmethod(lambda **kwargs: nullcontext())
+            predict = staticmethod(lambda signature: Predictor())
+
+        modules = MusicVideoPromptModules(LLM(), dspy_runtime=Runtime())
+
+        modules.repair_concepts({"EXPECTED_KEYS": ["segment_005"]})
+        modules.repair_concepts({"EXPECTED_KEYS": ["segment_005", "segment_008"]})
+
+        self.assertEqual(4096, calls[0]["config"]["max_tokens"])
+        self.assertEqual(6144, calls[1]["config"]["max_tokens"])
+
     def test_dspy_predictor_receives_caller_timeout_as_lm_config(self):
         calls = []
 

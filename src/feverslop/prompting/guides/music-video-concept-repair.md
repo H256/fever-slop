@@ -4,6 +4,8 @@ Each repair must advance at least one narrative dimension. Do not repeat a compl
 
 Make `incoming` compatible with the predecessor's `outgoing` state. Name an exact state change in `transition_events`; a hard cut is not an exception. Use `transition_from_previous: "continuous"` only when the action requires the predecessor boundary frame. Keep a terminally absent actor absent until the narrative contract's exact return event occurs; do not restore visual presence from an audio performer binding.
 
+BOUNDARY_CONTEXT carries the exact accepted boundary states beside every key you repair, and those identifiers are the canonical vocabulary. State values are compared token-for-token: `lich_s_lair` and `center_of_lich_s_lair` are different locations, as are `gesturing_to_dragon` and `gesturing_toward_the_dragon`. In `incoming`, omit states inherited unchanged from the predecessor (their exact values are taken over automatically) or restate the predecessor's identifiers verbatim; name a state only when it genuinely changes, and list every such change in `transition_events`. Your `outgoing` must match the accepted successor's `incoming` identifiers exactly for every state that successor names.
+
 Follow `milestone_order` and `location_order` from the narrative contract. A nonlinear rewind is valid only when the repair names an exact event in "causal_events" and that event's `chronology_exceptions` entry explicitly allows the rewound dimension. Never use a chronology exception to skip unresolved milestones forward.
 
 SEGMENT PERFORMANCE TYPE IS AUTHORITATIVE.

@@ -98,7 +98,18 @@ class MusicVideoPromptModules:
         )
 
     def repair_concepts(self, payload: dict[str, Any], *, timeout=None) -> Any:
-        return self._call(REPAIR_CONCEPTS, load_markdown_guide("music-video-concept-repair"), {"payload": payload}, "concepts", timeout=timeout)
+        # A repair response carries one full structured concept per expected
+        # key, so scale the output budget by that count instead of the static
+        # policy default (which truncated multi-scene repairs).
+        expected_count = len(payload.get("EXPECTED_KEYS") or [])
+        return self._call(
+            REPAIR_CONCEPTS,
+            load_markdown_guide("music-video-concept-repair"),
+            {"payload": payload},
+            "concepts",
+            timeout=timeout,
+            max_tokens=concept_batch_max_tokens(expected_count) if expected_count else None,
+        )
 
     def summary(self, payload: dict[str, Any], *, timeout=None) -> str:
         return str(self._call(SUMMARY, load_markdown_guide("music-video-summary"), {"payload": payload}, "summary", timeout=timeout)).strip()
