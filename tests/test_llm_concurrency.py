@@ -4,10 +4,12 @@ import unittest
 from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
+import dspy
 import httpx
 from openai import APIConnectionError
 
 from feverslop.adapters.llm_client import LocalOpenAIClient
+from feverslop.llm_concurrency import LLMConcurrencyLimiter, LimitedDspyLM
 from feverslop.prompting.dspy_runtime import DspyRuntime, H3SignatureBundle
 
 
@@ -34,6 +36,46 @@ class BlockingBackend:
         finally:
             with self._lock:
                 self.in_flight -= 1
+
+
+class LimitedDspyLMAttrLookupTests(unittest.TestCase):
+    """Issue #1189: __getattr__ must not recurse when _lm is not set yet."""
+
+    def _fresh_proxy(self):
+        # Bypass __init__ so _lm is not set yet (attribute lookups during or
+        # before construction must degrade to AttributeError, not recursion).
+        return LimitedDspyLM.__new__(LimitedDspyLM)
+
+    def test_fresh_proxy_missing_attr_raises_attribute_error_not_recursion(self):
+        proxy = self._fresh_proxy()
+        with self.assertRaises(AttributeError):
+            proxy.anything
+
+    def test_fresh_proxy_backing_lm_lookup_raises_attribute_error_not_recursion(self):
+        proxy = self._fresh_proxy()
+        with self.assertRaises(AttributeError):
+            proxy._lm
+
+    def test_fresh_proxy_explicit_dunder_lookup_does_not_recurse(self):
+        proxy = self._fresh_proxy()
+        # Dunders resolve on the type, so this must not raise RecursionError.
+        str(proxy)
+
+    def test_fully_constructed_proxy_still_delegates_to_underlying(self):
+        underlying = dspy.LM("openai/fake-model", api_key="test", api_base="http://localhost")
+        proxy = LimitedDspyLM(underlying, LLMConcurrencyLimiter())
+
+        self.assertIs(proxy.num_retries, underlying.num_retries)
+        self.assertIs(proxy.__getattr__("num_retries"), underlying.num_retries)
+
+    def test_fully_constructed_proxy_missing_attr_raises_attribute_error_not_recursion(self):
+        class FakeLM:
+            def __call__(self, **kwargs):
+                return ["ok"]
+
+        proxy = LimitedDspyLM(FakeLM(), LLMConcurrencyLimiter())
+        with self.assertRaises(AttributeError):
+            proxy.does_not_exist
 
 
 class LLMConcurrencyTests(unittest.TestCase):
