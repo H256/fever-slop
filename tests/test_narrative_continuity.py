@@ -170,6 +170,154 @@ class NarrativeContinuityTests(unittest.TestCase):
                 self.contract,
             )
 
+    def test_rejects_paraphrased_continuous_boundary_states(self):
+        previous = _concept(
+            location="lich_s_lair",
+            action="turning_and_observing_the_lich",
+            action_phase="ongoing",
+            cast_states={
+                "ravena": "turning_tense",
+                "varen": "gripping_sword",
+                "silas": "holding_lantern",
+            },
+        )
+        previous["narrative"]["props"] = {}
+        current = _concept(
+            location="lich_s_lair",
+            action="facing_the_lich",
+            action_phase="ongoing",
+            cast_states={
+                "ravena": "facing_lich",
+                "varen": "facing_lich",
+                "silas": "facing_lich",
+            },
+            transition_from_previous="continuous",
+        )
+        current["narrative"]["props"] = {}
+        current["narrative"]["incoming"] = {
+            "location": "center_of_lich_s_lair",
+            "action": "facing_the_lich",
+            "action_phase": "ongoing",
+            "cast_states": {"ravena": "facing_lich"},
+        }
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"segment_006\.incoming\.location.*center_of_lich_s_lair"
+            r".*segment_005 outgoing state 'lich_s_lair'",
+        ):
+            validate_and_annotate_concept_chronology(
+                {"segment_005": previous, "segment_006": current},
+                self.contract,
+            )
+
+    def test_omitted_incoming_states_are_inherited_from_predecessor(self):
+        previous = _concept(
+            location="dragon_s_lair",
+            action="gesturing_toward_the_dragon",
+            action_phase="ongoing",
+            cast_states={"ravena": "gesturing_soft_expression"},
+        )
+        previous["narrative"]["props"] = {}
+        current = _concept(
+            location="dragon_s_lair",
+            action="gesturing_to_dragon",
+            action_phase="ongoing",
+            cast_states={"ravena": "gesturing"},
+            transition_from_previous="continuous",
+        )
+        current["narrative"]["props"] = {}
+        current["narrative"]["incoming"] = {}
+
+        annotated = validate_and_annotate_concept_chronology(
+            {"segment_008": previous, "segment_009": current},
+            self.contract,
+        )
+
+        continuity = annotated["segment_009"]["semantic_validation"]["continuity"]
+        self.assertTrue(continuity["requires_continuation"])
+        self.assertEqual("dragon_s_lair", continuity["incoming"]["location"])
+        self.assertEqual(
+            "gesturing_soft_expression", continuity["incoming"]["cast_states"]["ravena"],
+        )
+
+    def test_rejects_incoming_that_ignores_predecessor_outgoing_block(self):
+        previous = _concept(
+            location="lich_s_lair",
+            action="standing_and_observing_the_cave_path",
+            action_phase="ongoing",
+            cast_states={"ravena": "still"},
+        )
+        previous["narrative"]["props"] = {}
+        previous["narrative"]["outgoing"] = {
+            "location": "lich_s_lair",
+            "action": "standing_and_observing",
+            "action_phase": "ongoing",
+            "cast_states": {"ravena": "still"},
+        }
+        current = _concept(
+            location="lich_s_lair",
+            action="step_toward_lich",
+            action_phase="ongoing",
+            cast_states={"ravena": "advancing"},
+            transition_from_previous="continuous",
+        )
+        current["narrative"]["props"] = {}
+        current["narrative"]["incoming"] = {
+            "location": "lich_s_lair",
+            "action": "standing_and_observing_the_cave_path",
+            "action_phase": "ongoing",
+            "cast_states": {"ravena": "still"},
+        }
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"segment_002\.incoming\.action.*standing_and_observing_the_cave_path"
+            r".*segment_001 outgoing state 'standing_and_observing'",
+        ):
+            validate_and_annotate_concept_chronology(
+                {"segment_001": previous, "segment_002": current},
+                self.contract,
+            )
+
+    def test_accepts_incoming_that_matches_predecessor_outgoing_block(self):
+        previous = _concept(
+            location="lich_s_lair",
+            action="standing_and_observing_the_cave_path",
+            action_phase="ongoing",
+            cast_states={"ravena": "still"},
+        )
+        previous["narrative"]["props"] = {}
+        previous["narrative"]["outgoing"] = {
+            "location": "lich_s_lair",
+            "action": "standing_and_observing",
+            "action_phase": "ongoing",
+            "cast_states": {"ravena": "still"},
+        }
+        current = _concept(
+            location="lich_s_lair",
+            action="step_toward_lich",
+            action_phase="ongoing",
+            cast_states={"ravena": "advancing"},
+            transition_from_previous="continuous",
+        )
+        current["narrative"]["props"] = {}
+        current["narrative"]["incoming"] = {
+            "location": "lich_s_lair",
+            "action": "standing_and_observing",
+            "action_phase": "ongoing",
+            "cast_states": {"ravena": "still"},
+        }
+
+        annotated = validate_and_annotate_concept_chronology(
+            {"segment_001": previous, "segment_002": current},
+            self.contract,
+        )
+
+        continuity = annotated["segment_002"]["semantic_validation"]["continuity"]
+        self.assertTrue(continuity["requires_continuation"])
+        self.assertEqual("standing_and_observing", continuity["incoming"]["action"])
+
     def test_post_ascent_vocal_binding_does_not_restore_visual_ravena(self):
         references = normalize_scene_references(
             {"actor_ids": ["varen"]},

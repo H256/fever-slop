@@ -20,6 +20,13 @@ def chunked(items: list[Any], size: int):
         yield start, items[start:start + size]
 
 
+# One repair call carries at most this many scene keys so its structured
+# output stays inside the per-scene token budget (see llm_policy
+# concept_batch_max_tokens) and a truncated response can never strand a whole
+# batch repair.
+_KEYS_PER_REPAIR_CALL = 2
+
+
 class ConceptPromptBatcher:
     """Robust concept-prompt generation for many music-video scenes.
 
@@ -189,7 +196,10 @@ class ConceptPromptBatcher:
             previous_concepts=previous_accepted_concepts,
             expected_ids=expected_ids,
         )
-        repair_ids = list(dict.fromkeys(missing + [item["segment_id"] for item in invalid]))
+        repair_ids = sorted(
+            dict.fromkeys(missing + [item["segment_id"] for item in invalid]),
+            key=expected_ids.index,
+        )
 
         if not repair_ids:
             return self._annotate_semantic_validation(
@@ -207,35 +217,20 @@ class ConceptPromptBatcher:
             progress_callback,
         )
 
-        # One focused repair call for missing keys only.
-        missing_segments = [
-            seg
-            for seg in batch
-            if seg["segment_id"] in repair_ids
-        ]
-
-        payload = {
-            "STORY_IDEA": story_idea,
-            "GLOBAL_CONTEXT": global_context,
-            "NOTES": notes,
-            "PREVIOUS_PROGRESS_SUMMARY": previous_summary,
-            "PREVIOUS_CONCEPTS": previous_concepts,
-            "MISSING_SEGMENTS": compact_planning_payload(missing_segments),
-            "INVALID_SEGMENTS": invalid,
-            "EXPECTED_KEYS": repair_ids,
-        }
-
-        response = self.prompt_modules.repair_concepts(
-            payload,
-            timeout=self.request_timeout_seconds,
-        )
-        repair = response if isinstance(response, dict) else extract_json_object(str(response))
-
-        for segment_id in repair_ids:
-            value = repair.get(segment_id)
-            if value is None:
-                value = self._fallback_concept(segment_id, global_context) if segment_id in missing else repaired[segment_id]
-            repaired[segment_id] = value
+        repaired.update(self._repair_scenes(
+            repair_ids=repair_ids,
+            missing_ids=set(missing),
+            invalid_items=invalid,
+            repaired=repaired,
+            accepted=previous_accepted_concepts,
+            expected_ids=expected_ids,
+            batch=batch,
+            story_idea=story_idea,
+            global_context=global_context,
+            notes=notes,
+            previous_concepts=previous_concepts,
+            previous_summary=previous_summary,
+        ))
 
         ordered = {
             segment_id: repaired[segment_id]
@@ -247,6 +242,49 @@ class ConceptPromptBatcher:
             previous_concepts=previous_accepted_concepts,
             expected_ids=expected_ids,
         )
+        # A repaired predecessor can strand an already-accepted successor whose
+        # boundary states no longer match token-for-token. Give those collateral
+        # scenes exactly one bounded follow-up repair; scenes whose own repair
+        # response was invalid never get a second attempt.
+        remaining_ids = [item["segment_id"] for item in remaining_invalid]
+        collateral_ids = [segment_id for segment_id in remaining_ids if segment_id not in repair_ids]
+        if collateral_ids:
+            self._report(
+                f"Concept batch: repairing {len(collateral_ids)} scene "
+                f"{'key' if len(collateral_ids) == 1 else 'keys'} broken by adjacent "
+                f"repairs: {', '.join(collateral_ids)}",
+                progress_callback,
+            )
+            repaired.update(self._repair_scenes(
+                repair_ids=collateral_ids,
+                missing_ids=set(),
+                invalid_items=[
+                    item for item in remaining_invalid
+                    if item["segment_id"] in set(collateral_ids)
+                ],
+                repaired=repaired,
+                accepted={**previous_accepted_concepts, **ordered},
+                expected_ids=expected_ids,
+                batch=batch,
+                story_idea=story_idea,
+                global_context=global_context,
+                notes=notes,
+                previous_concepts=self._last_concepts({
+                    **previous_accepted_concepts,
+                    **ordered,
+                }),
+                previous_summary=previous_summary,
+            ))
+            ordered = {
+                segment_id: repaired[segment_id]
+                for segment_id in expected_ids
+            }
+            remaining_invalid = self._invalid_concepts(
+                ordered,
+                global_context,
+                previous_concepts=previous_accepted_concepts,
+                expected_ids=expected_ids,
+            )
         if remaining_invalid:
             details = "; ".join(
                 f"{item['segment_id']}: {item['reason']}"
@@ -258,6 +296,75 @@ class ConceptPromptBatcher:
             previous_concepts=previous_accepted_concepts,
             contract=_narrative_contract(global_context),
         )
+
+    def _repair_scenes(
+        self,
+        *,
+        repair_ids: list[str],
+        missing_ids: set[str],
+        invalid_items: list[dict[str, Any]],
+        repaired: dict[str, Any],
+        accepted: dict[str, Any],
+        expected_ids: list[str],
+        batch: list[dict],
+        story_idea: str,
+        global_context: dict,
+        notes: str,
+        previous_concepts: dict,
+        previous_summary: str,
+    ) -> dict[str, Any]:
+        # Repair in small sequential chunks: each call carries a bounded number
+        # of scene keys plus the exact accepted boundary states beside them, so
+        # the model regenerates canonical values and the response always fits
+        # its per-scene token budget.
+        invalid_by_id = {item["segment_id"]: item for item in invalid_items}
+        target_ids = set(repair_ids)
+        expected_set = set(expected_ids)
+        sequence_ids = [
+            *(segment_id for segment_id in accepted if segment_id not in expected_set),
+            *expected_ids,
+        ]
+        repaired_values: dict[str, Any] = {}
+        for start in range(0, len(repair_ids), _KEYS_PER_REPAIR_CALL):
+            chunk_ids = repair_ids[start:start + _KEYS_PER_REPAIR_CALL]
+            chunk_missing = {segment_id for segment_id in chunk_ids if segment_id in missing_ids}
+            payload = {
+                "STORY_IDEA": story_idea,
+                "GLOBAL_CONTEXT": global_context,
+                "NOTES": notes,
+                "PREVIOUS_PROGRESS_SUMMARY": previous_summary,
+                "PREVIOUS_CONCEPTS": previous_concepts,
+                "MISSING_SEGMENTS": compact_planning_payload(
+                    [seg for seg in batch if seg["segment_id"] in chunk_missing]
+                ),
+                "INVALID_SEGMENTS": [
+                    invalid_by_id[segment_id]
+                    for segment_id in chunk_ids
+                    if segment_id in invalid_by_id
+                ],
+                "EXPECTED_KEYS": chunk_ids,
+                "BOUNDARY_CONTEXT": _boundary_context(
+                    chunk_ids,
+                    known={**accepted, **repaired, **repaired_values},
+                    order_ids=sequence_ids,
+                    excluded=target_ids,
+                ),
+            }
+            response = self.prompt_modules.repair_concepts(
+                payload,
+                timeout=self.request_timeout_seconds,
+            )
+            repair = response if isinstance(response, dict) else extract_json_object(str(response))
+            for segment_id in chunk_ids:
+                value = repair.get(segment_id)
+                if value is None:
+                    value = (
+                        self._fallback_concept(segment_id, global_context)
+                        if segment_id in missing_ids
+                        else repaired[segment_id]
+                    )
+                repaired_values[segment_id] = value
+        return repaired_values
 
     @staticmethod
     def _invalid_concepts(
@@ -273,6 +380,7 @@ class ConceptPromptBatcher:
             if isinstance(actor, dict) and str(actor.get("id") or "").strip()
         }
         invalid = []
+        contract = _narrative_contract(global_context)
         accepted = dict(previous_concepts or {})
         for segment_id in expected_ids or list(result):
             if segment_id not in result:
@@ -306,7 +414,7 @@ class ConceptPromptBatcher:
             semantic = _semantic_conflicts(
                 value,
                 accepted,
-                contract=_narrative_contract(global_context),
+                contract=contract,
                 segment_id=segment_id,
             )
             if semantic:
@@ -322,7 +430,13 @@ class ConceptPromptBatcher:
                     finding["prior_segment_id"] = prior_segment_id
                 invalid.append(finding)
                 continue
-            accepted[segment_id] = value
+            # Store the annotated form so later scenes are validated against
+            # the same boundary states the annotated chronology gate enforces.
+            accepted[segment_id] = ConceptPromptBatcher._annotate_semantic_validation(
+                {segment_id: value},
+                previous_concepts=accepted,
+                contract=contract,
+            )[segment_id]
         return invalid
 
     @staticmethod
@@ -825,9 +939,18 @@ def _prop_regressions(
 _CONTINUITY_STATE_MAPS = ("cast_states", "props", "transformation_states")
 
 
+def _normalized_scalar(value: Any) -> str:
+    # A missing field must stay absent from the snapshot so boundary merging
+    # inherits the predecessor's exact value; str(None) would inject the
+    # literal "None" sentinel and break every continuous handoff.
+    if value is None:
+        return ""
+    return str(_normalize_semantic_value(value))
+
+
 def _continuity_snapshot(narrative: dict[str, Any]) -> dict[str, Any]:
     snapshot: dict[str, Any] = {}
-    location = str(_normalize_semantic_value(narrative.get("location")))
+    location = _normalized_scalar(narrative.get("location"))
     if location:
         snapshot["location"] = location
     for field in _CONTINUITY_STATE_MAPS:
@@ -835,7 +958,7 @@ def _continuity_snapshot(narrative: dict[str, Any]) -> dict[str, Any]:
         if isinstance(value, dict):
             snapshot[field] = dict(_normalize_semantic_value(value))
     for field in ("action", "action_phase"):
-        value = str(_normalize_semantic_value(narrative.get(field)))
+        value = _normalized_scalar(narrative.get(field))
         if value:
             snapshot[field] = value
     return snapshot
@@ -859,6 +982,18 @@ def _merge_continuity_state(
         else:
             merged[field] = value
     return merged
+
+
+def _narrative_outgoing_snapshot(narrative: dict[str, Any]) -> dict[str, Any]:
+    # Mirror the annotated outgoing merge used by _adjacent_continuity_plan:
+    # a scene's explicit `outgoing` block overrides its narrative-level state
+    # fields. Raw fallbacks that ignored it made batch-time validation see a
+    # different boundary than the annotated chronology gate enforced later.
+    outgoing = _continuity_snapshot(narrative)
+    explicit = narrative.get("outgoing")
+    if isinstance(explicit, dict):
+        outgoing = _merge_continuity_state(outgoing, _continuity_snapshot(explicit))
+    return outgoing
 
 
 def _transition_authorized(
@@ -903,7 +1038,7 @@ def _adjacent_continuity_plan(
     previous_outgoing = (
         deepcopy(previous_continuity.get("outgoing"))
         if isinstance(previous_continuity.get("outgoing"), dict)
-        else _continuity_snapshot(previous_narrative)
+        else _narrative_outgoing_snapshot(previous_narrative)
     )
     current_snapshot = _continuity_snapshot(narrative)
     explicit_incoming = narrative.get("incoming")
@@ -966,7 +1101,7 @@ def _adjacent_continuity_conflicts(
         else None
     )
     if not isinstance(previous, dict):
-        previous = _continuity_snapshot(_narrative(prior_concepts[predecessor_id]))
+        previous = _narrative_outgoing_snapshot(_narrative(prior_concepts[predecessor_id]))
     incoming = plan["incoming"]
     outgoing = plan["outgoing"]
     events = set(plan["transition_events"])
@@ -1034,6 +1169,60 @@ def _adjacent_continuity_conflicts(
                         f"with {predecessor_id} outgoing state {before!r}",
                     )
     return reasons, predecessor_id
+
+
+def _continuity_boundary_state(value: Any, direction: str) -> dict[str, Any]:
+    """Return the state a scene exposes at one boundary, mirroring validation."""
+    if not isinstance(value, dict):
+        return {}
+    continuity = (value.get("semantic_validation") or {}).get("continuity") or {}
+    state = continuity.get(direction)
+    if isinstance(state, dict) and state:
+        return state
+    narrative = _narrative(value)
+    if direction == "outgoing":
+        return _narrative_outgoing_snapshot(narrative)
+    explicit = narrative.get("incoming")
+    return _continuity_snapshot(explicit) if isinstance(explicit, dict) else {}
+
+
+def _boundary_context(
+    target_ids: list[str],
+    *,
+    known: dict[str, Any],
+    order_ids: list[str],
+    excluded: set[str],
+) -> dict[str, dict[str, Any]]:
+    """Map each repair target to its accepted neighbours' exact boundary states.
+
+    The repair prompt uses these snapshots as the canonical state vocabulary so
+    regenerated scenes keep continuous boundaries token-identical instead of
+    paraphrasing them.
+    """
+    order = order_ids
+    positions = {segment_id: index for index, segment_id in enumerate(order)}
+    context: dict[str, dict[str, Any]] = {}
+    for segment_id in target_ids:
+        position = positions.get(segment_id)
+        if position is None:
+            continue
+        entry: dict[str, Any] = {}
+        for side, direction, offset in (
+            ("predecessor", "outgoing", -1),
+            ("successor", "incoming", 1),
+        ):
+            neighbor_position = position + offset
+            if not 0 <= neighbor_position < len(order):
+                continue
+            neighbor_id = order[neighbor_position]
+            if neighbor_id in excluded or neighbor_id not in known:
+                continue
+            state = _continuity_boundary_state(known[neighbor_id], direction)
+            if state:
+                entry[side] = {"scene_id": neighbor_id, direction: state}
+        if entry:
+            context[segment_id] = entry
+    return context
 
 
 def _semantic_conflicts(
