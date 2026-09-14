@@ -81,6 +81,7 @@ UNIT_MODULES = (
     "h3_prompt_pipeline",
     "h3_two_pass",
     "h3_two_pass_workflows",
+    "i2v_render_plan_timeline",
     "import_boundaries",
     "ingredients_render_plan_projection",
     "ingredients_vision_prompt",
