@@ -387,6 +387,48 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             self.assertEqual(1, len(scene_prompt_builder.calls))
             self.assertEqual({"segment_001": "concept"}, result.concept_prompts)
 
+    def test_prompt_pipeline_rejects_invalid_complete_chronology_before_scene_prompts(self):
+        class InvalidChronologyPromptPipeline(FakePromptPipeline):
+            def create_concept_prompts(
+                self, stage1_segments, story_idea, global_context=None, notes="",
+            ):
+                del story_idea, global_context, notes
+                return {
+                    stage1_segments[0]["segment_id"]: {
+                        "concept": "Ravena reaches the fountain too soon.",
+                        "narrative": {
+                            "milestones": ["fountain_arrival"],
+                        },
+                    },
+                }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            llm = object()
+            prompt_pipeline = InvalidChronologyPromptPipeline(llm)
+            scene_prompt_builder = FakeScenePromptBuilder(llm)
+            pipeline = PromptGenerationPipeline(
+                llm_factory=lambda _app_config: llm,
+                prompt_pipeline_factory=lambda _llm: prompt_pipeline,
+                concept_batcher_factory=lambda _llm, _size: None,
+                scene_prompt_builder_factory=lambda _llm: scene_prompt_builder,
+            )
+            context = _prompt_context(temp, concept_batch_size=0)
+            context.config.narrative_contract = {
+                "milestone_order": [
+                    {"id": "caves_entered", "source": "story_idea: enter the caves"},
+                    {"id": "fountain_arrival", "source": "story_idea: reach the fountain"},
+                ],
+            }
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "fountain_arrival.*required predecessor 'caves_entered'.*story_idea",
+            ):
+                pipeline.execute(context)
+
+            self.assertEqual([], scene_prompt_builder.calls)
+
     def test_scene_prompt_stage_reports_accurate_name_and_boundaries(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

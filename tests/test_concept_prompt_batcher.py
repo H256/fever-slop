@@ -1,7 +1,10 @@
 import json
 import unittest
 
-from feverslop.prompting.concept_prompt_batcher import ConceptPromptBatcher
+from feverslop.prompting.concept_prompt_batcher import (
+    ConceptPromptBatcher,
+    validate_and_annotate_concept_chronology,
+)
 
 
 class FakeConceptModules:
@@ -788,6 +791,294 @@ class ConceptPromptBatcherTests(unittest.TestCase):
                     "narrative_contract": {"one_shot_milestones": ["cup_raised"]},
                 },
             )
+
+    def test_rejects_milestone_before_required_predecessors(self):
+        cave = semantic_concept(
+            "Ravena descends into the Weeping Caves.",
+            story_beat="cave_descent",
+            action="descend",
+            action_phase="completed",
+            milestone="caves_entered",
+            prop_state="unseen",
+        )
+        fountain = semantic_concept(
+            "Ravena reaches the fountain before confronting its guardians.",
+            story_beat="fountain_arrival",
+            action="reach_fountain",
+            action_phase="completed",
+            milestone="fountain_arrival",
+            prop_state="unseen",
+        )
+        contract = {
+            "milestone_order": [
+                {"id": "caves_entered", "source": "story_idea: enter the Weeping Caves"},
+                {"id": "lich_encounter", "source": "story_idea: confront the Lich"},
+                {"id": "dragon_encounter", "source": "story_idea: pass the Dragon"},
+                {"id": "fountain_arrival", "source": "story_idea: reach the fountain"},
+            ],
+        }
+
+        invalid = ConceptPromptBatcher._invalid_concepts(
+            {"segment_002": fountain},
+            {"narrative_contract": contract},
+            previous_concepts={"segment_001": cave},
+            expected_ids=["segment_002"],
+        )
+
+        self.assertEqual(1, len(invalid))
+        self.assertEqual("segment_001", invalid[0]["prior_segment_id"])
+        self.assertIn("milestone 'fountain_arrival'", invalid[0]["reason"])
+        self.assertIn("required predecessor 'lich_encounter' is unresolved", invalid[0]["reason"])
+        self.assertIn("story_idea: confront the Lich", invalid[0]["reason"])
+
+    def test_named_causal_event_authorizes_explicit_flashback(self):
+        fountain = semantic_concept(
+            "Ravena stands at the fountain.",
+            story_beat="fountain_arrival",
+            action="reach_fountain",
+            action_phase="completed",
+            milestone="fountain_arrival",
+            prop_state="consumed",
+        )
+        fountain["narrative"]["location"] = "fountain_grotto"
+        flashback = semantic_concept(
+            "An explicit flashback returns to Ravena entering the caves.",
+            story_beat="cave_flashback",
+            action="remember_descent",
+            action_phase="completed",
+            milestone="caves_entered",
+            prop_state="unseen",
+        )
+        flashback["narrative"]["location"] = "weeping_caves"
+        flashback["narrative"]["causal_events"] = ["flashback_to_caves"]
+        contract = {
+            "milestone_order": ["caves_entered", "fountain_arrival"],
+            "location_order": ["weeping_caves", "fountain_grotto"],
+            "chronology_exceptions": {
+                "flashback_to_caves": {
+                    "allows": ["milestone_order", "location_order", "prop_state_order"],
+                    "source": "story_idea: explicit memory of the descent",
+                },
+            },
+            "prop_state_order": {"silver_cup": ["unseen", "consumed"]},
+        }
+
+        invalid = ConceptPromptBatcher._invalid_concepts(
+            {"segment_007": flashback},
+            {"narrative_contract": contract},
+            previous_concepts={"segment_006": fountain},
+            expected_ids=["segment_007"],
+        )
+        accepted = ConceptPromptBatcher._annotate_semantic_validation(
+            {"segment_007": flashback},
+            previous_concepts={"segment_006": fountain},
+            contract=contract,
+        )
+
+        self.assertEqual([], invalid)
+        chronology = accepted["segment_007"]["semantic_validation"]["chronology"]
+        self.assertEqual("accepted", chronology["validation_result"])
+        self.assertEqual("flashback_to_caves", chronology["approved_exception"])
+
+    def test_terminal_state_cannot_silently_revert(self):
+        ascent = semantic_concept(
+            "Ravena completes her ascent and disappears.",
+            story_beat="ascent",
+            action="ascend",
+            action_phase="completed",
+            milestone="ascent_complete",
+            prop_state="consumed",
+        )
+        ascent["narrative"]["cast_states"] = {"ravena": "ascended_absent"}
+        returned = semantic_concept(
+            "Ravena stands corporeal in the caves again.",
+            story_beat="cave_return",
+            action="stand_in_caves",
+            action_phase="completed",
+            milestone="caves_entered",
+            prop_state="consumed",
+        )
+        returned["narrative"]["cast_states"] = {"ravena": "corporeal"}
+        contract = {
+            "terminal_states": {
+                "ravena": {
+                    "milestone": "ascent_complete",
+                    "state": "ascended_absent",
+                    "reset_event": "ravena_returns",
+                    "source": "story_idea: Ravena ascends and disappears",
+                },
+            },
+        }
+
+        invalid = ConceptPromptBatcher._invalid_concepts(
+            {"segment_007": returned},
+            {"narrative_contract": contract},
+            previous_concepts={"segment_006": ascent},
+            expected_ids=["segment_007"],
+        )
+
+        self.assertEqual(1, len(invalid))
+        self.assertIn("terminal state 'ascended_absent'", invalid[0]["reason"])
+        self.assertIn("observed 'corporeal'", invalid[0]["reason"])
+        self.assertIn("story_idea: Ravena ascends and disappears", invalid[0]["reason"])
+
+    def test_flashback_exception_does_not_authorize_skipped_forward_milestones(self):
+        fountain = semantic_concept(
+            "A flashback label cannot move Ravena directly to the fountain.",
+            story_beat="fountain_arrival",
+            action="reach_fountain",
+            action_phase="completed",
+            milestone="fountain_arrival",
+            prop_state="unseen",
+        )
+        fountain["narrative"]["causal_events"] = ["flashback_to_caves"]
+        contract = {
+            "milestone_order": ["caves_entered", "lich_encounter", "fountain_arrival"],
+            "chronology_exceptions": {
+                "flashback_to_caves": {"allows": ["milestone_order"]},
+            },
+        }
+
+        invalid = ConceptPromptBatcher._invalid_concepts(
+            {"segment_001": fountain},
+            {"narrative_contract": contract},
+            expected_ids=["segment_001"],
+        )
+
+        self.assertEqual(1, len(invalid))
+        self.assertIn("required predecessor 'caves_entered' is unresolved", invalid[0]["reason"])
+
+    def test_terminal_milestone_requires_terminal_state_in_same_scene(self):
+        ascent = semantic_concept(
+            "Ravena ascends but incorrectly remains corporeal.",
+            story_beat="ascent",
+            action="ascend",
+            action_phase="completed",
+            milestone="ascent_complete",
+            prop_state="consumed",
+        )
+        ascent["narrative"]["cast_states"] = {"ravena": "corporeal"}
+        contract = {
+            "terminal_states": {
+                "ravena": {
+                    "milestone": "ascent_complete",
+                    "state": "ascended_absent",
+                    "reset_event": "ravena_returns",
+                },
+            },
+        }
+
+        invalid = ConceptPromptBatcher._invalid_concepts(
+            {"segment_006": ascent},
+            {"narrative_contract": contract},
+            expected_ids=["segment_006"],
+        )
+
+        self.assertEqual(1, len(invalid))
+        self.assertIn("terminal milestone 'ascent_complete'", invalid[0]["reason"])
+        self.assertIn("observed 'corporeal'", invalid[0]["reason"])
+
+    def test_complete_sequence_requires_every_ordered_milestone(self):
+        cave = semantic_concept(
+            "Ravena enters the caves.",
+            story_beat="cave_descent",
+            action="descend",
+            action_phase="completed",
+            milestone="caves_entered",
+            prop_state="unseen",
+        )
+        contract = {
+            "milestone_order": [
+                {"id": "caves_entered", "source": "story_idea: cave descent"},
+                {"id": "lich_encounter", "source": "story_idea: Lich encounter"},
+            ],
+        }
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "required milestone 'lich_encounter'.*story_idea: Lich encounter",
+        ):
+            validate_and_annotate_concept_chronology(
+                {"segment_001": cave},
+                contract,
+            )
+
+    def test_named_terminal_reset_remains_effective_in_following_scenes(self):
+        ascent = semantic_concept(
+            "Ravena ascends and disappears.",
+            story_beat="ascent",
+            action="ascend",
+            action_phase="completed",
+            milestone="ascent_complete",
+            prop_state="consumed",
+        )
+        ascent["narrative"]["cast_states"] = {"ravena": "ascended_absent"}
+        returned = semantic_concept(
+            "The authored resurrection returns Ravena.",
+            story_beat="resurrection",
+            action="return",
+            action_phase="completed",
+            milestone="ravena_returned",
+            prop_state="consumed",
+        )
+        returned["narrative"]["cast_states"] = {"ravena": "corporeal"}
+        returned["narrative"]["causal_events"] = ["ravena_returns"]
+        later = semantic_concept(
+            "Ravena remains corporeal after the authored resurrection.",
+            story_beat="return_aftermath",
+            action="walk_forward",
+            action_phase="completed",
+            milestone="return_aftermath",
+            prop_state="consumed",
+        )
+        later["narrative"]["cast_states"] = {"ravena": "corporeal"}
+        contract = {
+            "terminal_states": {
+                "ravena": {
+                    "milestone": "ascent_complete",
+                    "state": "ascended_absent",
+                    "reset_event": "ravena_returns",
+                },
+            },
+        }
+
+        invalid = ConceptPromptBatcher._invalid_concepts(
+            {"segment_003": later},
+            {"narrative_contract": contract},
+            previous_concepts={"segment_001": ascent, "segment_002": returned},
+            expected_ids=["segment_003"],
+        )
+
+        self.assertEqual([], invalid)
+
+    def test_terminal_milestone_requires_actor_state_to_be_explicit(self):
+        ascent = semantic_concept(
+            "Ravena completes the ascent.",
+            story_beat="ascent",
+            action="ascend",
+            action_phase="completed",
+            milestone="ascent_complete",
+            prop_state="consumed",
+        )
+        ascent["narrative"]["cast_states"] = {}
+        contract = {
+            "terminal_states": {
+                "ravena": {
+                    "milestone": "ascent_complete",
+                    "state": "ascended_absent",
+                    "reset_event": "ravena_returns",
+                },
+            },
+        }
+
+        invalid = ConceptPromptBatcher._invalid_concepts(
+            {"segment_006": ascent},
+            {"narrative_contract": contract},
+            expected_ids=["segment_006"],
+        )
+
+        self.assertEqual(1, len(invalid))
+        self.assertIn("requires explicit cast state 'ascended_absent'", invalid[0]["reason"])
 
 if __name__ == "__main__":
     unittest.main()
