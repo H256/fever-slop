@@ -192,7 +192,9 @@ class APIMetricsTests(unittest.TestCase):
         self.assertTrue(fingerprint.startswith("sha256:"))
         self.assertGreater(size, 0)
         logger = logging.getLogger("feverslop.test.api.start")
-        with self.assertLogs(logger, level=logging.INFO) as captured:
+        # Successful record_api_call defaults to DEBUG (see 191c5a14), so the
+        # capture level must be DEBUG to see both the start and the result.
+        with self.assertLogs(logger, level=logging.DEBUG) as captured:
             with api_observability_context(stage="h3_prompt", scene_id="s1"):
                 log_api_call_start(
                     logger, "llm", "chat_completions",
@@ -203,6 +205,8 @@ class APIMetricsTests(unittest.TestCase):
                     success=True, request_hash=fingerprint, input_size=size,
                 )
         self.assertEqual(2, len(captured.records))
+        self.assertEqual(logging.INFO, captured.records[0].levelno)
+        self.assertEqual(logging.DEBUG, captured.records[1].levelno)
         self.assertNotIn("secret", "\n".join(captured.output))
 
     def test_exposes_percentiles_retry_count_and_time_window(self):
