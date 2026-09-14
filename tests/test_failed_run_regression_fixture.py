@@ -584,6 +584,55 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
             ):
                 load_regression_fixture(fixture_path)
 
+    def test_post_ascent_final_request_evidence_rejects_invalid_transport_facts(self):
+        mutations = {
+            "missing final request evidence": lambda item: item.pop(
+                "final_request_evidence", None,
+            ),
+            "corporeal visual presence": lambda item: item[
+                "final_request_evidence"
+            ].update({"ravena_visual_presence": "visible"}),
+            "onscreen vocal delivery": lambda item: item[
+                "final_request_evidence"
+            ].update({"ravena_vocal_delivery": "onscreen"}),
+            "wrong audio subject": lambda item: item[
+                "final_request_evidence"
+            ]["audio_subject_binding"].update({"subject_id": "varen"}),
+            "wrong speaker identity": lambda item: (
+                item["offscreen_audio_subject_bindings"]["vocals"].update(
+                    {"speaker_id": "S2"},
+                ),
+                item["final_request_evidence"]["audio_subject_binding"].update(
+                    {"speaker_id": "S2"},
+                ),
+            ),
+        }
+
+        for name, mutate in mutations.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp_dir:
+                payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+                mutate(payload["continuity_evidence"]["post_ascent_vocal_scenes"][0])
+                fixture_path = Path(temp_dir) / "regression_fixture.json"
+                fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+
+                with self.assertRaisesRegex(ValueError, r"continuity evidence scene 24"):
+                    load_regression_fixture(fixture_path)
+
+    def test_post_ascent_visual_review_cannot_be_claimed_by_request_evidence(self):
+        payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        payload["continuity_evidence"]["post_ascent_vocal_scenes"][0][
+            "visual_quality_review"
+        ] = {"status": "passed", "machine_verifiable": True}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fixture_path = Path(temp_dir) / "regression_fixture.json"
+            fixture_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                r"continuity evidence scene 24.*visual quality",
+            ):
+                load_regression_fixture(fixture_path)
+
     def test_each_post_ascent_vocal_scene_keeps_ravena_offscreen_through_h3(self):
         fixture = load_regression_fixture(FIXTURE)
 
@@ -692,6 +741,27 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
                 self.assertEqual(continuity, h3["continuity_plan"])
                 self.assertIn("Ravena remains ascended and absent", h3["prompt"])
                 self.assertIn("off-screen", h3["prompt"])
+                observed_request_evidence = {
+                    "ravena_visual_presence": (
+                        "absent"
+                        if "ravena" not in references["actor_ids"]
+                        else "visible"
+                    ),
+                    "ravena_vocal_delivery": (
+                        "offscreen" if "off-screen" in h3["prompt"] else "unspecified"
+                    ),
+                    "audio_subject_binding": references[
+                        "offscreen_audio_subject_bindings"
+                    ]["vocals"],
+                }
+                self.assertEqual(
+                    item["final_request_evidence"],
+                    observed_request_evidence,
+                )
+                self.assertEqual(
+                    {"status": "not_evaluated", "machine_verifiable": False},
+                    item["visual_quality_review"],
+                )
 
     def test_scene_15_reaches_the_final_workflow_consumer_with_machine_readable_result(self):
         fixture = load_regression_fixture(FIXTURE)
