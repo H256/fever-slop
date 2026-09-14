@@ -13,7 +13,11 @@ from feverslop.adapters.comfyui_seedvr2_backend import (
     SeedVR2RenderSettings,
 )
 from feverslop.adapters.reporting import NullReporter
-from feverslop.adapters.video_postprocessor import VideoPostProcessor, final_video_postprocessor
+from feverslop.adapters.video_postprocessor import (
+    FFPROBE_TIMEOUT_SECONDS,
+    VideoPostProcessor,
+    final_video_postprocessor,
+)
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.seedvr2 import (
     SeedVR2Pass,
@@ -21,6 +25,7 @@ from feverslop.domain.seedvr2 import (
     plan_seedvr2_passes,
     plan_seedvr2_segments,
 )
+from feverslop.errors import FeverSlopValidationError
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.utils.sub_step_progress import SubStepProgress
 
@@ -44,13 +49,22 @@ class SeedVR2CompositionOptions:
 
 
 def _probe_size(path: Path) -> tuple[int, int]:
-    result = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", str(path)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    stream = (json.loads(result.stdout).get("streams") or [])[0]
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", str(path)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=FFPROBE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise FeverSlopValidationError(
+            f"ffprobe timed out after {FFPROBE_TIMEOUT_SECONDS}s while probing video size: {path}",
+        ) from exc
+    streams = json.loads(result.stdout).get("streams") or []
+    if not streams:
+        raise FeverSlopValidationError(f"No video stream found to probe size from: {path}")
+    stream = streams[0]
     return int(stream["width"]), int(stream["height"])
 
 

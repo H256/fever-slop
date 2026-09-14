@@ -234,15 +234,19 @@ def _project_notes(
     audio_path: str | Path | None,
     render_plan_path: str | Path,
 ) -> str:
-    duration_seconds = max(0, round(total_frames / int(fps)))
-    minutes, seconds = divmod(duration_seconds, 60)
+    # Keep the sub-second fraction: derive the display from an exact
+    # millisecond total so the duration is not rounded to whole seconds.
+    fps_i = int(fps)
+    duration_total_ms = round((total_frames * 1000.0 / fps_i) if fps_i else 0.0)
+    minutes, remainder_ms = divmod(max(0, duration_total_ms), 60_000)
+    seconds, millis = divmod(remainder_ms, 1_000)
     audio_name = Path(audio_path).name if audio_path is not None else "none"
     return "\n".join([
         f"Project: {project_name}",
         "Pipeline: FeverSlop",
         f"Scenes: {scene_count} (Scene {first_scene:04d} - Scene {last_scene:04d})",
         f"Profile: {int(width)}x{int(height)} @ {int(fps)} fps",
-        f"Duration: {minutes:02d}:{seconds:02d}",
+        f"Duration: {minutes:02d}:{seconds:02d}.{millis:03d}",
         "Video track: V1 - scene clips",
         "Audio track: A1 - Clip audio (embedded scene audio; removable)",
         f"Audio track: A2 - Original audio ({audio_name})",

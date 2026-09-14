@@ -365,7 +365,7 @@ class MltExporterTests(unittest.TestCase):
             self.assertIn("Project: The Well of Youth", notes)
             self.assertIn("Scenes: 2", notes)
             self.assertIn("Profile: 1216x672 @ 24 fps", notes)
-            self.assertIn("Duration: 00:03", notes)
+            self.assertIn("Duration: 00:03.000", notes)
             self.assertIn("Audio track: A1 - Clip audio (embedded scene audio; removable)", notes)
             self.assertIn("Audio track: A2 - Original audio (dwarfventure.mp3)", notes)
             self.assertEqual(
@@ -396,6 +396,35 @@ class MltExporterTests(unittest.TestCase):
                 "video",
             )
             self.assertEqual([], [p for p in root.rglob("*") if p.name.endswith(".tmp")])
+
+    def test_duration_note_keeps_subsecond_fraction(self):
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            # 24 frames (1.0s) + 49 frames (2.0416..s) = 73 frames @ 24fps
+            # = 3.041666s, which round-to-whole-seconds would render as 00:03.
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([
+                {"scene": 1, "duration_seconds": 1.0, "abs_start_seconds": 0.0},
+                {"scene": 2, "duration_seconds": 49 / 24, "abs_start_seconds": 1.0},
+            ]), encoding="utf-8")
+            clips = [root / "one.mp4", root / "two.mp4"]
+            for clip in clips:
+                clip.touch()
+
+            export_render_plan_to_mlt(
+                render_plan_path=plan,
+                clip_paths=clips,
+                output_path=root / "timeline.mlt",
+                width=1216,
+                height=672,
+                fps=24,
+            )
+
+            root_element = ET.parse(root / "timeline.mlt").getroot()
+            notes = root_element.find("property[@name='shotcut:projectNotes']").text
+            self.assertIn("Duration: 00:03.042", notes)
 
     def test_preserves_gaps_from_absolute_render_plan_positions(self):
         from feverslop.application.mlt_exporter import export_render_plan_to_mlt
