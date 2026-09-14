@@ -104,6 +104,7 @@ def normalize_scene_references(
     global_context: dict,
     *,
     segment_type: str = "",
+    narrative: dict | None = None,
 ) -> dict:
     actors = [
         str(actor.get("id", "")).strip()
@@ -142,8 +143,21 @@ def normalize_scene_references(
             ]
             output["actor_ids"] = (selected or [actors[0]])[:max_scene_actors]
 
+    absent_actors = {
+        str(actor_id).strip()
+        for actor_id, state in ((narrative or {}).get("cast_states") or {}).items()
+        if str(state).strip().casefold() in {
+            "absent", "ascended_absent", "disappeared",
+        }
+    }
+    if absent_actors and scene_subject_mode != "location_only":
+        output["actor_ids"] = [
+            actor_id for actor_id in output.get("actor_ids") or []
+            if actor_id not in absent_actors
+        ]
     selected_actors = output.get("actor_ids") or []
     configured_audio_bindings = global_context.get("audio_subject_bindings") or {}
+    offscreen_vocalist = False
     if (
         segment_type in {"vocals", "mixed"}
         and not output.get("audio_subject_bindings")
@@ -154,17 +168,27 @@ def normalize_scene_references(
             vocalist_id = str(vocal_binding.get("subject_id") or "").strip()
             speaker_id = str(vocal_binding.get("speaker_id") or "").strip()
             if vocalist_id in actors and speaker_id:
-                selected_actors = list(selected_actors)
-                if vocalist_id not in selected_actors:
-                    if len(selected_actors) >= max_scene_actors:
-                        selected_actors = selected_actors[:max_scene_actors - 1]
-                    selected_actors.append(vocalist_id)
-                output["actor_ids"] = selected_actors
-                output["audio_subject_bindings"] = {
-                    "vocals": {"subject_id": vocalist_id, "speaker_id": speaker_id},
-                }
+                if vocalist_id in absent_actors:
+                    offscreen_vocalist = True
+                    output["offscreen_audio_subject_bindings"] = {
+                        "vocals": {
+                            "subject_id": vocalist_id,
+                            "speaker_id": speaker_id,
+                        },
+                    }
+                else:
+                    selected_actors = list(selected_actors)
+                    if vocalist_id not in selected_actors:
+                        if len(selected_actors) >= max_scene_actors:
+                            selected_actors = selected_actors[:max_scene_actors - 1]
+                        selected_actors.append(vocalist_id)
+                    output["actor_ids"] = selected_actors
+                    output["audio_subject_bindings"] = {
+                        "vocals": {"subject_id": vocalist_id, "speaker_id": speaker_id},
+                    }
     if (
         segment_type == "vocals"
+        and not offscreen_vocalist
         and len(selected_actors) == 1
         and not output.get("audio_subject_bindings")
     ):
@@ -347,10 +371,26 @@ class ScenePromptBuilder:
             if isinstance(concept, dict):
                 narrative = concept.get("narrative")
                 semantic_validation = concept.get("semantic_validation")
+                continuity = (
+                    semantic_validation.get("continuity")
+                    if isinstance(semantic_validation, dict)
+                    else None
+                )
+                reference_narrative = (
+                    continuity.get("outgoing")
+                    if isinstance(continuity, dict)
+                    and isinstance(continuity.get("outgoing"), dict)
+                    else narrative
+                )
                 references = normalize_scene_references(
                     dict(concept.get("references") or {}),
                     global_context,
                     segment_type=str(segment.get("type") or ""),
+                    narrative=(
+                        reference_narrative
+                        if isinstance(reference_narrative, dict)
+                        else None
+                    ),
                 )
                 concept = str(concept.get("concept", ""))
             cast = resolve_scene_cast(

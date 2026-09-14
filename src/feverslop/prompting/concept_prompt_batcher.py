@@ -307,6 +307,7 @@ class ConceptPromptBatcher:
                 value,
                 accepted,
                 contract=_narrative_contract(global_context),
+                segment_id=segment_id,
             )
             if semantic:
                 reasons.extend(semantic["reasons"])
@@ -359,6 +360,12 @@ class ConceptPromptBatcher:
                 "authorized_reset_events": sorted(set(repeated) & set(reset_events)),
                 "reprise_of": reprise_of if authorized else None,
                 "chronology": _chronology_evidence(
+                    segment_id,
+                    narrative,
+                    accepted,
+                    contract or {},
+                ),
+                "continuity": _adjacent_continuity_plan(
                     segment_id,
                     narrative,
                     accepted,
@@ -427,7 +434,12 @@ def validate_and_annotate_concept_chronology(
     failures: list[str] = []
     for segment_id, value in concepts.items():
         if isinstance(value, dict):
-            conflict = _semantic_conflicts(value, accepted, contract=contract)
+            conflict = _semantic_conflicts(
+                value,
+                accepted,
+                contract=contract,
+                segment_id=segment_id,
+            )
             if conflict:
                 failures.append(f"{segment_id}: {'; '.join(conflict['reasons'])}")
                 continue
@@ -810,11 +822,226 @@ def _prop_regressions(
     return regressions
 
 
+_CONTINUITY_STATE_MAPS = ("cast_states", "props", "transformation_states")
+
+
+def _continuity_snapshot(narrative: dict[str, Any]) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {}
+    location = str(_normalize_semantic_value(narrative.get("location")))
+    if location:
+        snapshot["location"] = location
+    for field in _CONTINUITY_STATE_MAPS:
+        value = narrative.get(field)
+        if isinstance(value, dict):
+            snapshot[field] = dict(_normalize_semantic_value(value))
+    for field in ("action", "action_phase"):
+        value = str(_normalize_semantic_value(narrative.get(field)))
+        if value:
+            snapshot[field] = value
+    return snapshot
+
+
+def _continuity_events(narrative: dict[str, Any]) -> list[str]:
+    events = []
+    for field in ("transition_events", "causal_events", "reset_events"):
+        events.extend(_normalized_list(narrative.get(field)))
+    return list(dict.fromkeys(events))
+
+
+def _merge_continuity_state(
+    previous: dict[str, Any],
+    current: dict[str, Any],
+) -> dict[str, Any]:
+    merged = deepcopy(previous)
+    for field, value in current.items():
+        if field in _CONTINUITY_STATE_MAPS and isinstance(value, dict):
+            merged[field] = {**(merged.get(field) or {}), **value}
+        else:
+            merged[field] = value
+    return merged
+
+
+def _transition_authorized(
+    events: set[str],
+    *,
+    field: str,
+    key: str,
+    previous: str,
+    current: str,
+) -> bool:
+    return bool(events.intersection({
+        key,
+        f"{key}:{previous}->{current}",
+        f"{field}.{key}:{previous}->{current}",
+    }))
+
+
+def _adjacent_continuity_plan(
+    segment_id: str,
+    narrative: dict[str, Any],
+    prior_concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> dict[str, Any]:
+    predecessor_id = next(reversed(prior_concepts), "")
+    previous_number = re.search(r"(\d+)$", predecessor_id)
+    current_number = re.search(r"(\d+)$", segment_id)
+    if (
+        previous_number is not None
+        and current_number is not None
+        and int(current_number.group(1)) != int(previous_number.group(1)) + 1
+    ):
+        predecessor_id = ""
+    previous_narrative = (
+        _narrative(prior_concepts[predecessor_id]) if predecessor_id else {}
+    )
+    previous_validation = (
+        prior_concepts.get(predecessor_id, {}).get("semantic_validation") or {}
+        if predecessor_id and isinstance(prior_concepts.get(predecessor_id), dict)
+        else {}
+    )
+    previous_continuity = previous_validation.get("continuity") or {}
+    previous_outgoing = (
+        deepcopy(previous_continuity.get("outgoing"))
+        if isinstance(previous_continuity.get("outgoing"), dict)
+        else _continuity_snapshot(previous_narrative)
+    )
+    current_snapshot = _continuity_snapshot(narrative)
+    explicit_incoming = narrative.get("incoming")
+    incoming_delta = (
+        _continuity_snapshot(explicit_incoming)
+        if isinstance(explicit_incoming, dict)
+        else {}
+    )
+    incoming = _merge_continuity_state(previous_outgoing, incoming_delta)
+    outgoing = _merge_continuity_state(incoming, current_snapshot)
+    explicit_outgoing = narrative.get("outgoing")
+    if isinstance(explicit_outgoing, dict):
+        outgoing = _merge_continuity_state(
+            outgoing,
+            _continuity_snapshot(explicit_outgoing),
+        )
+
+    transition = str(
+        _normalize_semantic_value(narrative.get("transition_from_previous"))
+        or "cut"
+    )
+    requires_continuation = bool(predecessor_id and transition == "continuous")
+    return {
+        "schema": "feverslop.narrative-continuity/v1",
+        "scene_id": segment_id,
+        "predecessor_id": predecessor_id or None,
+        "transition": transition,
+        "requires_continuation": requires_continuation,
+        "continuation_intent": (
+            str(outgoing.get("action") or incoming.get("action") or "continuous_action")
+            if requires_continuation else None
+        ),
+        "transition_events": _continuity_events(narrative),
+        "incoming": incoming,
+        "outgoing": outgoing,
+        "validation_result": "compatible",
+    }
+
+
+def _adjacent_continuity_conflicts(
+    segment_id: str,
+    narrative: dict[str, Any],
+    prior_concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> tuple[list[str], str]:
+    plan = _adjacent_continuity_plan(
+        segment_id,
+        narrative,
+        prior_concepts,
+        contract,
+    )
+    predecessor_id = str(plan.get("predecessor_id") or "")
+    if not predecessor_id:
+        return [], ""
+    previous = (
+        prior_concepts.get(predecessor_id, {}).get("semantic_validation", {})
+        .get("continuity", {})
+        .get("outgoing")
+        if isinstance(prior_concepts.get(predecessor_id), dict)
+        else None
+    )
+    if not isinstance(previous, dict):
+        previous = _continuity_snapshot(_narrative(prior_concepts[predecessor_id]))
+    incoming = plan["incoming"]
+    outgoing = plan["outgoing"]
+    events = set(plan["transition_events"])
+    reasons: list[str] = []
+
+    prop_orders = contract.get("prop_state_order") or {}
+    for prop, previous_state in (previous.get("props") or {}).items():
+        current_state = str((outgoing.get("props") or {}).get(prop) or previous_state)
+        order = [
+            str(_normalize_semantic_value(item))
+            for item in (prop_orders.get(prop) or ())
+        ] if isinstance(prop_orders, dict) else []
+        if (
+            previous_state in order
+            and current_state in order
+            and order.index(current_state) > order.index(previous_state) + 1
+            and not _transition_authorized(
+                events,
+                field="props",
+                key=prop,
+                previous=previous_state,
+                current=current_state,
+            )
+        ):
+            reasons.append(
+                f"{segment_id}.incoming.props.{prop}: {current_state!r} skips required "
+                f"state after {predecessor_id} outgoing state {previous_state!r}",
+            )
+
+    allowed_locations = contract.get("actor_allowed_locations") or {}
+    location = str(outgoing.get("location") or incoming.get("location") or "")
+    if isinstance(allowed_locations, dict) and location:
+        for actor, state in (outgoing.get("cast_states") or {}).items():
+            allowed = {
+                str(_normalize_semantic_value(item))
+                for item in allowed_locations.get(actor) or ()
+            }
+            if allowed and state not in {"absent", "ascended_absent", "disappeared"} and location not in allowed:
+                reasons.append(
+                    f"{segment_id}.incoming.cast_states.{actor}: actor is not allowed "
+                    f"at location {location!r}",
+                )
+
+    if plan["requires_continuation"]:
+        for field in ("location", "action", "action_phase"):
+            before = str(previous.get(field) or "")
+            after = str(incoming.get(field) or "")
+            if before and after and before != after:
+                reasons.append(
+                    f"{segment_id}.incoming.{field}: {after!r} is incompatible with "
+                    f"continuous {predecessor_id} outgoing state {before!r}",
+                )
+        for field in _CONTINUITY_STATE_MAPS:
+            for key, before in (previous.get(field) or {}).items():
+                after = (incoming.get(field) or {}).get(key)
+                if after is not None and after != before and not _transition_authorized(
+                    events,
+                    field=field,
+                    key=key,
+                    previous=str(before),
+                    current=str(after),
+                ):
+                    reasons.append(
+                        f"{segment_id}.incoming.{field}.{key}: {after!r} is incompatible "
+                        f"with {predecessor_id} outgoing state {before!r}",
+                    )
+    return reasons, predecessor_id
+
+
 def _semantic_conflicts(
     value: dict[str, Any],
     prior_concepts: dict[str, Any],
     *,
     contract: dict[str, Any],
+    segment_id: str = "current_scene",
 ) -> dict[str, Any]:
     narrative = _narrative(value)
     if not narrative:
@@ -851,10 +1078,21 @@ def _semantic_conflicts(
         prior_concepts,
         contract,
     )
+    continuity_reasons, continuity_segment = _adjacent_continuity_conflicts(
+        segment_id,
+        narrative,
+        prior_concepts,
+        contract,
+    )
 
     reasons = ["narrative.props must be an object"] if malformed_props else []
     prior_segment_id = matching_segment
-    if matching_segment and not authorized_signature:
+    continuous_predecessor = (
+        str(_normalize_semantic_value(narrative.get("transition_from_previous")))
+        == "continuous"
+        and matching_segment == next(reversed(prior_concepts), "")
+    )
+    if matching_segment and not authorized_signature and not continuous_predecessor:
         state = _semantic_state(narrative)
         reasons.append(
             f"semantic scene duplicates {matching_segment} "
@@ -877,6 +1115,9 @@ def _semantic_conflicts(
     if chronology_reasons:
         prior_segment_id = prior_segment_id or chronology_segment
         reasons.extend(chronology_reasons)
+    if continuity_reasons:
+        prior_segment_id = prior_segment_id or continuity_segment
+        reasons.extend(continuity_reasons)
     if not reasons:
         return {}
     return {"reasons": reasons, "prior_segment_id": prior_segment_id}

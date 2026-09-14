@@ -9,6 +9,7 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 from feverslop.domain.artifact_hash import sha256_file
+from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.domain.effective_render_plan import CanonicalSceneDependencies
 from feverslop.domain.visual_consistency import SceneConsistencyContract
 
@@ -144,6 +145,9 @@ class SceneWorkflowManifest:
     render_budget_workflow_path: str | None = None
     round_render_frames_to_8n1: bool = False
     render_profile_provenance: dict[str, Any] | None = None
+    boundary_frame_manifest: BoundaryFrameManifest | None = None
+    continuity_plan: dict[str, Any] | None = None
+    narrative_boundary_manifest: dict[str, Any] | None = None
 
     @classmethod
     def create(
@@ -167,6 +171,9 @@ class SceneWorkflowManifest:
         startframe_sha256: str | None = None,
         first_frame_path: str | Path | None = None,
         last_frame_path: str | Path | None = None,
+        boundary_frame_manifest: BoundaryFrameManifest | None = None,
+        continuity_plan: dict[str, Any] | None = None,
+        narrative_boundary_manifest: dict[str, Any] | None = None,
     ) -> SceneWorkflowManifest:
         return cls(
             schema=SCHEMA_V3,
@@ -234,6 +241,15 @@ class SceneWorkflowManifest:
             render_profile_provenance=(
                 None if render_profile_provenance is None else dict(render_profile_provenance)
             ),
+            boundary_frame_manifest=boundary_frame_manifest,
+            continuity_plan=(
+                None if continuity_plan is None else dict(continuity_plan)
+            ),
+            narrative_boundary_manifest=(
+                None
+                if narrative_boundary_manifest is None
+                else dict(narrative_boundary_manifest)
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -270,6 +286,13 @@ class SceneWorkflowManifest:
             "render_budget_workflow_path": self.render_budget_workflow_path,
             "round_render_frames_to_8n1": self.round_render_frames_to_8n1,
             "render_profile_provenance": self.render_profile_provenance,
+            "boundary_frame_manifest": (
+                None
+                if self.boundary_frame_manifest is None
+                else self.boundary_frame_manifest.to_dict()
+            ),
+            "continuity_plan": self.continuity_plan,
+            "narrative_boundary_manifest": self.narrative_boundary_manifest,
         }
 
     def write(self, path: str | Path) -> Path:
@@ -384,6 +407,23 @@ class SceneWorkflowManifest:
                 None
                 if payload.get("render_profile_provenance") is None
                 else dict(payload["render_profile_provenance"])
+            ),
+            boundary_frame_manifest=(
+                None
+                if payload.get("boundary_frame_manifest") is None
+                else BoundaryFrameManifest.from_dict(
+                    payload["boundary_frame_manifest"],
+                )
+            ),
+            continuity_plan=(
+                None
+                if payload.get("continuity_plan") is None
+                else dict(payload["continuity_plan"])
+            ),
+            narrative_boundary_manifest=(
+                None
+                if payload.get("narrative_boundary_manifest") is None
+                else dict(payload["narrative_boundary_manifest"])
             ),
         )
 

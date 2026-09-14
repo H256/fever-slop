@@ -36,10 +36,15 @@ def extract_json_object(text: str) -> dict:
         start = text.find("{", pos)
         if start == -1:
             break
-        # Find matching brace via depth counting, skipping string literals
+        # Find matching brace via depth counting, skipping string literals.
+        # `balanced` records whether depth ever returned to zero; a never-balancing
+        # opening brace must advance the search instead of aborting it, because a
+        # valid object may appear later in the response.
         depth = 0
         in_string = False
         escaped = False
+        balanced = False
+        end = -1
         for i in range(start, len(text)):
             ch = text[i]
             if escaped:
@@ -56,9 +61,11 @@ def extract_json_object(text: str) -> dict:
                 depth += 1 if ch == "{" else -1
                 if depth == 0:
                     end = i
+                    balanced = True
                     break
-        else:
-            break  # unmatched braces, give up
+        if not balanced:
+            pos = start + 1
+            continue
         try:
             data = json.loads(text[start : end + 1])
             if isinstance(data, dict):

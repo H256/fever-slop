@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from feverslop.domain.srt import (
@@ -68,13 +69,67 @@ def enforce_scene_duration_constraints(
     if max_duration < min_duration:
         raise ValueError("max_duration must be >= min_duration")
 
-    return renumber_scenes(
+    merged = renumber_scenes(
         merge_short_scenes(
             split_long_scenes(scenes, max_duration=max_duration),
             min_duration=min_duration,
             max_duration=max_duration,
         ),
     )
+    return _repartition_feasible(merged, min_duration, max_duration)
+
+
+def _repartition_feasible(
+    scenes: list[_SrtScene], min_duration: float, max_duration: float
+) -> list[_SrtScene]:
+    """Best-effort repair for feasible bands that the merge/split pass still
+    leaves with scenes below ``min_duration`` (the tight ``max < 2*min`` band,
+    where the merge over-splits before the repair pass can recover).
+
+    Only runs when the total coverage can actually be partitioned into scenes
+    that all respect ``min_duration`` (a feasible band) AND the current output
+    still contains a short scene. In that case it re-distributes the same
+    covered window into a legal scene count, so no scene is short or long.
+    Infeasible bands (e.g. a clamped ``min == max`` render budget) are left
+    untouched: no split can satisfy ``min_duration`` there, so the caller is
+    expected to validate with feasibility in mind.
+    """
+    if not scenes:
+        return scenes
+    start = scenes[0].start
+    end = scenes[-1].end
+    total = end - start
+    if total <= min_duration:
+        # A single scene: the whole window is either legal or unavoidably
+        # short (infeasible). Nothing to repartition.
+        return scenes
+    if not any(scene.end - scene.start < min_duration - 1e-9 for scene in scenes):
+        return scenes
+    # A legal scene count k satisfies k*min <= total <= k*max.
+    k_min = math.ceil(total / max_duration - 1e-9)
+    k_max = int(total / min_duration + 1e-9)
+    if k_max < 1 or k_min > k_max:
+        # Infeasible band: no count makes every scene >= min. Leave as-is.
+        return scenes
+    # k_min is the smallest legal count, so its equal parts fall within
+    # [min_duration, max_duration]; this yields a fully legal output with the
+    # fewest re-cuts (longest scenes), matching the merge preference.
+    return _split_window_to_parts(start, end, k_min, scenes[0].scene)
+
+
+def _split_window_to_parts(
+    start: float, end: float, parts: int, scene_number: int
+) -> list[_SrtScene]:
+    """Split ``[start, end]`` into ``parts`` equal pieces (coverage-preserving)."""
+    if parts <= 1:
+        return [_SrtScene(scene=scene_number, start=start, end=end, text="")]
+    part_duration = (end - start) / parts
+    result: list[_SrtScene] = []
+    for i in range(parts):
+        piece_start = start + i * part_duration
+        piece_end = end if i == parts - 1 else start + (i + 1) * part_duration
+        result.append(_SrtScene(scene=scene_number, start=piece_start, end=piece_end, text=""))
+    return renumber_scenes(result)
 
 
 def split_long_scenes(scenes: list[_SrtScene], *, max_duration: float) -> list[_SrtScene]:
@@ -209,6 +264,26 @@ def enforce_scene_srt_file(
     return write_scene_srt(output_srt, repaired, artifact_store=artifact_store)
 
 
+def _is_duration_feasible(total: float, min_duration: float, max_duration: float, epsilon: float) -> bool:
+    """Whether ``total`` can be split into >= 1 whole segments each within
+    ``[min_duration, max_duration]``.
+
+    Such a split exists iff there is an integer ``k >= 1`` with
+    ``k * min_duration <= total <= k * max_duration``, i.e.
+    ``ceil(total / max_duration) <= floor(total / min_duration)``.
+
+    Used to tell apart a legitimately short scene (the enforcer's best
+    effort when the constraints cannot all be met, e.g. a clamped render
+    budget that leaves no scene at or above ``min_duration``) from a real
+    enforcer violation.
+    """
+    if total <= 0 or min_duration <= 0:
+        return False
+    k_min = math.ceil(total / max_duration - epsilon)
+    k_max = int(total / min_duration + epsilon)
+    return k_min >= 1 and k_min <= k_max
+
+
 def validate_scene_durations(
     scenes: list[_SrtScene],
     min_duration: float,
@@ -219,15 +294,21 @@ def validate_scene_durations(
     # Tolerance for IEEE-754 subtraction artifacts (nanoseconds, not meaningful ms)
     epsilon = 1e-9
 
+    if scenes:
+        total = scenes[-1].end - scenes[0].start
+        min_enforceable = _is_duration_feasible(total, min_duration, max_duration, epsilon)
+        if not allow_single_short_tail:
+            min_enforceable = True
+    else:
+        min_enforceable = False
+
     for index, scene in enumerate(scenes):
-        is_last = index == len(scenes) - 1
         duration = scene.end - scene.start
 
-        if duration < min_duration - epsilon:
-            if not (allow_single_short_tail and is_last and len(scenes) == 1):
-                errors.append(
-                    f"Scene {index + 1} too short: {duration:.3f}s < {min_duration:.3f}s",
-                )
+        if duration < min_duration - epsilon and min_enforceable:
+            errors.append(
+                f"Scene {index + 1} too short: {duration:.3f}s < {min_duration:.3f}s",
+            )
 
         if duration > max_duration + epsilon:
             errors.append(
