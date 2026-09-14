@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from feverslop.config.project_config import ProjectConfig
+from feverslop.config.project_config import ProjectConfig, validate_project_config
 
 
 class ProjectConfigTests(unittest.TestCase):
@@ -867,6 +867,48 @@ class ProjectConfigLyricsTests(unittest.TestCase):
 
 
 class ProjectConfigValidationTests(unittest.TestCase):
+    def test_rejects_non_numeric_max_scene_actors_with_validation_message(self):
+        for bad_value in ("two", None, ["three"], {"three": 3}):
+            with self.subTest(value=bad_value), tempfile.TemporaryDirectory() as temp_dir:
+                temp = Path(temp_dir)
+                audio = temp / "song.mp3"
+                audio.write_bytes(b"")
+                config_path = temp / "config.json"
+                config_path.write_text(
+                    json.dumps({
+                        "project_name": "test",
+                        "input_audio": "song.mp3",
+                        "max_scene_actors": bad_value,
+                    }),
+                    encoding="utf-8",
+                )
+                with self.assertRaisesRegex(
+                    ValueError, "max_scene_actors must be an integer"
+                ) as ctx:
+                    ProjectConfig.load(config_path)
+                self.assertNotIn("invalid literal", str(ctx.exception))
+
+    def test_validate_project_config_rejects_non_numeric_max_scene_actors(self):
+        for bad_value in ("two", None):
+            with self.subTest(value=bad_value):
+                config = {
+                    "project_name": "test",
+                    "input_audio": "song.mp3",
+                    "max_scene_actors": bad_value,
+                }
+                with self.assertRaisesRegex(
+                    ValueError, "max_scene_actors must be an integer"
+                ) as ctx:
+                    validate_project_config(config)
+                self.assertNotIn("invalid literal", str(ctx.exception))
+
+    def test_validate_project_config_accepts_numeric_max_scene_actors(self):
+        validate_project_config({
+            "project_name": "test",
+            "input_audio": "song.mp3",
+            "max_scene_actors": 3,
+        })
+
     def test_rejects_invalid_fps_type(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

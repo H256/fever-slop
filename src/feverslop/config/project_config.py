@@ -32,6 +32,13 @@ def validate_pipeline_mode(value: Any) -> str:
     return pipeline_mode
 
 
+def _parse_max_scene_actors(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"max_scene_actors must be an integer, got {value!r}") from exc
+
+
 def validate_project_config(data: Any, *, project_type: str = "standard_music_video") -> None:
     if not isinstance(data, dict):
         raise ValueError("config.json must be a JSON object")
@@ -47,7 +54,9 @@ def validate_project_config(data: Any, *, project_type: str = "standard_music_vi
     video_pipeline = data.get("video_pipeline")
     if video_pipeline not in {None, "", "ltx_i2v", "ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-t2v"}:
         raise ValueError("video_pipeline must be 'ltx_i2v', 'ltx_msr', 'ltx_ingredients', 'minimax-h3-r2v', or 'minimax-h3-t2v'")
-    max_scene_actors = int(data.get("max_scene_actors", 1 if subject_mode == "single" else 4))
+    max_scene_actors = _parse_max_scene_actors(
+        data.get("max_scene_actors", 1 if subject_mode == "single" else 4)
+    )
     if max_scene_actors < 1 or max_scene_actors > 4:
         raise ValueError("max_scene_actors must be between 1 and 4")
 
@@ -546,7 +555,9 @@ class ProjectConfig:
         if reference_generation not in {"image_views", "sequence_sheet"}:
             raise ValueError("reference_generation must be 'image_views' or 'sequence_sheet'")
         max_actor_limit = 8 if video_pipeline in {"minimax-h3-r2v", "minimax-h3-i2v"} else 4
-        max_scene_actors = int(raw.get("max_scene_actors", 1 if subject_mode == "single" else max_actor_limit))
+        max_scene_actors = _parse_max_scene_actors(
+            raw.get("max_scene_actors", 1 if subject_mode == "single" else max_actor_limit)
+        )
         if max_scene_actors < 1 or max_scene_actors > max_actor_limit:
             raise ValueError(f"max_scene_actors must be between 1 and {max_actor_limit}")
         if subject_mode == "single":
