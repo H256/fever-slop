@@ -23,6 +23,8 @@ from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.minimax_h3_frames import (
     _frames_from_duration as _frames_from_duration_,
 )
+from feverslop.domain.continuity import BoundaryFrameManifest
+from feverslop.domain.effective_render_plan import CanonicalSceneDependencies
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest, StoredArtifact
 from feverslop.errors import FeverSlopValidationError
@@ -409,6 +411,26 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         if self.project_dir is None or request.render_plan_path is None:
             return
         scene = request.scene
+        keyframes = scene.get("keyframes") or {}
+        projection = scene.get("canonical_projection") or {}
+        dependency_payload = projection.get("dependencies")
+        canonical_dependencies = (
+            CanonicalSceneDependencies.from_dict(dependency_payload)
+            if isinstance(dependency_payload, dict)
+            else None
+        )
+        boundary_payload = keyframes.get("boundary_frame_manifest")
+        boundary_manifest = (
+            BoundaryFrameManifest.from_dict(boundary_payload)
+            if isinstance(boundary_payload, dict)
+            else None
+        )
+        source_clip_value = keyframes.get("startframe_source_clip_path")
+        source_clip_path = (
+            None
+            if source_clip_value is None
+            else self._resolve_project_path(source_clip_value)
+        )
         SceneWorkflowManifest.create(
             project_dir=self.project_dir,
             scene=request.scene_number,
@@ -423,6 +445,23 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
             render_frame_count=int(scene.get("render_frame_count") or scene.get("frame_count") or 0),
             width=int(scene.get("width") or 0),
             height=int(scene.get("height") or 0),
+            canonical_dependencies=canonical_dependencies,
+            startframe_mode=keyframes.get("startframe_mode"),
+            startframe_source_scene=keyframes.get("startframe_source_scene"),
+            startframe_source_clip_path=source_clip_path,
+            startframe_extractor=keyframes.get("startframe_extractor"),
+            startframe_sha256=keyframes.get("startframe_sha256"),
+            boundary_frame_manifest=boundary_manifest,
+            continuity_plan=(
+                scene.get("continuity_plan")
+                if isinstance(scene.get("continuity_plan"), dict)
+                else None
+            ),
+            narrative_boundary_manifest=(
+                scene.get("narrative_boundary_manifest")
+                if isinstance(scene.get("narrative_boundary_manifest"), dict)
+                else None
+            ),
         ).write(workflow_path.with_name("manifest.json"))
 
     def ensure_scene_manifest(self, request: VideoRenderRequest) -> None:
