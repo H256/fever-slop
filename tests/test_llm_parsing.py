@@ -116,6 +116,24 @@ Let me know if you need more."""
         result = extract_json_object(text)
         self.assertEqual(result, {"id": 1, "nested": {"a": {"b": "c"}}})
 
+    def test_extract_json_object_recovers_after_unbalanced_brace(self):
+        """An unbalanced opening brace before a valid object must not abort the scan."""
+        text = 'Sure! {oops this is not json {"key": "value"}'
+        result = extract_json_object(text)
+        self.assertEqual(result, {"key": "value"})
+
+    def test_extract_json_object_recovers_after_several_unbalanced_braces(self):
+        """Multiple never-balancing braces before a valid object still resolve it."""
+        text = "prefix { { {middle} then the real thing: {\"a\": 1, \"b\": [2, 3]} done"
+        result = extract_json_object(text)
+        self.assertEqual(result, {"a": 1, "b": [2, 3]})
+
+    def test_extract_json_object_still_fails_when_no_object_balances(self):
+        """When no brace ever balances, a clear error is still raised."""
+        from feverslop.errors import FeverSlopLMLError
+        with self.assertRaisesRegex(FeverSlopLMLError, "No.*JSON object found"):
+            extract_json_object("prefix {oops {still open")
+
 
 if __name__ == "__main__":
     unittest.main()
