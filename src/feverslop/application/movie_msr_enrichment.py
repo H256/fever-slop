@@ -433,11 +433,11 @@ def _dialogue_cue_and_text(dialogue: str) -> tuple[str, str]:
 
 def _diegetic_audio_device(cue: str, dialogue: str) -> str:
     text = f"{cue} {dialogue}".casefold()
-    if any(token in text for token in ("radio", "transmitter", "speaker", "recording", "distorted voice", "voice")):
-        if "radio" in text or "transmitter" in text:
-            return "radio"
-        if "speaker" in text:
-            return "speaker"
+    if "radio" in text or "transmitter" in text:
+        return "radio"
+    if "speaker" in text:
+        return "speaker"
+    if "recording" in text:
         return "radio"
     return ""
 
@@ -450,7 +450,7 @@ def _diegetic_audio_direction(*, device: str, spoken_text: str, shot: dict, lang
     if device == "speaker":
         return f'The speaker emits a diegetic voice{language_phrase}: "{spoken_text}"'
     actor_name = actor_names[0] if actor_names else "the visible actor"
-    return f"The radio plays a recording of {actor_name}'s own voice screaming{language_phrase}: \"{spoken_text}\""
+    return f"The radio plays a recording of {actor_name}'s voice{language_phrase}: \"{spoken_text}\""
 
 
 def _dialogue_verb(spoken_text: str) -> str:
