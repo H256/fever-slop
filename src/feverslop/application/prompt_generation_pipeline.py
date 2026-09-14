@@ -23,6 +23,9 @@ from feverslop.prompting.subject_directive_planning import (
     build_shared_staging_plan,
 )
 from feverslop.prompting.planning_payload import compact_planning_payload
+from feverslop.prompting.concept_prompt_batcher import (
+    validate_and_annotate_concept_chronology,
+)
 from feverslop.utils.sub_step_progress import SubStepProgress
 
 
@@ -402,6 +405,10 @@ class PromptGenerationPipeline:
         concept_prompts, extra_concepts = validate_and_order_concept_prompts(stage1_segments, concept_prompts)
         if extra_concepts:
             reporter.message(f"[yellow]Ignoring extra concept prompt keys: {extra_concepts}[/yellow]")
+        concept_prompts = validate_and_annotate_concept_chronology(
+            concept_prompts,
+            global_context.get("narrative_contract") or {},
+        )
         prompt_pipeline.save_json(
             concept_prompts_json,
             concept_prompts,

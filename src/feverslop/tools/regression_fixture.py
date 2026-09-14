@@ -75,6 +75,20 @@ def load_regression_fixture(path: str | Path) -> dict[str, Any]:
             raise ValueError("baseline provenance paths must be portable and relative")
         if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
             raise ValueError(f"invalid baseline SHA-256: {source_path.as_posix()}")
+    required_evidence = {
+        "scene_order",
+        "milestone_allocation",
+        "validation_result",
+        "approved_exception",
+    }
+    for name, case in (payload.get("chronology_cases") or {}).items():
+        evidence = case.get("evidence") if isinstance(case, dict) else None
+        missing_evidence = required_evidence - set(evidence or {})
+        if missing_evidence:
+            raise ValueError(
+                f"chronology case {name!r} requires evidence fields: "
+                + ", ".join(sorted(missing_evidence)),
+            )
     return payload
 
 

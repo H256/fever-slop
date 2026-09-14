@@ -177,8 +177,10 @@ class MusicVideoDspyContractTests(unittest.TestCase):
                 self.assertIn('"cast_states"', guide)
                 self.assertIn('"props"', guide)
                 self.assertIn('"reset_events"', guide)
+                self.assertIn('"causal_events"', guide)
                 self.assertIn("one-shot", guide)
                 self.assertIn("explicit causal reset", guide)
+                self.assertIn("chronology_exceptions", guide)
 
     def test_all_classic_guides_are_package_resources(self):
         for name in (
