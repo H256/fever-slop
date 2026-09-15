@@ -1012,6 +1012,7 @@ def _build_ingredients_adapter(project_dir: Path, config: dict[str, Any], *, deb
         project_dir=project_dir,
         model_resolver=model_resolver,
         debug_workflows_dir=debug_workflows_dir,
+        ffmpeg_timeout_seconds=app_config.comfyui.ffmpeg_timeout_seconds,
         workflow_profile=Path(
             config.get(
                 "ingredients_workflow",

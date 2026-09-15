@@ -14,6 +14,7 @@ from feverslop.adapters.postprocessor_frame_extractor import (
 )
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.domain.movie_utils import movie_slug, transition_from_previous
+from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS
 from feverslop.domain.visual_consistency import (
     ReferenceAnchor,
     SceneConsistencyContract,
@@ -105,6 +106,7 @@ class ComfyUIMovieVisualAdapter:
         render_queue=None,
         asset_uploader=None,
         postprocessor: VideoPostProcessor | None = None,
+        ffmpeg_timeout_seconds: float | None = None,
         model_resolver=None,
         fps: int = 24,
         workflow: dict | None = None,
@@ -117,7 +119,11 @@ class ComfyUIMovieVisualAdapter:
         self.workflow_path = Path(workflow_path)
         self.render_queue = render_queue
         self.asset_uploader = asset_uploader
-        self.postprocessor = postprocessor or VideoPostProcessor()
+        self.postprocessor = postprocessor or VideoPostProcessor(
+            ffmpeg_timeout_seconds=(
+                FFMPEG_TIMEOUT_SECONDS if ffmpeg_timeout_seconds is None else ffmpeg_timeout_seconds
+            ),
+        )
         self.model_resolver = model_resolver
         self.fps = int(fps)
         self.workflow = workflow

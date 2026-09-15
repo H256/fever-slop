@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
-from feverslop.domain.postprocessing import TrimSpec
+from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS, TrimSpec
 
 
 class VideoPostProcessorConcatTests(unittest.TestCase):
@@ -136,7 +136,7 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
                 "text": True,
                 "encoding": "utf-8",
                 "errors": "replace",
-                "timeout": 120,
+                "timeout": FFMPEG_TIMEOUT_SECONDS,
             },
             run.call_args.kwargs,
         )
@@ -167,11 +167,11 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
                 output_file=Path("final_concat.mp4"),
             )
 
-        self.assertEqual({"check": True, "timeout": 120}, run.call_args.kwargs)
+        self.assertEqual({"check": True, "timeout": FFMPEG_TIMEOUT_SECONDS}, run.call_args.kwargs)
 
     def test_ffmpeg_timeout_is_reported_as_adaptation_error(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
-        timeout = subprocess.TimeoutExpired(["ffmpeg"], 120)
+        timeout = subprocess.TimeoutExpired(["ffmpeg"], FFMPEG_TIMEOUT_SECONDS)
         with patch("feverslop.adapters.video_postprocessor.subprocess.run", side_effect=timeout):
             with self.assertRaisesRegex(Exception, "timed out"):
                 processor._run_ffmpeg(["ffmpeg", "-i", "broken.mp4"])

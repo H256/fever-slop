@@ -1969,6 +1969,13 @@ def _assemble_declared_cutless_groups(
     return assembled
 
 
+def _stage_final_postprocessor(state: PipelineRunState) -> VideoPostProcessor:
+    """Build the final-assembly postprocessor with the project FFmpeg timeout."""
+    return final_video_postprocessor(
+        AppConfig.load(state.app_config_path).comfyui.ffmpeg_timeout_seconds
+    )
+
+
 def _run_concat_video_only_stage(state: PipelineRunState) -> None:
     from feverslop.domain.scene_recovery import require_ready_scenes
     from .config_loader import (
@@ -2012,10 +2019,10 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
         render_plan,
         clips,
         output_dir=layout.final_dir,
-        postprocessor=final_video_postprocessor(),
+        postprocessor=_stage_final_postprocessor(state),
     )
     rewrite_concat_list(clips, state.context.artifact_layout.final_dir)
-    postprocessor = final_video_postprocessor()
+    postprocessor = _stage_final_postprocessor(state)
     _report(f"Concatenating base variant: {len(clips)} scene clips")
     state.video_only_path = postprocessor.concat_clips(
         concat_list=state.context.concat_list,
@@ -2107,7 +2114,7 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
             "facefix": layout.movie_facefix,
             "upscaled": layout.movie_upscaled,
         }
-        postprocessor = final_video_postprocessor()
+        postprocessor = _stage_final_postprocessor(state)
         results: dict[str, Path] = {}
         for variant in ("base", "facefix", "upscaled"):
             video_file = variants.get(variant)
@@ -2125,7 +2132,7 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
     video_only_path = state.video_only_path or state.context.final_concat_video
     if state.video_only_path is None and not Path(video_only_path).exists():
         raise FileNotFoundError(f"Video-only concat not found: {video_only_path}")
-    postprocessor = final_video_postprocessor()
+    postprocessor = _stage_final_postprocessor(state)
     output_file = state.context.final_concat
     if Path(video_only_path).name == "video_only_upscaled.mp4":
         output_file = Path(state.context.final_concat).with_name("movie_upscaled.mp4")
@@ -2172,7 +2179,7 @@ def _run_upscale_stage(state: PipelineRunState) -> None:
 
 
 def _run_diagnostic_scene_audio_concat_stage(state: PipelineRunState) -> None:
-    postprocessor = final_video_postprocessor()
+    postprocessor = _stage_final_postprocessor(state)
     postprocessor.concat_clips(
         concat_list=state.context.concat_list,
         output_file=state.context.final_concat_scene_audio_debug,

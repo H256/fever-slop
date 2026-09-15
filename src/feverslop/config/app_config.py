@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.config.comfyui import ComfyUIModelOverride
+from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS
 from feverslop.domain.video_workflow_profile import VideoWorkflowProfile
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.reporting import parse_log_level
@@ -85,6 +86,10 @@ class ComfyUIConfig:
     default_max_render_duration_seconds: float | None = None
     video_workflow_limits: tuple[VideoWorkflowLimitConfig, ...] = field(default_factory=tuple)
     latent_upscaler_device: str | None = None
+    # Wall-clock budget (seconds) for each FFmpeg operation in the post-processing
+    # paths (scene re-encode, concat, mux). Overridable per project; missing
+    # config falls back to this default (canonical value in the domain layer).
+    ffmpeg_timeout_seconds: float = FFMPEG_TIMEOUT_SECONDS
 
 
 class VramHandoffMode(str, Enum):
@@ -271,6 +276,16 @@ class AppConfig:
                     "comfyui.latent_upscaler_device must be 'cuda', 'rocm', 'cpu', or 'auto'"
                 )
 
+        raw_ffmpeg_timeout = comfyui_raw.get("ffmpeg_timeout_seconds")
+        if raw_ffmpeg_timeout is None:
+            ffmpeg_timeout_seconds = FFMPEG_TIMEOUT_SECONDS
+        else:
+            if isinstance(raw_ffmpeg_timeout, bool) or not isinstance(raw_ffmpeg_timeout, (int, float)):
+                raise ValueError("comfyui.ffmpeg_timeout_seconds must be a number")
+            ffmpeg_timeout_seconds = float(raw_ffmpeg_timeout)
+            if not math.isfinite(ffmpeg_timeout_seconds) or ffmpeg_timeout_seconds <= 0:
+                raise ValueError("comfyui.ffmpeg_timeout_seconds must be greater than zero")
+
         video_workflow_limits = tuple(
             VideoWorkflowLimitConfig.from_dict(item)
             for item in comfyui_raw.get("video_workflow_limits") or []
@@ -359,6 +374,7 @@ class AppConfig:
                 default_max_render_duration_seconds=default_max_render_duration,
                 video_workflow_limits=video_workflow_limits,
                 latent_upscaler_device=latent_upscaler_device,
+                ffmpeg_timeout_seconds=ffmpeg_timeout_seconds,
             ),
             execution=ExecutionConfig(vram_handoff=vram_handoff, log_level=log_level),
             global_library_path=library_path.resolve(),
