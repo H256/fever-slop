@@ -22,6 +22,7 @@ from feverslop.domain.ltx_rendering import (
     PromptRelayPayload,
     PromptRelayPayloadBuilder,
     build_audio_window_spec,
+    resolve_workflow_frame_parameters,
 )
 from feverslop.domain.scene_duration_limits import validate_render_frame_budget
 from feverslop.domain.visual_consistency_runtime import bind_continuity_anchors
@@ -169,6 +170,12 @@ class ComfyUIMSRVideoRenderBackend:
         if not location_path:
             raise FeverSlopValidationError(f"Scene {scene_number} is missing references.location_msr_path")
         location_path = self._resolve_project_path(location_path)
+        fps, width, height = resolve_workflow_frame_parameters(
+            scene,
+            scene_number=scene_number,
+            width=self.video_settings.width if self.video_settings else None,
+            height=self.video_settings.height if self.video_settings else None,
+        )
 
         patcher = WorkflowPatcher(self.load_workflow())
         self._patch_actor_reference_inputs(patcher, actor_paths)
@@ -183,16 +190,10 @@ class ComfyUIMSRVideoRenderBackend:
         patcher.try_set_existing_input_by_title("#MSR_FRAME_COUNT", "value", self.msr_frame_count)
         self._patch_msr_continuity_handoff_inputs(patcher, scene)
         self._patch_seed_inputs(patcher, self._seed_for_scene(scene))
-        if self.video_settings:
-            width = self.video_settings.width
-            height = self.video_settings.height
-        else:
-            width = int(scene.get("width", 0) or 0)
-            height = int(scene.get("height", 0) or 0)
         patcher.try_set_existing_input_by_title("#WIDTH", "value", width)
         patcher.try_set_existing_input_by_title("#HEIGHT", "value", height)
         patcher.try_set_existing_input_by_title("#FRAMES", "value", render_frame_count)
-        patcher.try_set_existing_input_by_title("#FRAMERATE", "value", int(scene.get("fps", 0) or 0))
+        patcher.try_set_existing_input_by_title("#FRAMERATE", "value", fps)
         self._patch_i2v_latent_lengths(patcher, render_frame_count)
         self._patch_startframe_input(patcher, scene)
         if comfy_audio_name:

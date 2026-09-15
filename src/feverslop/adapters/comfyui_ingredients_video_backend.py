@@ -20,6 +20,7 @@ from feverslop.domain.ltx_rendering import (
     AudioWindowSpec,
     PromptRelayPayloadBuilder,
     build_audio_window_spec,
+    resolve_workflow_frame_parameters,
 )
 from feverslop.domain.scene_duration_limits import validate_render_frame_budget
 from feverslop.domain.visual_consistency_runtime import bind_continuity_anchors
@@ -152,22 +153,22 @@ class ComfyUIIngredientsVideoRenderBackend:
         self._validate_visual_consistency(scene)
         scene_number = int(scene["scene"])
         render_frame_count = int(rolling["render_frame_count"]) if rolling else int(scene.get("frame_count", 0) or 0)
+        fps, width, height = resolve_workflow_frame_parameters(
+            scene,
+            scene_number=scene_number,
+            width=self.video_settings.width if self.video_settings else None,
+            height=self.video_settings.height if self.video_settings else None,
+        )
 
         patcher = WorkflowPatcher(self.load_workflow())
         self._patch_ingredients_input(patcher, scene)
         self._patch_prompt_inputs(patcher, scene, prompt=prompt, rolling=rolling)
         patcher.set_input_by_title("#SAVE_VIDEO", "filename_prefix", f"ltx_ingredients_raw/scene_{scene_number:04}")
         self._patch_seed_inputs(patcher, self._seed_for_scene(scene))
-        if self.video_settings:
-            width = self.video_settings.width
-            height = self.video_settings.height
-        else:
-            width = int(scene.get("width", 0) or 0)
-            height = int(scene.get("height", 0) or 0)
         patcher.try_set_existing_input_by_title("#WIDTH", "value", width)
         patcher.try_set_existing_input_by_title("#HEIGHT", "value", height)
         patcher.try_set_existing_input_by_title("#FRAMES", "value", render_frame_count)
-        patcher.try_set_existing_input_by_title("#FRAMERATE", "value", int(scene.get("fps", 0) or 0))
+        patcher.try_set_existing_input_by_title("#FRAMERATE", "value", fps)
         if comfy_audio_name:
             self._patch_audio_inputs(patcher, scene, comfy_audio_name=comfy_audio_name, rolling=rolling)
         _patch_i2v_latent_lengths(patcher, render_frame_count)
