@@ -4,8 +4,10 @@ from feverslop.domain.ltx_rendering import (
     AudioWindowSpec,
     PromptRelayPayloadBuilder,
     build_audio_window_spec,
+    resolve_workflow_frame_parameters,
     round_down_8n1,
 )
+from feverslop.errors import FeverSlopValidationError
 
 
 class LTXRenderingDomainTests(unittest.TestCase):
@@ -117,6 +119,37 @@ class LTXRenderingDomainTests(unittest.TestCase):
         )
 
         self.assertEqual(27, sum(int(value) for value in payload.segment_lengths.split(",")))
+
+    def test_resolve_workflow_frame_parameters_accepts_positive_fields(self):
+        scene = {"scene": 3, "fps": 30, "width": 1920, "height": 1080}
+        self.assertEqual((30, 1920, 1080), resolve_workflow_frame_parameters(scene, scene_number=3))
+
+    def test_resolve_workflow_frame_parameters_prefers_explicit_width_height(self):
+        scene = {"scene": 3, "fps": 24, "width": 1280, "height": 704}
+        self.assertEqual(
+            (24, 1024, 576),
+            resolve_workflow_frame_parameters(scene, scene_number=3, width=1024, height=576),
+        )
+
+    def test_resolve_workflow_frame_parameters_rejects_missing_fps(self):
+        scene = {"scene": 3, "width": 1280, "height": 704}
+        with self.assertRaisesRegex(FeverSlopValidationError, "missing required field 'fps'"):
+            resolve_workflow_frame_parameters(scene, scene_number=3)
+
+    def test_resolve_workflow_frame_parameters_rejects_missing_width_without_override(self):
+        scene = {"scene": 3, "fps": 24, "height": 704}
+        with self.assertRaisesRegex(FeverSlopValidationError, "missing required field 'width'"):
+            resolve_workflow_frame_parameters(scene, scene_number=3)
+
+    def test_resolve_workflow_frame_parameters_rejects_non_positive_fps(self):
+        scene = {"scene": 3, "fps": 0, "width": 1280, "height": 704}
+        with self.assertRaisesRegex(FeverSlopValidationError, "field 'fps' must be positive"):
+            resolve_workflow_frame_parameters(scene, scene_number=3)
+
+    def test_resolve_workflow_frame_parameters_rejects_non_integer_width(self):
+        scene = {"scene": 3, "fps": 24, "width": "wide", "height": 704}
+        with self.assertRaisesRegex(FeverSlopValidationError, "field 'width' must be an integer"):
+            resolve_workflow_frame_parameters(scene, scene_number=3)
 
 
 if __name__ == "__main__":
