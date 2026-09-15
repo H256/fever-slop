@@ -7,7 +7,7 @@ from io import StringIO
 from pathlib import Path
 from unittest import mock
 
-from tools import generate_prompt
+from feverslop.tools import generate_prompt
 
 
 class FakeConfig:

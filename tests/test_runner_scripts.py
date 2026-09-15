@@ -16,18 +16,18 @@ from feverslop.application.msr_prompt_enrichment import (
     enrich_render_plan_with_msr_prompts,
 )
 from feverslop.prompting.msr_signatures import MSRPromptResult
-from tools.repair_scene_srt import main as repair_scene_srt_main
-from tools.trim_existing_ltx_clips import _resolve_ffmpeg_path
+from feverslop.tools.repair_scene_srt import main as repair_scene_srt_main
+from feverslop.tools.trim_existing_ltx_clips import _resolve_ffmpeg_path
 
 
 class RunnerScriptTests(unittest.TestCase):
     def test_trim_existing_ltx_clips_rejects_missing_ffmpeg(self):
-        with patch("tools.trim_existing_ltx_clips.shutil.which", return_value=None):
+        with patch("feverslop.tools.trim_existing_ltx_clips.shutil.which", return_value=None):
             with self.assertRaisesRegex(ValueError, "ffmpeg executable not found"):
                 _resolve_ffmpeg_path("missing-ffmpeg")
 
     def test_trim_existing_ltx_clips_resolves_ffmpeg(self):
-        with patch("tools.trim_existing_ltx_clips.shutil.which", return_value="C:/tools/ffmpeg.exe") as which:
+        with patch("feverslop.tools.trim_existing_ltx_clips.shutil.which", return_value="C:/tools/ffmpeg.exe") as which:
             self.assertEqual("C:/tools/ffmpeg.exe", _resolve_ffmpeg_path("ffmpeg"))
         which.assert_called_once_with("ffmpeg")
 

@@ -46,7 +46,7 @@ def main():
                         help="Video pipeline (default: minimax-h3-r2v)")
     parser.add_argument("--model", default=None, help="Override LLM model name")
     parser.add_argument("--base-url", default=None, help="Override LLM base URL")
-    parser.add_argument("--config", default=str(pathlib.Path(__file__).resolve().parent.parent / "app_config.json"),
+    parser.add_argument("--config", default="app_config.json",
                         help="Path to app_config.json")
     args = parser.parse_args()
 

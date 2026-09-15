@@ -98,7 +98,7 @@ class RichProgressTests(unittest.TestCase):
             progress.add_task.assert_called_once_with("Rendering storyboard startframes", total=1)
 
     def test_trim_cli_uses_shared_progress_factory(self):
-        import tools.trim_existing_ltx_clips as trim_cli
+        from feverslop.tools import trim_existing_ltx_clips as trim_cli
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
