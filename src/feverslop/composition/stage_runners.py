@@ -49,7 +49,10 @@ from feverslop.application.reference_bible import (
     enrich_render_plan_with_reference_sheets,
 )
 from feverslop.application.render_storyboard import RenderStoryboardRequest
-from feverslop.application.render_video import RenderVideoScenesRequest
+from feverslop.application.render_video import (
+    RenderVideoScenesRequest,
+    patch_render_plan_seed,
+)
 from feverslop.application.sync_project_render_settings import (
     sync_project_render_settings,
 )
@@ -1711,16 +1714,14 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                     randomize_seed = bool(getattr(backend, "randomize_seed", False))
                     if randomize_seed:
                         scene_payload = scene.to_dict()
-                        scene_payload["seed"] = random.SystemRandom().randint(0, 2**63 - 1)
+                        new_seed = random.SystemRandom().randint(0, 2**63 - 1)
+                        scene_payload["seed"] = new_seed
                         plan_data = JsonArtifactStore().read_render_plan(state.plan_for_next_step)
-                        plan_data = [
-                            (
-                                scene_payload
-                                if int(item["scene"]) == scene.scene_number
-                                else item
-                            )
-                            for item in plan_data
-                        ]
+                        plan_data = patch_render_plan_seed(
+                            plan_data,
+                            scene_number=scene.scene_number,
+                            seed=new_seed,
+                        )
                         JsonArtifactStore().write_render_plan(
                             state.plan_for_next_step,
                             plan_data,

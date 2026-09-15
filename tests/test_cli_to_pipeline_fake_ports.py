@@ -19,6 +19,8 @@ from feverslop.application.render_video import (
     RenderVideoScenesRequest,
     RenderVideoScenesUseCase,
 )
+from feverslop.domain.canonical_render_plan import build_canonical_scene
+from feverslop.errors import FeverSlopDataError
 from feverslop.ports.rendering import VideoRenderRequest
 
 # ---------------------------------------------------------------------------
@@ -151,8 +153,9 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
+            scenes = _render_plan_scenes()
             plan_path = temp / "render_plan.json"
-            plan_path.write_text(json.dumps(_render_plan_scenes()), encoding="utf-8")
+            plan_path.write_text(json.dumps(scenes), encoding="utf-8")
 
             with patch("feverslop.application.render_video.random.SystemRandom") as system_random:
                 system_random.return_value.randint.side_effect = [7001, 7002]
@@ -169,7 +172,121 @@ class CLIToPipelineFakePortsTests(unittest.TestCase):
 
             self.assertEqual([7001, 7002], [request.scene["seed"] for request in backend.requests])
             self.assertEqual([7001, 7002], [scene["seed"] for scene in json.loads(plan_path.read_text(encoding="utf-8"))])
+            # Only the seed field is persisted back; every other field of the
+            # base plan entry must be left untouched.
+            after = json.loads(plan_path.read_text(encoding="utf-8"))
+            for original, updated in zip(scenes, after):
+                self.assertEqual(
+                    {key: value for key, value in original.items() if key != "seed"},
+                    {key: value for key, value in updated.items() if key != "seed"},
+                )
             self.assertTrue(backend.randomize_seed)
+
+    def test_randomize_seed_leaves_base_plan_byte_identical_with_canonical_override(self):
+        """The projected canonical payload must not be baked into the base plan."""
+        backend = FakeVideoBackend()
+        backend.randomize_seed = True
+        store = JsonArtifactStore()
+        canonical_meta = build_canonical_scene(
+            segment_id="s1",
+            generated_roles={"ltx.i2v": "canonical override prompt"},
+        )
+        base_scenes = [
+            {
+                "scene": 1,
+                "abs_start_seconds": 0.0,
+                "abs_end_seconds": 3.0,
+                "duration_seconds": 3.0,
+                "fps": 24,
+                "width": 1280,
+                "height": 704,
+                "frame_count": 72,
+                "canonical": canonical_meta,
+                "ltx": {"original_style_i2v_prompt": "base prompt 1"},
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan_path = temp / "render_plan.json"
+            plan_path.write_text(json.dumps(base_scenes), encoding="utf-8")
+            canonical_path = temp / "canonical.json"
+            canonical_path.write_text(
+                json.dumps([{"scene": 1, "canonical": canonical_meta}]), encoding="utf-8",
+            )
+
+            with patch("feverslop.application.render_video.random.SystemRandom") as system_random:
+                system_random.return_value.randint.return_value = 4242
+                RenderVideoScenesUseCase(backend=backend, artifact_store=store).execute(
+                    RenderVideoScenesRequest(
+                        render_plan_path=plan_path,
+                        workflow_path=temp / "workflow.json",
+                        audio_file=temp / "song.mp3",
+                        storyboard_dir=temp / "storyboard",
+                        output_dir=temp / "render",
+                        render_mode="single_prompt",
+                        canonical_plan_path=canonical_path,
+                    ),
+                )
+
+            # The rendered request still carries the canonical projection and
+            # the randomized seed ...
+            self.assertEqual(4242, backend.requests[0].scene.get("seed"))
+            self.assertIn("canonical_projection", backend.requests[0].scene)
+            # ... but the base plan is untouched apart from the seed.
+            after = json.loads(plan_path.read_text(encoding="utf-8"))
+            self.assertEqual(4242, after[0]["seed"])
+            self.assertNotIn("canonical_projection", after[0])
+            self.assertEqual(
+                {key: value for key, value in base_scenes[0].items() if key != "seed"},
+                {key: value for key, value in after[0].items() if key != "seed"},
+            )
+
+    def test_randomize_seed_missing_scene_field_raises_clear_error(self):
+        # A sibling plan entry without a 'scene' field must not surface as a
+        # raw KeyError from the seed-patch scan; it raises a clear data error.
+        backend = FakeVideoBackend()
+        backend.randomize_seed = True
+        store = JsonArtifactStore()
+        malformed = [
+            {
+                "scene": 1,
+                "abs_start_seconds": 0.0,
+                "duration_seconds": 3.0,
+                "fps": 24,
+                "width": 1280,
+                "height": 704,
+                "frame_count": 72,
+                "ltx": {"original_style_i2v_prompt": "prompt 1"},
+            },
+            {
+                "abs_start_seconds": 3.0,
+                "duration_seconds": 3.0,
+                "fps": 24,
+                "width": 1280,
+                "height": 704,
+                "frame_count": 72,
+                "ltx": {"original_style_i2v_prompt": "prompt 2"},
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            plan_path = temp / "render_plan.json"
+            plan_path.write_text(json.dumps(malformed), encoding="utf-8")
+            with self.assertRaises(FeverSlopDataError) as ctx:
+                RenderVideoScenesUseCase(backend=backend, artifact_store=store).execute(
+                    RenderVideoScenesRequest(
+                        render_plan_path=plan_path,
+                        workflow_path=temp / "workflow.json",
+                        audio_file=temp / "song.mp3",
+                        storyboard_dir=temp / "storyboard",
+                        output_dir=temp / "render",
+                        render_mode="single_prompt",
+                        scene_numbers={1},
+                    ),
+                )
+            self.assertIn("'scene'", str(ctx.exception))
 
     def test_backend_receives_scene_number_and_output_dir(self):
         """Each VideoRenderRequest contains the correct scene number and output dir."""

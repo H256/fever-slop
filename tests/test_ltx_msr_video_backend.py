@@ -73,6 +73,9 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             )
             scene = {
                 "scene": 1,
+                "fps": 24,
+                "width": 1280,
+                "height": 704,
                 "frame_count": 17,
                 "references": {
                     "actor_ids": ["actor"],
@@ -135,6 +138,9 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             )
             scene = {
                 "scene": 1,
+                "fps": 24,
+                "width": 1280,
+                "height": 704,
                 "frame_count": 17,
                 "references": {
                     "actor_ids": ["actor"],
@@ -202,6 +208,9 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             )
             scene = {
                 "scene": 1,
+                "fps": 24,
+                "width": 1280,
+                "height": 704,
                 "frame_count": 17,
                 "references": {
                     "actor_ids": ["actor"],
@@ -246,7 +255,7 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
 
             def request(frame_count):
                 return VideoRenderRequest(
-                    scene={"scene": 1, "fps": 24, "frame_count": frame_count,
+                    scene={"scene": 1, "fps": 24, "width": 1280, "height": 704, "frame_count": frame_count,
                            "references": {"actor_msr_paths": [str(actor)],
                                           "location_msr_path": str(location)}},
                     scene_number=1, prompt="prompt", workflow_path=workflow,
@@ -352,6 +361,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 VideoRenderRequest(
                     scene={
                         "scene": 7,
+                        "width": 1280,
+                        "height": 704,
                         "seed": 424242,
                         "fps": 24,
                         "frame_count": 25,
@@ -404,6 +415,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 VideoRenderRequest(
                     scene={
                         "scene": 1,
+                        "width": 1280,
+                        "height": 704,
                         "fps": 24,
                         "frame_count": 25,
                         "ltx": {"original_style_i2v_prompt": "video prompt"},
@@ -453,6 +466,9 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 patched = backend.build_workflow(
                     {
                         "scene": 7,
+                        "fps": 24,
+                        "width": 1280,
+                        "height": 704,
                         "references": {
                             "actor_msr_paths": [str(actor)],
                             "location_msr_path": str(location),
@@ -492,6 +508,9 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             patched = backend.build_workflow(
                 {
                     "scene": 7,
+                    "fps": 24,
+                    "width": 1280,
+                    "height": 704,
                     "references": {
                         "actor_msr_paths": [str(actor)],
                         "location_msr_path": str(location),
@@ -518,6 +537,9 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 backend.build_workflow(
                     {
                         "scene": 1,
+                        "fps": 24,
+                        "width": 1280,
+                        "height": 704,
                         "references": {
                             "actor_sheet_paths": [],
                             "location_sheet_path": str(location),
@@ -551,6 +573,9 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             patched = backend.build_workflow(
                 {
                     "scene": 3,
+                    "fps": 24,
+                    "width": 1280,
+                    "height": 704,
                     "references": {
                         "actor_sheet_paths": [str(actor_sheet)],
                         "location_sheet_path": str(location_sheet),
@@ -590,6 +615,9 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             patched = backend.build_workflow(
                 {
                     "scene": 3,
+                    "fps": 24,
+                    "width": 1280,
+                    "height": 704,
                     "references": {
                         "actor_msr_paths": [str(actor)],
                         "location_msr_path": str(location),
@@ -633,6 +661,9 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             patched = backend.build_workflow(
                 {
                     "scene": 5,
+                    "fps": 24,
+                    "width": 1280,
+                    "height": 704,
                     "references": {
                         "actor_msr_paths": [str(actor_1), str(actor_2)],
                         "location_msr_path": str(location),
@@ -682,6 +713,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             patched = backend.build_workflow(
                 {
                     "scene": 4,
+                    "width": 1280,
+                    "height": 704,
                     "fps": 24,
                     "frame_count": 25,
                     "references": {
@@ -731,6 +764,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             patched = backend.build_workflow(
                 {
                     "scene": 1,
+                    "width": 1280,
+                    "height": 704,
                     "fps": 24,
                     "frame_count": 25,
                     "references": {
@@ -821,6 +856,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             patched = backend.build_workflow(
                 {
                     "scene": 2,
+                    "width": 1280,
+                    "height": 704,
                     "fps": 24,
                     "frame_count": 49,
                     "references": {
@@ -865,6 +902,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
     def test_backend_uses_msr_preroll_and_tail_prompts_for_rolling_prompt_relay(self):
         scene = {
             "scene": 6,
+            "width": 1280,
+            "height": 704,
             "fps": 24,
             "frame_count": 49,
             "ltx": {
@@ -952,6 +991,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             patched = backend.build_workflow(
                 {
                     "scene": 2,
+                    "width": 1280,
+                    "height": 704,
                     "fps": 24,
                     "frame_count": 48,
                     "keyframes": {"startframe_path": str(startframe)},
@@ -999,6 +1040,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
     def test_backend_strips_global_contracts_from_handoff_and_current_relay_prompts(self):
         scene = {
             "scene": 2,
+            "width": 1280,
+            "height": 704,
             "fps": 24,
             "frame_count": 48,
             "ltx": {
@@ -1079,6 +1122,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 VideoRenderRequest(
                     scene={
                         "scene": 2,
+                        "width": 1280,
+                        "height": 704,
                         "fps": 24,
                         "frame_count": 49,
                         "abs_start_seconds": 3.5,
@@ -1143,6 +1188,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 VideoRenderRequest(
                     scene={
                         "scene": 2,
+                        "width": 1280,
+                        "height": 704,
                         "fps": 24,
                         "frame_count": 49,
                         "abs_start_seconds": 3.5,
@@ -1216,6 +1263,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
             patched = backend.build_workflow(
                 {
                     "scene": 11,
+                    "width": 1280,
+                    "height": 704,
                     "fps": 24,
                     "frame_count": 240,
                     "keyframes": {"startframe_path": str(startframe)},
@@ -1279,6 +1328,8 @@ class LTXMSRVideoBackendTests(unittest.TestCase):
                 VideoRenderRequest(
                     scene={
                         "scene": 2,
+                        "width": 1280,
+                        "height": 704,
                         "fps": 24,
                         "frame_count": 49,
                         "references": {

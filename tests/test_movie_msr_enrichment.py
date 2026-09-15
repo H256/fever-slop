@@ -16,6 +16,7 @@ from feverslop.application.movie_msr_enrichment import (
     _movie_video_prompt,
     _read_json,
     _read_json as _read_json_msr,
+    enrich_movie_render_plan_with_msr_prompts,
 )
 from feverslop.errors import FeverSlopDataError
 
@@ -199,3 +200,141 @@ class TestDiegeticAudioHeuristic(unittest.TestCase):
         self.assertEqual(_diegetic_audio_device("Transmitter", "Signal lost"), "radio")
         self.assertEqual(_diegetic_audio_device("Speaker", "Attention everyone"), "speaker")
         self.assertEqual(_diegetic_audio_device("V.O.", "The recording begins"), "radio")
+
+
+class _FakeMSRModules:
+    """Duck-typed stand-in for MSRPromptModules.vision that records payloads."""
+
+    def __init__(self, result):
+        self._result = result
+        self.payloads = []
+        self.images = None
+
+    def vision(self, payload, images):
+        self.payloads.append(payload)
+        self.images = list(images)
+        return self._result
+
+
+class TestMovieMSRFrameEndExclusive(unittest.TestCase):
+    """Issue #1182: movie-MSR relay frame_end must be exclusive (== frame_count).
+
+    Every producer/consumer treats frame_end as exclusive (render_plan_builder:541,
+    movie_ingredients_sheets:199, and the MSR/LTX relay builders that compute
+    length = end - start). movie_msr_enrichment previously wrote frame_count - 1,
+    which dropped the last frame into gap padding and under-told the vision module
+    by one frame.
+    """
+
+    BIBLE = {"runtime_constraints": {"fps": 24, "dialogue_language": "English"}}
+
+    def _write_project(self, project_dir, manifest, shots, actor_sheet=None):
+        movie = project_dir / "movie"
+        refs = movie / "references"
+        refs.mkdir(parents=True, exist_ok=True)
+        (movie / "bible.json").write_text(json.dumps(self.BIBLE), encoding="utf-8")
+        (movie / "render_plan.json").write_text(json.dumps({"shots": shots}), encoding="utf-8")
+        (refs / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        # Reference sheet paths are resolved relative to the project root
+        # (see _movie_reference_images), so the file lives at project/actor-1.png.
+        if actor_sheet is not None:
+            (project_dir / actor_sheet).write_bytes(b"sheet")
+        return movie
+
+    def test_written_relay_frame_end_equals_frame_count(self):
+        """The persisted msr_prompt_relay must end at frame_count (exclusive)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            manifest = {"actors": [], "locations": []}
+            shots = [
+                {
+                    "scene": 1,
+                    "shot_id": "shot-1",
+                    "duration_seconds": 1.0,
+                    "type": "instrumental",
+                    "description": "A wide establishing shot of the harbor.",
+                    "camera": "slow push in",
+                    "actor_ids": [],
+                },
+            ]
+            self._write_project(project, manifest, shots)
+
+            output = enrich_movie_render_plan_with_msr_prompts(project_dir=project, llm=None)
+            enriched = json.loads(output.read_text(encoding="utf-8"))
+
+            relay = enriched["shots"][0]["ltx"]["msr_prompt_relay"][0]
+            # duration_seconds * fps == 24 frames; frame_end must be exclusive.
+            self.assertEqual(relay["frame_start"], 0)
+            self.assertEqual(relay["frame_end"], 24)
+            self.assertNotEqual(relay["frame_end"], 23)
+
+            # Acceptance criterion: the shot's last frame must be covered by the
+            # relay assignment under the exclusive-end convention. The last frame
+            # index is frame_count - 1 == 23; with the old inclusive value
+            # (frame_end == 23) it fell outside [frame_start, frame_end).
+            frame_count = 24
+            last_frame_index = frame_count - 1
+            self.assertTrue(
+                relay["frame_start"] <= last_frame_index < relay["frame_end"],
+                f"last frame {last_frame_index} not covered by relay "
+                f"[{relay['frame_start']}, {relay['frame_end']})",
+            )
+
+    def test_vision_payload_frame_end_equals_frame_count(self):
+        """The relay frame_end handed to the vision module must be exclusive too."""
+        from feverslop.prompting.msr_signatures import (
+            MSRReferenceDescription,
+            MSRPromptResult,
+            MSRRelayPrompt,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            manifest = {
+                "actors": [
+                    {
+                        "id": "actor-1",
+                        "name": "Mara",
+                        "visual_description": "a weathered face with a scarred jaw",
+                        "msr_sheet_path": "actor-1.png",
+                    }
+                ],
+                "locations": [],
+            }
+            shots = [
+                {
+                    "scene": 1,
+                    "shot_id": "shot-1",
+                    "duration_seconds": 1.0,
+                    "type": "instrumental",
+                    "description": "Mara walks along the pier.",
+                    "camera": "tracking shot",
+                    "reference_ids": {"actors": ["actor-1"]},
+                },
+            ]
+            self._write_project(project, manifest, shots, actor_sheet="actor-1.png")
+
+            result = MSRPromptResult(
+                references=[
+                    MSRReferenceDescription(id="actor-1", type="actor", description="a weathered face with a scarred jaw"),
+                ],
+                relays=[
+                    MSRRelayPrompt(index=0, prompt="Mara walks along the pier; the camera tracks beside her while gulls wheel overhead."),
+                ],
+            )
+            modules = _FakeMSRModules(result)
+
+            output = enrich_movie_render_plan_with_msr_prompts(
+                project_dir=project, llm=None, modules=modules,
+            )
+
+            self.assertEqual(len(modules.payloads), 1)
+            vision_relay = modules.payloads[0]["relay_segments"][0]
+            self.assertEqual(vision_relay["frame_start"], 0)
+            self.assertEqual(vision_relay["frame_end"], 24)
+
+            # The vision path also persisted the relay with the exclusive end.
+            enriched = json.loads(output.read_text(encoding="utf-8"))
+            written_relay = enriched["shots"][0]["ltx"]["msr_prompt_relay"][0]
+            self.assertEqual(written_relay["frame_end"], 24)
+            self.assertEqual(written_relay["prompt"], result.relays[0].prompt)

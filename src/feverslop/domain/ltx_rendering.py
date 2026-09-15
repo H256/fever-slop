@@ -115,6 +115,43 @@ def build_audio_window_spec(
     )
 
 
+def _require_positive_scene_int(scene: dict, key: str, scene_number: int) -> int:
+    value = scene.get(key)
+    if value is None:
+        raise FeverSlopValidationError(f"Scene {scene_number} is missing required field '{key}'")
+    try:
+        ivalue = int(value)
+    except (TypeError, ValueError) as exc:
+        raise FeverSlopValidationError(
+            f"Scene {scene_number} field '{key}' must be an integer, got {value!r}",
+        ) from exc
+    if ivalue <= 0:
+        raise FeverSlopValidationError(
+            f"Scene {scene_number} field '{key}' must be positive, got {ivalue}",
+        )
+    return ivalue
+
+
+def resolve_workflow_frame_parameters(
+    scene: dict,
+    *,
+    scene_number: int,
+    width: int | None = None,
+    height: int | None = None,
+) -> tuple[int, int, int]:
+    """Resolve the fps/width/height written into a ComfyUI workflow.
+
+    fps is always taken from the scene and must be present and positive.
+    width/height fall back to the scene unless an explicit override (e.g.
+    from VideoSettings) is supplied. Missing or non-positive values raise
+    FeverSlopValidationError instead of silently writing 0 into the workflow.
+    """
+    fps = _require_positive_scene_int(scene, "fps", scene_number)
+    width = int(width) if width is not None else _require_positive_scene_int(scene, "width", scene_number)
+    height = int(height) if height is not None else _require_positive_scene_int(scene, "height", scene_number)
+    return fps, width, height
+
+
 class PromptRelayPayloadBuilder:
     min_prompt_relay_frames = 6
 
