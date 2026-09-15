@@ -113,6 +113,7 @@ UNIT_MODULES = (
     "movie_input_validation",
     "movie_msr_enrichment",
     "movie_pipeline_modes",
+    "movie_scene_cards",
     "movie_planning_dspy_contracts",
     "movie_visual_local",
     "movie_workflow_audio_strip",
