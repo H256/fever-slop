@@ -27,7 +27,7 @@ tmp-*/
 **/debug/
 
 # Local agent state and audit artifacts
-Historical internal branch reference removed for the public history.
+# (Historical internal branch reference removed for the public history.)
 .planning/debug/
 .superpowers/sdd/
 .ua/
