@@ -265,5 +265,35 @@ class APIMetricsTests(unittest.TestCase):
         self.assertIn("system_stats", session.get.call_args.args[0])
 
 
+class ApiCallTokenLoggingTests(unittest.TestCase):
+    def test_api_call_log_exposes_effective_token_budget_and_usage(self):
+        # DSPy's truncation warning prints the LM default max_tokens, not the
+        # effective per-call budget; the client-side api_call line must carry
+        # both so truncations are attributable.
+        logger = logging.getLogger("test.api.observability.tokens")
+
+        with self.assertLogs(logger, level=logging.DEBUG) as captured:
+            record_api_call(
+                APIMetrics(), logger, "llm", "chat_completions", 0.0, success=True,
+                prompt_tokens=12345, completion_tokens=6144, request_max_tokens=6144,
+            )
+
+        line = next(entry for entry in captured.output if "api_call " in entry)
+        self.assertIn("prompt_tokens=12345", line)
+        self.assertIn("completion_tokens=6144", line)
+        self.assertIn("request_max_tokens=6144", line)
+
+    def test_api_call_log_omits_token_fields_when_not_provided(self):
+        logger = logging.getLogger("test.api.observability.tokens.omit")
+
+        with self.assertLogs(logger, level=logging.DEBUG) as captured:
+            record_api_call(APIMetrics(), logger, "llm", "chat", 0.0, success=True)
+
+        line = next(entry for entry in captured.output if "api_call " in entry)
+        self.assertIn("prompt_tokens=0", line)
+        self.assertIn("completion_tokens=0", line)
+        self.assertIn("request_max_tokens=", line)
+
+
 if __name__ == "__main__":
     unittest.main()

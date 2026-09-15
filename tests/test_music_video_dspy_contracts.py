@@ -222,6 +222,49 @@ class MusicVideoDspyContractTests(unittest.TestCase):
         ):
             self.assertTrue(load_markdown_guide(name).strip())
 
+    def test_subject_locations_signature_declares_cast_idea(self):
+        # A supplied cast_idea must reach the model instead of being dropped
+        # with an "Input contains fields not in signature" warning.
+        bundle = build_music_video_signature_bundle()
+
+        self.assertIn("cast_idea", bundle["subject_locations"].input_fields)
+
+    def test_subject_locations_call_forwards_cast_idea_and_effective_budget(self):
+        calls = []
+
+        class Predictor:
+            def __call__(self, **kwargs):
+                calls.append(kwargs)
+                return {"result": {"subject": "", "actors": [], "locations": []}}
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        class Runtime:
+            def make_lm(self, llm):
+                return "lm"
+
+            context = staticmethod(lambda **kwargs: nullcontext())
+            predict = staticmethod(lambda signature: Predictor())
+
+        modules = MusicVideoPromptModules(LLM(), dspy_runtime=Runtime())
+
+        modules.subject_locations("A duo performs.", "configured anchors", "Two singers, one bassist.")
+
+        self.assertEqual("Two singers, one bassist.", calls[0]["cast_idea"])
+        self.assertEqual("A duo performs.", calls[0]["story_idea"])
+        self.assertEqual(2048, calls[0]["config"]["max_tokens"])
+
+    def test_repair_and_subject_guides_document_the_wired_contract(self):
+        repair_guide = load_markdown_guide("music-video-concept-repair").lower()
+        self.assertIn("expected_keys", repair_guide)
+        self.assertIn("neighbor_distance", repair_guide)
+        self.assertIn("prior_segment_state", repair_guide)
+
+        subject_guide = load_markdown_guide("music-video-subject-locations").lower()
+        self.assertIn("cast idea", subject_guide)
+
 
 if __name__ == "__main__":
     unittest.main()

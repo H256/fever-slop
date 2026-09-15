@@ -331,6 +331,8 @@ def record_api_call(
     request_hash: str = "",
     input_size: int | None = None,
     error_class: str | None = None,
+    request_max_tokens: int | None = None,
+    finish_reason: str = "",
 ) -> None:
     duration_ms = (perf_counter() - started_at) * 1000
     context = _observability_context.get()
@@ -353,7 +355,8 @@ def record_api_call(
             level if level is not None else (logging.DEBUG if success else logging.ERROR),
             "api_call service=%s operation=%s duration_ms=%.1f success=%s correlation_id=%s "
             "stage=%s scene_id=%s attempt=%s checkpoint=%s retry_attempts=%d "
-            "request_hash=%s input_size=%s error_class=%s",
+            "request_hash=%s input_size=%s error_class=%s "
+            "prompt_tokens=%d completion_tokens=%d request_max_tokens=%s finish_reason=%s",
             service,
             operation,
             duration_ms,
@@ -367,6 +370,10 @@ def record_api_call(
             request_hash,
             input_size if input_size is not None else "",
             error_class or "",
+            prompt_tokens,
+            completion_tokens,
+            request_max_tokens if request_max_tokens is not None else "",
+            finish_reason or "",
         )
 
 
