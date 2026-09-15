@@ -53,6 +53,14 @@ def _instrument_openai_client(client, metrics):
             )
             raise
         usage = getattr(response, "usage", None)
+        # DSPy's truncation warning prints the LM default max_tokens, never
+        # the effective per-call budget; log the request's own values so a
+        # truncated response is attributable to the call that caused it.
+        request_max_tokens = kwargs.get("max_tokens") or kwargs.get("max_completion_tokens")
+        finish_reason = ",".join(
+            str(getattr(choice, "finish_reason", "") or "")
+            for choice in (getattr(response, "choices", None) or ())
+        )
         record_api_call(
             metrics, logger, "llm", "chat_completions", started_at,
             success=True,
@@ -60,6 +68,8 @@ def _instrument_openai_client(client, metrics):
             prompt_tokens=_usage_value(usage, "prompt_tokens"),
             completion_tokens=_usage_value(usage, "completion_tokens"),
             request_hash=request_hash, input_size=input_size,
+            request_max_tokens=request_max_tokens,
+            finish_reason=finish_reason,
         )
         return response
     completions.create = create

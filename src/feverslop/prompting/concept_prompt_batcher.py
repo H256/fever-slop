@@ -64,6 +64,18 @@ class ConceptPromptBatcher:
         self.request_timeout_seconds = request_timeout_seconds
         self.progress_callback = progress_callback
         self.prompt_modules = prompt_modules or MusicVideoPromptModules(llm)
+        self._checkpoint_path: Path | None = None
+        self._checkpoint_store: ArtifactStore | None = None
+
+    def enable_checkpoint(self, *, path: str | Path, artifact_store: ArtifactStore) -> None:
+        """Persist accepted concepts after every batch so a crash can resume.
+
+        The checkpoint is keyed by a fingerprint of every creative input; a
+        fingerprint mismatch invalidates it instead of reusing stale scenes,
+        and it is deleted once a complete run succeeded.
+        """
+        self._checkpoint_path = Path(path)
+        self._checkpoint_store = artifact_store
 
     def create_concept_prompts_batched(
         self,
@@ -79,8 +91,44 @@ class ConceptPromptBatcher:
         batches = list(chunked(stage1_segments, self.batch_size))
         report = progress_callback or self.progress_callback
 
+        checkpoint_identity = None
+        if self._checkpoint_path is not None and self._checkpoint_store is not None:
+            checkpoint_identity = self._checkpoint_fingerprint(
+                story_idea=story_idea,
+                notes=notes,
+                global_context=global_context,
+                stage1_segments=stage1_segments,
+            )
+            restored, stale = self._load_checkpoint(checkpoint_identity)
+            if stale:
+                self._report("Ignoring stale concept checkpoint (inputs changed)", report)
+            if restored:
+                all_results.update(restored)
+                self._report(
+                    f"Resuming concept generation from checkpoint ({len(all_results)} scenes)",
+                    report,
+                )
+                if all_results:
+                    previous_summary = self._summarize_progress(
+                        story_idea=story_idea,
+                        global_context=global_context,
+                        concepts=all_results,
+                    )
+
         for batch_number, (batch_start, batch) in enumerate(batches, start=1):
             batch_label = f"Concept batch {batch_number}/{len(batches)}"
+            expected_ids = [seg["segment_id"] for seg in batch]
+            if (
+                checkpoint_identity is not None
+                and expected_ids
+                and all(segment_id in all_results for segment_id in expected_ids)
+            ):
+                self._report(
+                    f"{batch_label}: reused from concept checkpoint "
+                    f"({len(expected_ids)} scenes)",
+                    report,
+                )
+                continue
             self._report(
                 f"{batch_label}: generating scenes "
                 f"{batch_start + 1}-{batch_start + len(batch)}",
@@ -94,10 +142,10 @@ class ConceptPromptBatcher:
                 notes=notes,
                 previous_concepts=self._last_concepts(all_results),
                 previous_summary=previous_summary,
+                accepted_ledger=_accepted_state_ledger(all_results),
             )
             self._report(f"{batch_label}: response received, validating keys", report)
 
-            expected_ids = [seg["segment_id"] for seg in batch]
             batch_result = self._repair_missing_or_extra_keys(
                 expected_ids=expected_ids,
                 result=batch_result,
@@ -119,6 +167,7 @@ class ConceptPromptBatcher:
                 concepts=all_results,
             )
             self._report(f"{batch_label}: complete ({len(all_results)} scenes total)", report)
+            self._write_checkpoint(checkpoint_identity, all_results)
 
         missing = [
             seg["segment_id"]
@@ -129,11 +178,70 @@ class ConceptPromptBatcher:
         if missing:
             raise ValueError(f"Missing concept prompts after batched generation: {missing}")
 
+        self._clear_checkpoint()
         # Preserve stage1 order in output JSON.
         return {
             seg["segment_id"]: all_results[seg["segment_id"]]
             for seg in stage1_segments
         }
+
+    def _checkpoint_fingerprint(
+        self,
+        *,
+        story_idea: str,
+        notes: str,
+        global_context: dict,
+        stage1_segments: list[dict],
+    ) -> str:
+        material = json.dumps(
+            {
+                "batch_size": self.batch_size,
+                "story_idea": story_idea,
+                "notes": notes,
+                "global_context": compact_planning_payload(global_context),
+                "segments": compact_planning_payload(stage1_segments),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+    def _load_checkpoint(self, identity: str) -> tuple[dict[str, Any], bool]:
+        """Return (restored concepts, stale) for the configured checkpoint."""
+        assert self._checkpoint_store is not None and self._checkpoint_path is not None
+        try:
+            data = self._checkpoint_store.read_json(self._checkpoint_path)
+        except FileNotFoundError:
+            return {}, False
+        except (OSError, ValueError):
+            return {}, True
+        if (
+            isinstance(data, dict)
+            and data.get("identity") == identity
+            and isinstance(data.get("concepts"), dict)
+        ):
+            restored = {
+                segment_id: value
+                for segment_id, value in data["concepts"].items()
+                if isinstance(segment_id, str) and isinstance(value, (dict, str)) and value
+            }
+            return restored, False
+        return {}, True
+
+    def _write_checkpoint(self, identity: str | None, concepts: dict[str, Any]) -> None:
+        if identity is None or self._checkpoint_store is None or self._checkpoint_path is None:
+            return
+        self._checkpoint_store.write_json(
+            self._checkpoint_path,
+            {"identity": identity, "concepts": concepts},
+        )
+
+    def _clear_checkpoint(self) -> None:
+        if self._checkpoint_path is None:
+            return
+        self._checkpoint_path.unlink(missing_ok=True)
 
     def _report(self, message: str, callback: Callable[[str], None] | None = None) -> None:
         callback = callback or self.progress_callback
@@ -150,6 +258,7 @@ class ConceptPromptBatcher:
         notes: str,
         previous_concepts: dict,
         previous_summary: str,
+        accepted_ledger: list[dict[str, str]] | None = None,
     ) -> dict:
         payload = {
             "BATCH_INDEX": batch_index,
@@ -158,6 +267,10 @@ class ConceptPromptBatcher:
             "NOTES": notes,
             "PREVIOUS_PROGRESS_SUMMARY": previous_summary,
             "PREVIOUS_CONCEPTS": previous_concepts,
+            # The validator rejects a full semantic-state collision with ANY
+            # accepted scene, not just the recent window; this compact ledger
+            # gives the model the same collision surface it will be judged on.
+            "ACCEPTED_STATE_LEDGER": accepted_ledger or [],
             "CURRENT_BATCH_SEGMENTS": compact_planning_payload(batch),
         }
 
@@ -230,6 +343,7 @@ class ConceptPromptBatcher:
             notes=notes,
             previous_concepts=previous_concepts,
             previous_summary=previous_summary,
+            progress_callback=progress_callback,
         ))
 
         ordered = {
@@ -274,6 +388,7 @@ class ConceptPromptBatcher:
                     **ordered,
                 }),
                 previous_summary=previous_summary,
+                progress_callback=progress_callback,
             ))
             ordered = {
                 segment_id: repaired[segment_id]
@@ -312,6 +427,7 @@ class ConceptPromptBatcher:
         notes: str,
         previous_concepts: dict,
         previous_summary: str,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
         # Repair in small sequential chunks: each call carries a bounded number
         # of scene keys plus the exact accepted boundary states beside them, so
@@ -324,6 +440,17 @@ class ConceptPromptBatcher:
             *(segment_id for segment_id in accepted if segment_id not in expected_set),
             *expected_ids,
         ]
+        # States the repair model must not reproduce: every accepted scene it
+        # can see (prior batches plus valid in-batch survivors) in the same
+        # compact form the batch generator receives.
+        ledger_concepts = {
+            **accepted,
+            **{
+                segment_id: value
+                for segment_id, value in repaired.items()
+                if segment_id not in target_ids
+            },
+        }
         repaired_values: dict[str, Any] = {}
         for start in range(0, len(repair_ids), _KEYS_PER_REPAIR_CALL):
             chunk_ids = repair_ids[start:start + _KEYS_PER_REPAIR_CALL]
@@ -334,6 +461,7 @@ class ConceptPromptBatcher:
                 "NOTES": notes,
                 "PREVIOUS_PROGRESS_SUMMARY": previous_summary,
                 "PREVIOUS_CONCEPTS": previous_concepts,
+                "ACCEPTED_STATE_LEDGER": _accepted_state_ledger(ledger_concepts),
                 "MISSING_SEGMENTS": compact_planning_payload(
                     [seg for seg in batch if seg["segment_id"] in chunk_missing]
                 ),
@@ -355,6 +483,16 @@ class ConceptPromptBatcher:
                 timeout=self.request_timeout_seconds,
             )
             repair = response if isinstance(response, dict) else extract_json_object(str(response))
+            absent = [segment_id for segment_id in chunk_ids if repair.get(segment_id) is None]
+            if absent:
+                # Keep the documented one-shot fallback semantics, but never
+                # hide that a truncated or malformed repair response stranded
+                # these keys on their stale/fallback values.
+                self._report(
+                    f"Concept batch: repair response incomplete for "
+                    f"{', '.join(absent)}",
+                    progress_callback,
+                )
             for segment_id in chunk_ids:
                 value = repair.get(segment_id)
                 if value is None:
@@ -428,6 +566,12 @@ class ConceptPromptBatcher:
                 }
                 if prior_segment_id:
                     finding["prior_segment_id"] = prior_segment_id
+                    # The reason text only names a few fields; give the repair
+                    # prompt the full normalized state of the scene this one
+                    # collides with, which may be outside every visible window.
+                    prior_narrative = _narrative(accepted.get(prior_segment_id))
+                    if prior_narrative:
+                        finding["prior_segment_state"] = _semantic_state(prior_narrative)
                 invalid.append(finding)
                 continue
             # Store the annotated form so later scenes are validated against
@@ -627,6 +771,31 @@ def _semantic_state(narrative: dict[str, Any]) -> dict[str, Any]:
         field: _normalize_semantic_value(narrative.get(field))
         for field in _SEMANTIC_DIMENSIONS
     }
+
+
+_LEDGER_FIELDS = ("story_beat", "action", "action_phase", "location")
+
+
+def _accepted_state_ledger(concepts: dict[str, Any]) -> list[dict[str, str]]:
+    """Compact do-not-reproduce map of accepted scene states for the model.
+
+    Validation compares the full semantic signature of a scene against every
+    accepted scene, while the prompt otherwise only shows the last few
+    concepts verbatim. This ledger gives generation and repair the same
+    collision surface in a few tokens per scene.
+    """
+    ledger: list[dict[str, str]] = []
+    for segment_id, value in concepts.items():
+        narrative = _narrative(value)
+        if not narrative:
+            continue
+        entry: dict[str, str] = {"scene_id": str(segment_id)}
+        for field in _LEDGER_FIELDS:
+            state = _normalized_scalar(narrative.get(field))
+            if state:
+                entry[field] = state
+        ledger.append(entry)
+    return ledger
 
 
 def _semantic_signature(narrative: dict[str, Any]) -> str:
@@ -1197,7 +1366,11 @@ def _boundary_context(
 
     The repair prompt uses these snapshots as the canonical state vocabulary so
     regenerated scenes keep continuous boundaries token-identical instead of
-    paraphrasing them.
+    paraphrasing them. When the immediate neighbour is itself being repaired (or
+    still missing), the lookup walks outward to the nearest accepted scene
+    across the gap and marks it with ``neighbor_distance``; without this
+    fallback a contiguous run of broken keys would repair every scene with no
+    canonical vocabulary at all.
     """
     order = order_ids
     positions = {segment_id: index for index, segment_id in enumerate(order)}
@@ -1211,15 +1384,21 @@ def _boundary_context(
             ("predecessor", "outgoing", -1),
             ("successor", "incoming", 1),
         ):
-            neighbor_position = position + offset
-            if not 0 <= neighbor_position < len(order):
-                continue
-            neighbor_id = order[neighbor_position]
-            if neighbor_id in excluded or neighbor_id not in known:
-                continue
-            state = _continuity_boundary_state(known[neighbor_id], direction)
-            if state:
-                entry[side] = {"scene_id": neighbor_id, direction: state}
+            for step in range(1, len(order)):
+                neighbor_position = position + offset * step
+                if not 0 <= neighbor_position < len(order):
+                    break
+                neighbor_id = order[neighbor_position]
+                if neighbor_id in excluded or neighbor_id not in known:
+                    continue
+                state = _continuity_boundary_state(known[neighbor_id], direction)
+                if not state:
+                    continue
+                boundary = {"scene_id": neighbor_id, direction: state}
+                if step > 1:
+                    boundary["neighbor_distance"] = step
+                entry[side] = boundary
+                break
         if entry:
             context[segment_id] = entry
     return context
