@@ -492,6 +492,31 @@ class ReferenceBibleTests(unittest.TestCase):
 
             self.assertEqual("custom prompt for The Goat Demon", backend.requests[0].prompt)
 
+    def test_failing_manifest_write_keeps_previous_manifest(self):
+        # Acceptance criterion for #1192: a crashed write must leave the
+        # previous manifest.json untouched (atomic write: temp + os.replace).
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = Path(temp_dir) / "project"
+            output_dir = project_dir / "output" / "references"
+            generator = ReferenceBibleGenerator(backend=FakeImageBackend(), output_dir=output_dir)
+
+            first = generator.generate_subject_bible(
+                ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara"),
+            )
+            previous_manifest = json.loads(first.read_text(encoding="utf-8"))
+
+            with self.assertRaises(OSError):
+                with patch(
+                    "feverslop.utils.io._replace_atomically",
+                    side_effect=OSError("simulated crash during manifest replace"),
+                ):
+                    generator.generate_subject_bible(
+                        ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara"),
+                    )
+
+            self.assertEqual(previous_manifest, json.loads(first.read_text(encoding="utf-8")))
+            self.assertEqual([], [p for p in first.parent.rglob("*") if p.name.endswith(".tmp")])
+
     def test_actor_reference_prompts_require_plain_white_background(self):
         front_prompt = ReferenceBibleGenerator._view_prompt(
             ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara in a forest"),
