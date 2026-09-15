@@ -17,6 +17,7 @@ from feverslop.application.continuity_boundary import (
 from feverslop.domain.artifact_hash import sha256_file
 from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.domain.render_plan import RenderPlan
+from feverslop.errors import FeverSlopDataError
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.rendering import (
     VideoRenderBackend,
@@ -189,15 +190,13 @@ class RenderVideoScenesUseCase:
                 )
             randomize_seed = bool(getattr(self.backend, "randomize_seed", False))
             if randomize_seed:
-                scene_payload["seed"] = random.SystemRandom().randint(0, 2**63 - 1)
-                render_plan_data = [
-                    (
-                        scene_payload
-                        if int(item["scene"]) == scene.scene_number
-                        else item
-                    )
-                    for item in render_plan_data
-                ]
+                new_seed = random.SystemRandom().randint(0, 2**63 - 1)
+                scene_payload["seed"] = new_seed
+                render_plan_data = patch_render_plan_seed(
+                    render_plan_data,
+                    scene_number=scene.scene_number,
+                    seed=new_seed,
+                )
                 self.artifact_store.write_render_plan(request.render_plan_path, render_plan_data)
                 original_randomize_seed = self.backend.randomize_seed
                 self.backend.randomize_seed = False
@@ -235,6 +234,40 @@ class RenderVideoScenesUseCase:
         self.reporter.message(
             f"[green]OK[/green] {verb} scene {completed}/{total}: [cyan]{output_path}[/cyan]",
         )
+
+
+def patch_render_plan_seed(
+    plan_data: list[dict[str, Any]],
+    *,
+    scene_number: int,
+    seed: int,
+) -> list[dict[str, Any]]:
+    """Write a freshly randomized seed into the matching base-plan entry.
+
+    Only the ``seed`` field is persisted; the base render plan must stay
+    byte-identical apart from that documented field. The projected runtime
+    payload (canonical projection, continuation anchors, absolute paths)
+    must never be written back, or a later edit of the canonical override
+    would leave stale projected text baked into the base plan.
+    """
+    patched: list[dict[str, Any]] = []
+    for item in plan_data:
+        if not isinstance(item, dict):
+            patched.append(item)
+            continue
+        raw_scene = item.get("scene")
+        if raw_scene is None:
+            raise FeverSlopDataError(
+                f"render plan entry {item!r} is missing the required 'scene' field; "
+                "cannot persist a randomized seed",
+            )
+        if int(raw_scene) == scene_number:
+            updated = dict(item)
+            updated["seed"] = seed
+            patched.append(updated)
+        else:
+            patched.append(item)
+    return patched
 
 
 def _attach_r2v_continuation_anchor(

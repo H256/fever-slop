@@ -189,7 +189,7 @@ def build_movie_narrative_plan_fallback(*, screenplay: MovieScreenplayArtifact) 
 def build_movie_scene_cards(*, screenplay: MovieScreenplayArtifact, shots: tuple[CinematicShot, ...]) -> tuple[MovieSceneCard, ...]:
     cards = []
     for index, scene in enumerate(screenplay.scenes):
-        shot = shots[min(index, len(shots) - 1)] if shots else None
+        shot = shots[index] if index < len(shots) else None
         shot_ids = (shot.shot_id,) if shot else ()
         cards.append(
             MovieSceneCard(

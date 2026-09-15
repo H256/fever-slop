@@ -122,7 +122,8 @@ def _enrich_shot(
         "msr_prompt_relay": [
             {
                 "frame_start": 0,
-                "frame_end": frame_count - 1,
+                # frame_end is exclusive (slice convention), so the relay covers the full shot.
+                "frame_end": frame_count,
                 "prompt": relay_prompt,
                 "camera": str(shot.get("camera") or "").strip(),
                 "acting": str(shot.get("acting") or shot.get("expression") or "").strip(),
@@ -218,7 +219,7 @@ def _movie_vision_prompts(
     )
     if on_analysis_status is not None:
         on_analysis_status(shot_id, status_references)
-    relay = {"frame_start": 0, "frame_end": frame_count - 1, "state": _movie_relay_state(shot)}
+    relay = {"frame_start": 0, "frame_end": frame_count, "state": _movie_relay_state(shot)}
     metadata = _movie_reference_metadata(shot, bible=bible, manifest=manifest)
     payload = {"references": metadata, "shot_context": shot, "relay_segments": [{"index": 0, **relay}]}
     try:

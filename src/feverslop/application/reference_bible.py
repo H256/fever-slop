@@ -312,7 +312,7 @@ class ReferenceBibleGenerator:
             "sheet_path": self._artifact_path(sheet_path),
         }
         manifest_path = subject_dir / "manifest.json"
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_json(manifest_path, manifest)
         return manifest_path
 
     def _generate_direct_msr_subject_bible(self, subject: ReferenceSubject, subject_dir: Path) -> Path:
@@ -354,7 +354,7 @@ class ReferenceBibleGenerator:
             "sheet_path": self._artifact_path(target),
         }
         manifest_path = subject_dir / "manifest.json"
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_json(manifest_path, manifest)
         return manifest_path
 
     def generate_location_bible(self, location: ReferenceLocation) -> Path:
@@ -428,7 +428,7 @@ class ReferenceBibleGenerator:
             "sheet_path": self._artifact_path(sheet_path),
         }
         manifest_path = location_dir / "manifest.json"
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_json(manifest_path, manifest)
         return manifest_path
 
     @staticmethod
