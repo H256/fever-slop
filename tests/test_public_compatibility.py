@@ -1,5 +1,7 @@
 ﻿import argparse
+import contextlib
 import inspect
+import io
 import json
 import tempfile
 import unittest
@@ -132,6 +134,45 @@ class PublicCompatibilityTests(unittest.TestCase):
                 parser = module.build_arg_parser()
                 self.assertIsInstance(parser, argparse.ArgumentParser)
 
+    def test_root_main_is_a_thin_facade_over_the_installed_cli(self):
+        # The root ``main`` module must delegate to the canonical CLI rather
+        # than carry its own fork.  Asserting the re-exported callables are the
+        # *same objects* is the strongest no-drift guarantee: the two entry
+        # points are literally the same code.
+        self.assertIs(main.main, canonical_cli.main)
+        self.assertIs(main.build_arg_parser, canonical_cli.build_arg_parser)
+        self.assertIs(main.console, canonical_cli.console)
+        self.assertIs(main._run_render, canonical_cli._run_render)
+
+    def test_root_and_installed_cli_expose_identical_subcommands(self):
+        # Acceptance criterion: no subparser drift between ``main.py`` and the
+        # installed ``feverslop`` CLI.  Pin the program name so the entry-point
+        # label cannot mask a real difference, then compare the full --help
+        # output and the concrete subcommand name sets.
+        root_parser = main.build_arg_parser()
+        installed_parser = canonical_cli.build_arg_parser()
+        root_parser.prog = "cli"
+        installed_parser.prog = "cli"
+
+        root_help = io.StringIO()
+        with contextlib.redirect_stdout(root_help):
+            root_parser.print_help()
+        installed_help = io.StringIO()
+        with contextlib.redirect_stdout(installed_help):
+            installed_parser.print_help()
+
+        self.assertEqual(installed_help.getvalue(), root_help.getvalue())
+
+        def subcommand_names(parser):
+            for action in parser._actions:
+                if isinstance(action, argparse._SubParsersAction):
+                    return set(action.choices)
+            return set()
+
+        self.assertEqual(
+            subcommand_names(installed_parser), subcommand_names(root_parser)
+        )
+
     def test_installed_cli_parser_matches_unified_parser(self):
         legacy = main.build_arg_parser().parse_args(["run", "projects/demo", "--dry-run"])
         installed = canonical_cli.build_arg_parser().parse_args(["run", "projects/demo", "--dry-run"])
@@ -234,7 +275,9 @@ class PublicCompatibilityTests(unittest.TestCase):
             "safe",
         ]
 
-        with patch("sys.argv", argv), patch.object(main, "execute_generate_render_plan") as execute:
+        with patch("sys.argv", argv), patch.object(
+            canonical_cli, "execute_generate_render_plan"
+        ) as execute:
             main.main()
 
         request = execute.call_args.args[0]
@@ -294,7 +337,7 @@ class PublicCompatibilityTests(unittest.TestCase):
                 execution_requests.append(build_generate_render_plan_execution_request(request))
 
             with patch("sys.argv", argv), patch.object(
-                main,
+                canonical_cli,
                 "execute_generate_render_plan",
                 side_effect=resolve,
             ):
