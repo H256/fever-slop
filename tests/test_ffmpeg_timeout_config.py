@@ -82,6 +82,7 @@ class FFMPEGTimeoutPropagationTest(unittest.TestCase):
         backend = ComfyUIVideoRenderBackend(
             client=MagicMock(),
             ltx_workflow_path="workflows/video/ltx_25/i2v.json",
+            output_dir="output",
             ffmpeg_timeout_seconds=900,
         )
         self.assertEqual(backend.postprocessor.ffmpeg_timeout_seconds, 900)
@@ -92,22 +93,16 @@ class FFMPEGTimeoutPropagationTest(unittest.TestCase):
         from unittest.mock import patch
 
         from feverslop.adapters.video_postprocessor import VideoPostProcessor
-        from feverslop.domain.postprocessing import TrimSpec
 
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg", ffmpeg_timeout_seconds=900)
-        spec = TrimSpec(
-            source_file=Path("raw.mp4"),
-            output_file=Path("out.mp4"),
-            fps=24,
-            trim_front_frames=0,
-            keep_frames=24,
-            scene=1,
-        )
         with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run, patch.object(
             VideoPostProcessor, "_validate_video_output"
         ):
             run.return_value = subprocess.CompletedProcess([], 0, stdout="", stderr="")
-            processor.trim_clip(spec)
+            processor.concat_clips(
+                concat_list=Path("list.txt"),
+                output_file=Path("out.mp4"),
+            )
         self.assertEqual(run.call_args.kwargs["timeout"], 900)
 
 
