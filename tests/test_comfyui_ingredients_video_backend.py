@@ -133,6 +133,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
             )
             scene = {
                 "scene": 1,
+                "width": 1280,
+                "height": 704,
                 "frame_count": 17,
                 "fps": 24,
                 "references": {"actor_ids": ["artist"], "location_id": ""},
@@ -218,6 +220,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
             )
             scene = {
                 "scene": 1,
+                "width": 1280,
+                "height": 704,
                 "frame_count": 17,
                 "fps": 24,
                 "references": {"actor_ids": ["artist"], "location_id": ""},
@@ -292,6 +296,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
             )
             scene = {
                 "scene": 1,
+                "width": 1280,
+                "height": 704,
                 "frame_count": 17,
                 "fps": 24,
                 "references": {"actor_ids": ["artist"], "location_id": ""},
@@ -333,7 +339,7 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
 
             def request(frame_count):
                 return VideoRenderRequest(
-                    scene={"scene": 1, "fps": 24, "frame_count": frame_count,
+                    scene={"scene": 1, "fps": 24, "width": 1280, "height": 704, "frame_count": frame_count,
                            "ingredients_scene_sheet": "sheet.png",
                            "ltx": {"ingredients_target_prompt": "target"}},
                     scene_number=1, prompt="fallback", workflow_path=workflow_path,
@@ -372,6 +378,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
             )
             scene = {
                 "scene": 6,
+                "width": 1280,
+                "height": 704,
                 "fps": 24,
                 "frame_count": 257,
                 "ingredients": {
@@ -414,6 +422,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
             )
             scene = {
                 "scene": 6,
+                "width": 1280,
+                "height": 704,
                 "fps": 24,
                 "frame_count": 257,
                 "ingredients": {"sheet_path": "sheet.png", "global_prompt": "global"},
@@ -437,6 +447,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
             )
             scene = {
                 "scene": 6,
+                "width": 1280,
+                "height": 704,
                 "fps": 24,
                 "frame_count": 257,
                 "ingredients": {"sheet_path": "sheet.png", "global_prompt": "global"},
@@ -567,6 +579,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
 
             scene = {
                 "scene": 1,
+                "width": 1280,
+                "height": 704,
                 "fps": 24,
                 "frame_count": 49,
                 "ingredients_scene_sheet": "sheet.png",
@@ -599,6 +613,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
 
             scene = {
                 "scene": 5,
+                "width": 1280,
+                "height": 704,
                 "fps": 24,
                 "frame_count": 49,
                 "ingredients_scene_sheet": "sheet.png",
@@ -631,6 +647,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
 
             scene = {
                 "scene": 12,
+                "width": 1280,
+                "height": 704,
                 "fps": 24,
                 "frame_count": 49,
                 "ingredients_scene_sheet": "sheet.png",
@@ -699,6 +717,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
 
             scene = {
                 "scene": 1,
+                "width": 1280,
+                "height": 704,
                 "fps": 24,
                 "frame_count": 73,
                 "ingredients_scene_sheet": "sheet.png",
@@ -730,6 +750,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
 
             scene = {
                 "scene": 1,
+                "width": 1280,
+                "height": 704,
                 "fps": 24,
                 "frame_count": 49,
                 "ingredients_scene_sheet": "missing.png",
@@ -757,6 +779,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
 
             scene = {
                 "scene": 3,
+                "width": 1280,
+                "height": 704,
                 "fps": 24,
                 "frame_count": 49,
                 "ltx": {},
@@ -787,6 +811,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
 
             scene = {
                 "scene": 1,
+                "width": 1280,
+                "height": 704,
                 "fps": 24,
                 "frame_count": 49,
                 "ingredients_scene_sheet": "sheet.png",
@@ -818,6 +844,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
             workflow = backend.build_workflow(
                 {
                     "scene": 1,
+                    "width": 1280,
+                    "height": 704,
                     "seed": 424242,
                     "fps": 24,
                     "frame_count": 49,
@@ -854,6 +882,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                 VideoRenderRequest(
                     scene={
                         "scene": 1,
+                        "width": 1280,
+                        "height": 704,
                         "fps": 24,
                         "frame_count": 49,
                         "ingredients_scene_sheet": "sheet.png",
@@ -905,6 +935,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                 VideoRenderRequest(
                     scene={
                         "scene": 2,
+                        "width": 1280,
+                        "height": 704,
                         "fps": 24,
                         "frame_count": 49,
                         "abs_start_seconds": 3.5,
@@ -958,6 +990,8 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
                 VideoRenderRequest(
                     scene={
                         "scene": 7,
+                        "width": 1280,
+                        "height": 704,
                         "fps": 24,
                         "frame_count": 49,
                         "ingredients_scene_sheet": "sheet.png",
@@ -1001,6 +1035,58 @@ class ComfyUIIngredientsBackendTests(unittest.TestCase):
 
             loaded = backend.load_workflow()
             self.assertEqual(loaded["1"]["inputs"]["image"], "in_memory.png")
+
+
+    def test_missing_fps_raises_instead_of_writing_zero_framerate(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            sheet = temp / "sheet.png"
+            sheet.write_bytes(b"sheet")
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(json.dumps(_build_minimal_ingredients_workflow()), encoding="utf-8")
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=FakeClient(),
+                workflow_path=workflow_path,
+                output_dir=temp / "out",
+                project_dir=temp,
+                postprocess=False,
+            )
+            scene = {
+                "scene": 9,
+                "width": 1280,
+                "height": 704,
+                "frame_count": 49,
+                "ingredients_scene_sheet": "sheet.png",
+                "ltx": {},
+            }
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "missing required field 'fps'"):
+                backend.build_workflow(scene, prompt="prompt")
+
+    def test_missing_width_or_height_raises_instead_of_writing_zero(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            sheet = temp / "sheet.png"
+            sheet.write_bytes(b"sheet")
+            workflow_path = temp / "workflow.json"
+            workflow_path.write_text(json.dumps(_build_minimal_ingredients_workflow()), encoding="utf-8")
+            backend = ComfyUIIngredientsVideoRenderBackend(
+                client=FakeClient(),
+                workflow_path=workflow_path,
+                output_dir=temp / "out",
+                project_dir=temp,
+                postprocess=False,
+            )
+            scene = {
+                "scene": 9,
+                "fps": 24,
+                "frame_count": 49,
+                "ingredients_scene_sheet": "sheet.png",
+                "ltx": {},
+            }
+
+            with self.assertRaisesRegex(FeverSlopValidationError, "missing required field 'width'"):
+                backend.build_workflow(scene, prompt="prompt")
 
 
 if __name__ == "__main__":
