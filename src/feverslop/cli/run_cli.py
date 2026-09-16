@@ -22,6 +22,7 @@ from feverslop.config.app_config import AppConfig, VramHandoffMode
 from feverslop.domain.execution_plan import ExecutionPlan, PlanAction
 from feverslop.domain.resource_phase import ResourcePhase, StageResource, select_first_resource_phase
 from feverslop.errors import FeverSlopError
+from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.tools.storyboard_page import parse_scene_list
 
 
@@ -35,6 +36,11 @@ def build_run_parser(subparsers) -> argparse.ArgumentParser:
         "--replan",
         action="store_true",
         help="Execute the plan while resetting scene recovery attempts and regenerating selected stages.",
+    )
+    mode.add_argument(
+        "--replan-failed",
+        action="store_true",
+        help="Auto-detect blocked H3 scenes and replan only those with a fresh recovery budget.",
     )
     parser.add_argument(
         "--stage",
@@ -80,6 +86,20 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
         }
         compatibility = _uses_compatibility_inputs(args)
         app_config = AppConfig.load(resolve_runner_path(args.app_config))
+
+        # --replan-failed: auto-detect blocked H3 scenes and replan only those.
+        if getattr(args, "replan_failed", False):
+            args.scenes = ",".join(
+                str(n) for n in _blocked_h3_scene_numbers(project)
+            )
+            if not args.scenes:
+                output.print("[green]No blocked H3 scenes to replan.[/green]")
+                return 0
+            args.replan = True
+            output.print(
+                f"[dim]Auto-detected blocked H3 scenes: {args.scenes} "
+                f"-- replanning only those.[/dim]"
+            )
         args.video_pipeline = args.video_pipeline or _configured_pipeline(project)
         resolved = resolve_project_render_settings(
             project,
@@ -260,6 +280,46 @@ def _is_llm_loading_failure(error: BaseException) -> bool:
         or "serviceunavailableerror" in message
         or "error code: 503" in message
     )
+
+
+def _blocked_h3_scene_numbers(project: Path) -> list[int]:
+    """Return scene numbers whose H3 prompt checkpoint is blocked.
+
+    Scans the canonical (base) plan for active scene numbers, then checks
+    each scene's ``h3_prompt.json`` for ``readiness["status"] == "blocked"``.
+    Returns the sorted list of blocked scene numbers so ``--replan-failed``
+    can target exactly those scenes.
+    """
+    layout = SceneArtifactLayout(project)
+    # Load the base plan to discover active scene numbers.
+    base_plan = layout.base_plan
+    if not base_plan.is_file():
+        return []
+    try:
+        scenes = json.loads(base_plan.read_text(encoding="utf-8-sig"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    if not isinstance(scenes, list):
+        return []
+    scene_numbers = {
+        int(scene.get("scene") or scene.get("scene_number") or 0)
+        for scene in scenes
+        if int(scene.get("scene") or scene.get("scene_number") or 0) > 0
+    }
+    blocked: list[int] = []
+    for num in sorted(scene_numbers):
+        h3_path = layout.scene_h3_prompt(num)
+        if not h3_path.is_file():
+            continue
+        try:
+            h3_data = json.loads(h3_path.read_text(encoding="utf-8-sig"))
+            if isinstance(h3_data, dict):
+                readiness = h3_data.get("readiness") or {}
+                if isinstance(readiness, dict) and readiness.get("status") == "blocked":
+                    blocked.append(num)
+        except (json.JSONDecodeError, OSError, TypeError, KeyError):
+            continue
+    return blocked
 
 
 def _render_manual_handoff(

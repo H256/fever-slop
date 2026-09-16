@@ -444,7 +444,10 @@ class H3PromptPipeline:
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
-        require_ready_scenes(context["h3_prompts"])
+        require_ready_scenes(
+            context["h3_prompts"],
+            project_path=getattr(config, "project_dir", None),
+        )
         # H3 quality diagnostics are advisory. A valid scene must keep moving
         # to rendering even when the creative planner, compiler diagnostics, or
         # judge report an imperfect prompt. The builder records whether it used

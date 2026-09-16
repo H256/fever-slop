@@ -517,6 +517,100 @@ class RunCliTests(unittest.TestCase):
         self.assertTrue(render_args.reference_hero_workflow.endswith("test_project_hero.json"))
         self.assertTrue(render_args.reference_edit_workflow.endswith("test_project_edit.json"))
 
+    def test_replan_failed_flag_is_parsed(self):
+        args = self._args("--replan-failed")
+        self.assertTrue(args.replan_failed)
+        self.assertFalse(args.replan)
+
+    @patch("feverslop.cli.run_cli.pipeline_run")
+    @patch("feverslop.cli.run_cli.build_resume_plan")
+    def test_replan_failed_detects_blocked_and_sets_scenes(
+        self, mock_plan, mock_pipeline
+    ):
+        # Create h3_prompt.json files with blocked readiness for scenes 3 and 5
+        layouts_dir = self.project / "output" / "render" / "plans"
+        layouts_dir.mkdir(parents=True, exist_ok=True)
+        scene_dir = self.project / "output" / "render" / "scenes"
+        scene_dir.mkdir(parents=True, exist_ok=True)
+        for scene_num in (3, 5):
+            sdir = scene_dir / f"scene_{scene_num:04d}"
+            sdir.mkdir(exist_ok=True)
+            (sdir / "h3_prompt.json").write_text(
+                json.dumps(
+                    {
+                        "readiness": {
+                            "status": "blocked",
+                            "reason_codes": ["h3.fallback.plan_missing"],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+        # Also create a ready scene 7
+        sdir7 = scene_dir / "scene_0007"
+        sdir7.mkdir(exist_ok=True)
+        (sdir7 / "h3_prompt.json").write_text(
+            json.dumps({"readiness": {"status": "ready"}}),
+            encoding="utf-8",
+        )
+        # Create base plan
+        layouts_dir / "base.json"
+        (layouts_dir / "base.json").write_text(
+            json.dumps([{"scene": 3}, {"scene": 5}, {"scene": 7}]),
+            encoding="utf-8",
+        )
+        mock_plan.return_value = self._plan()
+        exit_code = run_project_command(
+            self._args("--replan-failed"), console=self.console
+        )
+
+        self.assertEqual(0, exit_code)
+        output = self.stream.getvalue()
+        self.assertIn("blocked H3 scenes", output)
+        # Verify build_resume_plan was called with the blocked scenes filter
+        call_kwargs = mock_plan.call_args.kwargs
+        self.assertIn("selected_scenes", call_kwargs)
+        self.assertEqual({3, 5}, call_kwargs["selected_scenes"])
+        self.assertTrue(call_kwargs["force_replan"])
+
+    @patch("feverslop.cli.run_cli.build_resume_plan")
+    def test_replan_failed_no_blocked_exits_clean(self, mock_plan):
+        mock_plan.return_value = self._plan()
+        exit_code = run_project_command(
+            self._args("--replan-failed"), console=self.console
+        )
+
+        self.assertEqual(0, exit_code)
+        self.assertIn("No blocked H3 scenes", self.stream.getvalue())
+
+    def test_blocked_h3_scene_numbers_returns_blocked_scenes(self):
+        from feverslop.cli.run_cli import _blocked_h3_scene_numbers
+        plans_dir = self.project / "output" / "render" / "plans"
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        scene_dir = self.project / "output" / "render" / "scenes"
+        scene_dir.mkdir(parents=True, exist_ok=True)
+        # Create blocked scene 3
+        scene_dir3 = scene_dir / "scene_0003"
+        scene_dir3.mkdir(exist_ok=True)
+        (scene_dir3 / "h3_prompt.json").write_text(
+            json.dumps({"readiness": {"status": "blocked"}}),
+            encoding="utf-8",
+        )
+        # Create ready scene 5
+        scene_dir5 = scene_dir / "scene_0005"
+        scene_dir5.mkdir(exist_ok=True)
+        (scene_dir5 / "h3_prompt.json").write_text(
+            json.dumps({"readiness": {"status": "ready"}}),
+            encoding="utf-8",
+        )
+        # Create base plan
+        (plans_dir / "base.json").write_text(
+            json.dumps([{"scene": 3}, {"scene": 5}]),
+            encoding="utf-8",
+        )
+        blocked = _blocked_h3_scene_numbers(self.project)
+        self.assertEqual([3], blocked)
+
 
 if __name__ == "__main__":
     unittest.main()

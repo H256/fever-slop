@@ -37,7 +37,12 @@ from feverslop.prompting.dspy_runtime import DspyRuntime
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.planning_payload import compact_planning_payload
 from feverslop.prompting.h3_user_messages import renderer_recovery_message
-from feverslop.prompting.llm_policy import H3_JUDGE_MAX_TOKENS, H3_PLANNER_MAX_TOKENS
+from feverslop.prompting.llm_policy import (
+    H3_JUDGE_MAX_TOKENS,
+    H3_PLANNER_MAX_TOKENS,
+    PLANNER_TOKEN_OVERHEAD,
+    PLANNER_TOKEN_PER_SHOT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +283,8 @@ class VideoPromptGenerator:
                  limits: ReferenceLimits | None = None,
                  dspy_runtime: DspyRuntime | None = None,
                  judge_enabled: bool = True,
-                 warning_callback: Callable[..., None] | None = None):
+                 warning_callback: Callable[..., None] | None = None,
+                 plan_shot_capacity: int | None = None):
         self.base_guide_path = Path(str(base_guide_path)).name
         self.reference_guide_path = Path(str(reference_guide_path)).name
         self.limits = limits or ReferenceLimits()
@@ -305,9 +311,18 @@ class VideoPromptGenerator:
         # serving model is verbose or the guide demands long prose; this mirrors
         # the existing `prompt_judge_max_tokens` override. Truncation is a common
         # cause of h3.fallback.plan_missing (see H3_PLANNER_MAX_TOKENS).
-        planner_max_tokens = int(
-            getattr(llm, "prompt_planner_max_tokens", H3_PLANNER_MAX_TOKENS),
-        ) or H3_PLANNER_MAX_TOKENS
+        # Auto-scale when prompt_planner_max_tokens is 0: overhead + shots *
+        # per-shot estimate, floored at the safe base constant.
+        override = int(getattr(llm, "prompt_planner_max_tokens", 0) or 0)
+        if override > 0:
+            planner_max_tokens = override
+        elif plan_shot_capacity is not None:
+            planner_max_tokens = max(
+                H3_PLANNER_MAX_TOKENS,
+                PLANNER_TOKEN_OVERHEAD + max(1, plan_shot_capacity) * PLANNER_TOKEN_PER_SHOT,
+            )
+        else:
+            planner_max_tokens = H3_PLANNER_MAX_TOKENS
         self.planner_max_tokens = planner_max_tokens
         self.last_planner_history: list[Any] = []
         self.lm = self.dspy_runtime.make_lm(llm, max_tokens=planner_max_tokens)

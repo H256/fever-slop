@@ -51,6 +51,12 @@ MSR_PER_RELAY_TOKENS = 2048
 H3_PLANNER_MAX_TOKENS = 8192
 H3_JUDGE_MAX_TOKENS = 2048
 
+# Auto-scaling constants used when `prompt_planner_max_tokens` is 0 (default).
+# PLANNER_TOKEN_OVERHEAD covers JSON structural tokens that don't scale with scenes.
+# PLANNER_TOKEN_PER_SHOT covers prose fields per authoritative relay segment (shot).
+PLANNER_TOKEN_OVERHEAD = 4096
+PLANNER_TOKEN_PER_SHOT = 1536
+
 # Batched tasks are budgeted by the per-call-site multiplier functions
 # (concept_batch_max_tokens / lyric_alignment_max_tokens), not by this
 # static map; their entries here are only a conservative fallback.

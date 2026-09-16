@@ -488,6 +488,12 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
         selected_scene_numbers=selected if selected_scene_spec else None,
         selected_scene_selection_complete=selected_scene_selection_complete,
     )
+    # Compute the worst-case shot count across all selected scenes so the
+    # H3 planner token budget auto-scales to the largest plan instead of
+    # truncating on the first try.  The biggest plan sets the ceiling.
+    _capacity = max(
+        (len(_normalize_relay_segments(seg)) for seg in stage1_segments), default=1
+    )
     pipeline = H3PromptPipeline(
         llm_factory=lambda current_config: OpenAICompatibleLLMClient(
             base_url=current_config.llm.base_url,
@@ -503,11 +509,12 @@ def _run_h3_prompts_stage(state: PipelineRunState) -> None:
             prompt_judge_max_tokens=current_config.llm.prompt_judge_max_tokens,
             prompt_judge_blocking=current_config.llm.prompt_judge_blocking,
             prompt_judge_enabled=current_config.llm.prompt_judge_enabled,
+            prompt_planner_max_tokens=current_config.llm.prompt_planner_max_tokens,
             chat_template_kwargs=current_config.llm.chat_template_kwargs,
         ),
         h3_prompt_builder_factory=H3PromptBuilder,
         dspy_prompt_builder_factory=lambda llm: DspyH3PromptBuilder(
-            build_dspy_generator(llm),
+            build_dspy_generator(llm, plan_shot_capacity=_capacity),
             reference_root=paths.project_dir,
             allow_fallback=True,
             reporter=reporter,
@@ -1993,7 +2000,10 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
     render_plan = RenderPlan.from_dicts(render_plan).select(
         scene_numbers=selected_scenes,
     ).to_dicts()
-    require_ready_scenes(render_plan)
+    require_ready_scenes(
+        render_plan,
+        project_path=getattr(getattr(state, "context", None), "project_config_dir", None),
+    )
     scene_numbers = [int(entry["scene"]) for entry in render_plan]
     canonical_clips = [layout.scene_final_video(scene_number) for scene_number in scene_numbers]
     canonical_available = [clip for clip in canonical_clips if clip.is_file()]
@@ -2084,7 +2094,10 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
 def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
     from feverslop.domain.scene_recovery import require_ready_scenes
     if getattr(state, "plan_for_next_step", None):
-        require_ready_scenes(json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig")))
+        require_ready_scenes(
+            json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig")),
+            project_path=getattr(getattr(state, "context", None), "project_config_dir", None),
+        )
     layout = getattr(state.context, "artifact_layout", None)
     variants = getattr(state, "video_only_variants", None)
     if layout is not None and not variants:

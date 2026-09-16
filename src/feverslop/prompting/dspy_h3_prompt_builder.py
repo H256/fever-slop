@@ -1746,9 +1746,25 @@ class DspyH3PromptBuilder:
                     readiness = result.get("readiness") or {}
                     reasons = ", ".join(readiness.get("reason_codes") or ["h3.preparation.failed"])
                     attempts = ", ".join(a["stage"] for a in readiness.get("attempts") or []) or "none"
-                    warning_callback(f"Scene {checkpoint_input.scene_number} blocked: {reasons}; reserved attempts: {attempts}. "
-                        "Correct its inputs or explicitly replan this scene; unchanged resume spends no new attempts.",
-                        title="H3 scene readiness")
+                    reason_codes = readiness.get("reason_codes") or []
+                    # Decode the root cause and suggested action for blocked scenes.
+                    guidance = ""
+                    truncation = False
+                    error_detail = result.get("dspy_error_detail") or {}
+                    if isinstance(error_detail, Mapping):
+                        # Collect per-attempt diagnostics.
+                        for attempt_data in error_detail.get("attempts") or ():
+                            llm_diag = attempt_data.get("llm", {}) if isinstance(attempt_data, Mapping) else {}
+                            if isinstance(llm_diag, Mapping):
+                                if llm_diag.get("truncation_suspected"):
+                                    truncation = True
+                    from feverslop.domain.h3_guidance import h3_block_guide
+                    guidance = h3_block_guide(reason_codes, truncation_suspected=truncation)
+                    warning_callback(
+                        f"Scene {checkpoint_input.scene_number} blocked: {reasons}; "
+                        f"reserved attempts: {attempts}. {guidance}",
+                        title="H3 scene readiness",
+                    )
                 results.append({"segment_id": segment_id, **result})
             if progress_callback is not None:
                 progress_callback(current, total)
@@ -1773,8 +1789,13 @@ class DspyH3PromptBuilder:
         return artifact_store.write_json(output_json_path, results)
 
 
-def build_dspy_generator(llm: Any) -> Callable[[dict[str, Any]], Any]:
-    """Create the complete planner/analyzer/renderer generator from dspy_prompt_test."""
+def build_dspy_generator(llm: Any, *, plan_shot_capacity: int | None = None) -> Callable[[dict[str, Any]], Any]:
+    """Create the complete planner/analyzer/renderer generator from dspy_prompt_test.
+
+    ``plan_shot_capacity`` controls auto-scaling of the H3 planner token budget.
+    When 0 (default), the budget is the safe base constant. When set, the budget
+    grows with the worst-case scene size.
+    """
     from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
 
     return VideoPromptGenerator(
@@ -1782,6 +1803,7 @@ def build_dspy_generator(llm: Any) -> Callable[[dict[str, Any]], Any]:
         reference_guide_path="minimax-h3-references.md",
         llm=llm,
         judge_enabled=bool(getattr(llm, "prompt_judge_enabled", True)),
+        plan_shot_capacity=plan_shot_capacity,
     )
 
 

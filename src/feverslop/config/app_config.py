@@ -31,6 +31,9 @@ class LLMConfig:
     prompt_judge_enabled: bool = False
     # Kept for config compatibility; H3 judges are advisory in all modes.
     prompt_judge_blocking: bool = False
+    # H3 planner output budget.  0 = auto-scale by project shot count (default).
+    # When set, this explicit ceiling overrides the auto-scaler.
+    prompt_planner_max_tokens: int = 0
     chat_template_kwargs: dict[str, Any] = field(default_factory=dict)
     models: dict[str, str] = field(default_factory=dict)
     _local_api_key: str | None = field(default=None, repr=False)
@@ -314,6 +317,9 @@ class AppConfig:
             llm_raw.get("prompt_judge_blocking", False),
             "llm.prompt_judge_blocking",
         )
+        llm_prompt_planner_max_tokens = int(llm_raw.get("prompt_planner_max_tokens", 0))
+        if llm_prompt_planner_max_tokens < 0:
+            raise ValueError("llm.prompt_planner_max_tokens must be >= 0")
         llm_chat_template_kwargs_raw = llm_raw.get("chat_template_kwargs", {})
         if not isinstance(llm_chat_template_kwargs_raw, dict):
             raise ValueError("llm.chat_template_kwargs must be an object")
@@ -360,6 +366,7 @@ class AppConfig:
                 prompt_judge_max_tokens=llm_prompt_judge_max_tokens,
                 prompt_judge_enabled=llm_prompt_judge_enabled,
                 prompt_judge_blocking=llm_prompt_judge_blocking,
+                prompt_planner_max_tokens=llm_prompt_planner_max_tokens,
                 chat_template_kwargs=llm_chat_template_kwargs,
                 models=llm_models,
                 _local_api_key=_optional_secret(llm_raw.get("api_key")) or dotenv_api_key,
