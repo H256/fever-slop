@@ -22,6 +22,7 @@ from feverslop.domain.ltx_rendering import (
     build_audio_window_spec,
     resolve_workflow_frame_parameters,
 )
+from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS
 from feverslop.domain.scene_duration_limits import validate_render_frame_budget
 from feverslop.domain.visual_consistency_runtime import bind_continuity_anchors
 from feverslop.errors import FeverSlopValidationError
@@ -46,6 +47,7 @@ class ComfyUIIngredientsVideoRenderBackend:
         ffmpeg_path: str = "ffmpeg",
         postprocess_reencode: bool = True,
         ffmpeg_debug: bool = False,
+        ffmpeg_timeout_seconds: float | None = None,
         asset_uploader: ComfyUIVideoAssetUploader | None = None,
         render_queue: ComfyUIRenderQueue | None = None,
         postprocessor: VideoPostProcessor | None = None,
@@ -83,6 +85,9 @@ class ComfyUIIngredientsVideoRenderBackend:
             ffmpeg_path=ffmpeg_path,
             reencode=postprocess_reencode,
             debug=ffmpeg_debug,
+            ffmpeg_timeout_seconds=(
+                FFMPEG_TIMEOUT_SECONDS if ffmpeg_timeout_seconds is None else ffmpeg_timeout_seconds
+            ),
         )
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
         self.video_settings = video_settings

@@ -10,6 +10,7 @@ from feverslop.adapters.comfyui_model_resolver import NoOpComfyUIModelResolver
 from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.domain.facefix_rendering import DEFAULT_FACEFIX_WORKFLOW, FaceFixConfig
 
@@ -34,6 +35,7 @@ class ComfyUIFaceFixCropBackend:
         ffmpeg_path: str = "ffmpeg",
         postprocess_reencode: bool = True,
         ffmpeg_debug: bool = False,
+        ffmpeg_timeout_seconds: float | None = None,
         asset_uploader: ComfyUIVideoAssetUploader | None = None,
         render_queue: ComfyUIRenderQueue | None = None,
         postprocessor: VideoPostProcessor | None = None,
@@ -53,6 +55,9 @@ class ComfyUIFaceFixCropBackend:
             ffmpeg_path=ffmpeg_path,
             reencode=postprocess_reencode,
             debug=ffmpeg_debug,
+            ffmpeg_timeout_seconds=(
+                FFMPEG_TIMEOUT_SECONDS if ffmpeg_timeout_seconds is None else ffmpeg_timeout_seconds
+            ),
         )
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
         self.face_ref_image = Path(face_ref_image) if face_ref_image is not None else None

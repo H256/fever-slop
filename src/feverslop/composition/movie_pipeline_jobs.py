@@ -565,6 +565,7 @@ def build_movie_visual_adapter(
         from feverslop.adapters.movie_minimax_visual import (
             ComfyUIMiniMaxMovieVisualAdapter,
         )
+        from feverslop.config.app_config import AppConfig
 
         workflow_key = {
             "minimax-h3-r2v": "r2v_workflow",
@@ -576,6 +577,9 @@ def build_movie_visual_adapter(
             workflow_path=config[workflow_key],
             video_pipeline=config["movie_video_workflow"],
             app_config_path=config.get("app_config_path", "app_config.json"),
+            ffmpeg_timeout_seconds=AppConfig.load(
+                str(config.get("app_config_path") or "app_config.json")
+            ).comfyui.ffmpeg_timeout_seconds,
         )
     backend = config["render_backend"]
     if backend == "local":
@@ -606,6 +610,7 @@ def build_movie_visual_adapter(
         i2v_workflow_path=Path(config["msr_i2v_workflow"]) if config.get("msr_i2v_workflow") else None,
         i2v_workflow=i2v_workflow,
         continuity_keyframes=config["continuity_keyframes"],
+        ffmpeg_timeout_seconds=app_config.comfyui.ffmpeg_timeout_seconds,
         continuity_handoff_factory=lambda postprocessor, root, selected: (
             ContinuityHandoffUseCase(
                 PostprocessorFrameExtractor(
@@ -665,7 +670,9 @@ def build_movie_i2v_edit_visual_adapter(project_dir: Path, config: dict[str, Any
         workflow_path=Path(config["hero_workflow"]),
         edit_workflow_path=Path(config["edit_workflow"]),
         i2v_workflow_path=Path(config["i2v_workflow"]),
-        postprocessor=VideoPostProcessor(),
+        postprocessor=VideoPostProcessor(
+            ffmpeg_timeout_seconds=app_config.comfyui.ffmpeg_timeout_seconds
+        ),
     )
 
 

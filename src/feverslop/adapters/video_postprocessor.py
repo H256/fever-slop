@@ -5,16 +5,25 @@ import os
 import subprocess
 from pathlib import Path
 
-from feverslop.domain.postprocessing import TrimSpec
+from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS, TrimSpec
 from feverslop.errors import FeverSlopAdaptationError
 from feverslop.utils.media_paths import write_concat_list as write_media_concat_list
 
-FFMPEG_TIMEOUT_SECONDS = 120
 FFPROBE_TIMEOUT_SECONDS = 30
 
 
-def final_video_postprocessor() -> "VideoPostProcessor":
-    return VideoPostProcessor(ffmpeg_path="ffmpeg", audio_bitrate="320k")
+def final_video_postprocessor(timeout_seconds: float | None = None) -> "VideoPostProcessor":
+    """Build the final-assembly postprocessor with a configurable FFmpeg timeout.
+
+    ``timeout_seconds`` of ``None`` falls back to the canonical default
+    (:data:`feverslop.domain.postprocessing.FFMPEG_TIMEOUT_SECONDS`); callers
+    pass the per-project value resolved from ``AppConfig`` when it is set.
+    """
+    return VideoPostProcessor(
+        ffmpeg_path="ffmpeg",
+        audio_bitrate="320k",
+        ffmpeg_timeout_seconds=FFMPEG_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds,
+    )
 
 
 class VideoPostProcessor:

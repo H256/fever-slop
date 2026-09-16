@@ -231,8 +231,9 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
     if not config.upscale.enabled:
         return []
     layout = SceneArtifactLayout(config.project_dir)
+    client, app_config = _build_comfy_client(config)
     backend = options.backend or ComfyUISeedVR2Backend(
-        client=_build_comfy_client(config),
+        client=client,
         workflow_path=(
             Path(config.upscale.workflow_path)
             if Path(config.upscale.workflow_path).is_absolute()
@@ -241,7 +242,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
     )
     probe_size = options.probe_size or _probe_size
     probe_duration = options.probe_duration or _probe_duration
-    postprocessor = final_video_postprocessor()
+    postprocessor = final_video_postprocessor(app_config.comfyui.ffmpeg_timeout_seconds)
     plan = json.loads(Path(options.render_plan_path).read_text(encoding="utf-8-sig"))
     if options.scene_numbers is not None:
         plan = [
@@ -440,7 +441,7 @@ def run_seedvr2(options: SeedVR2CompositionOptions) -> list[Path]:
     return outputs
 
 
-def _build_comfy_client(config: ProjectConfig):
+def _build_comfy_client(config: ProjectConfig) -> tuple:
     from feverslop.adapters.comfyui_client import ComfyUIClient
     from feverslop.config.app_config import AppConfig
 
@@ -448,4 +449,4 @@ def _build_comfy_client(config: ProjectConfig):
     return ComfyUIClient(
         base_url=app_config.comfyui.base_url,
         prompt_timeout_seconds=app_config.comfyui.prompt_timeout_seconds,
-    )
+    ), app_config

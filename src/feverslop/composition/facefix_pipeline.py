@@ -82,7 +82,7 @@ def build_facefix_step(
     # remains available only for the explicit legacy opt-in path.
     from feverslop.adapters.comfyui_facefix_backend import ComfyUIFaceFixRenderBackend
 
-    client, model_resolver, config = _facefix_runtime(options)
+    client, model_resolver, config, app_config = _facefix_runtime(options)
 
     backend = ComfyUIFaceFixRenderBackend(
         client=client,
@@ -93,6 +93,7 @@ def build_facefix_step(
         ffmpeg_path=options.ffmpeg_path,
         postprocess_reencode=options.postprocess_reencode,
         ffmpeg_debug=options.ffmpeg_debug,
+        ffmpeg_timeout_seconds=app_config.comfyui.ffmpeg_timeout_seconds,
         model_resolver=model_resolver,
     )
 
@@ -142,7 +143,7 @@ def _run_crop_facefix(
     *,
     console: Console | None = None,
 ) -> list[Path]:
-    client, model_resolver, config = _facefix_runtime(options)
+    client, model_resolver, config, app_config = _facefix_runtime(options)
 
     crop_config = FaceFixConfig(
         keyframe_indices=options.keyframe_indices,
@@ -164,6 +165,7 @@ def _run_crop_facefix(
         ffmpeg_path=options.ffmpeg_path,
         postprocess_reencode=options.postprocess_reencode,
         ffmpeg_debug=options.ffmpeg_debug,
+        ffmpeg_timeout_seconds=app_config.comfyui.ffmpeg_timeout_seconds,
         model_resolver=model_resolver,
     )
 
@@ -532,7 +534,7 @@ def _run_crop_facefix(
 
 def _facefix_runtime(
     options: FaceFixCompositionOptions,
-) -> tuple[ComfyUIClient, ComfyUIModelResolver, FaceFixConfig]:
+) -> tuple[ComfyUIClient, ComfyUIModelResolver, FaceFixConfig, AppConfig]:
     """Build the shared FaceFix runtime once for either backend."""
     app_config = AppConfig.load(options.app_config_path)
     client = ComfyUIClient(
@@ -550,7 +552,7 @@ def _facefix_runtime(
         postprocess=options.postprocess,
         ffmpeg_path=options.ffmpeg_path,
     )
-    return client, resolver, config
+    return client, resolver, config, app_config
 
 
 def _extract_face_crop(

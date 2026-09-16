@@ -9,6 +9,7 @@ from typing import Any
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.movie_visual import _references_from_ids
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS
 from feverslop.application.movie_msr_enrichment import _movie_video_prompt
 from feverslop.application.render_video import RenderVideoScenesRequest
 from feverslop.composition.render_video import (
@@ -29,13 +30,17 @@ H3_PROMPT_PLAN_VERSION = "h3-prompt-sections-v1"
 class ComfyUIMiniMaxMovieVisualAdapter:
     """Render and concatenate Movie scenes through a MiniMax H3 pipeline."""
 
-    def __init__(self, *, project_dir: Path, workflow_path: str | Path, video_pipeline: str, app_config_path: str | Path = "app_config.json"):
+    def __init__(self, *, project_dir: Path, workflow_path: str | Path, video_pipeline: str, app_config_path: str | Path = "app_config.json", ffmpeg_timeout_seconds: float | None = None):
         self.project_dir = Path(project_dir)
         self.workflow_path = Path(workflow_path)
         self.video_pipeline = video_pipeline
         self.app_config_path = Path(app_config_path)
         self.output_dir = self.project_dir / "output" / "movie" / video_pipeline
-        self.postprocessor = VideoPostProcessor()
+        self.postprocessor = VideoPostProcessor(
+            ffmpeg_timeout_seconds=(
+                FFMPEG_TIMEOUT_SECONDS if ffmpeg_timeout_seconds is None else ffmpeg_timeout_seconds
+            ),
+        )
 
     def render_movie(
         self,

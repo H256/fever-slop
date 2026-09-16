@@ -25,7 +25,7 @@ from feverslop.domain.minimax_h3_frames import (
 )
 from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.domain.effective_render_plan import CanonicalSceneDependencies
-from feverslop.domain.postprocessing import TrimSpec
+from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS, TrimSpec
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest, StoredArtifact
 from feverslop.errors import FeverSlopValidationError
 from feverslop.adapters.scene_seed import resolve_scene_seed
@@ -52,6 +52,7 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         ffmpeg_path: str = "ffmpeg",
         postprocess_reencode: bool = True,
         ffmpeg_debug: bool = False,
+        ffmpeg_timeout_seconds: float | None = None,
         asset_uploader: ComfyUIVideoAssetUploader | None = None,
         render_queue: ComfyUIRenderQueue | None = None,
         postprocessor: VideoPostProcessor | None = None,
@@ -88,6 +89,9 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
             ffmpeg_path=ffmpeg_path,
             reencode=postprocess_reencode,
             debug=ffmpeg_debug,
+            ffmpeg_timeout_seconds=(
+                FFMPEG_TIMEOUT_SECONDS if ffmpeg_timeout_seconds is None else ffmpeg_timeout_seconds
+            ),
         )
         self.model_resolver = model_resolver
         self.video_settings = video_settings

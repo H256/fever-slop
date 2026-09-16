@@ -21,6 +21,7 @@ from feverslop.domain.ltx_rendering import (
     build_audio_window_spec,
     round_up_8n1,
 )
+from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS
 from feverslop.domain.scene_duration_limits import validate_render_frame_budget
 from feverslop.errors import FeverSlopRenderError, FeverSlopValidationError
 from feverslop.ports.rendering import VideoRenderRequest
@@ -155,6 +156,7 @@ class ComfyUIVideoRenderBackend:
         ffmpeg_path: str = "ffmpeg",
         postprocess_reencode: bool = True,
         ffmpeg_debug: bool = False,
+        ffmpeg_timeout_seconds: float | None = None,
         asset_uploader: ComfyUIVideoAssetUploader | None = None,
         workflow_patcher: LTXWorkflowPatcher | None = None,
         model_resolver=None,
@@ -276,6 +278,9 @@ class ComfyUIVideoRenderBackend:
             ffmpeg_path=ffmpeg_path,
             reencode=postprocess_reencode,
             debug=ffmpeg_debug,
+            ffmpeg_timeout_seconds=(
+                FFMPEG_TIMEOUT_SECONDS if ffmpeg_timeout_seconds is None else ffmpeg_timeout_seconds
+            ),
         )
         self.output_writer = output_writer or RenderOutputWriter(
             output_dir=self.output_dir,
