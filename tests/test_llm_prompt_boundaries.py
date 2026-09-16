@@ -15,7 +15,12 @@ class LlmPromptBoundaryTests(unittest.TestCase):
             root / "feverslop" / "prompting" / "dspy_runtime.py",
             root / "feverslop" / "adapters" / "llm_client.py",
         }
-        benchmark_path = root / "feverslop" / "tools" / "llm_benchmark.py"
+        # Standalone developer/diagnostic CLIs that intentionally make raw
+        # completion calls (not part of the production render path).
+        debug_cli_paths = {
+            root / "feverslop" / "tools" / "llm_benchmark.py",
+            root / "feverslop" / "tools" / "r2v_prompt_check.py",
+        }
         violations = []
         for path in root.rglob("*.py"):
             if path in allowed:
@@ -36,7 +41,7 @@ class LlmPromptBoundaryTests(unittest.TestCase):
                     "complete_prompt",
                     "complete_prompt_with_images",
                 }:
-                    if path == benchmark_path and node.func.attr == "complete_prompt":
+                    if path in debug_cli_paths and node.func.attr == "complete_prompt":
                         continue
                     violations.append(f"{path}:{node.lineno}")
         self.assertEqual([], violations)
