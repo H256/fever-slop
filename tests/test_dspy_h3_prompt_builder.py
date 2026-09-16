@@ -1312,7 +1312,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertEqual(0.25, lm_factory.call_args.kwargs["temperature"])
 
-    def test_generator_gives_the_structured_judge_enough_output_tokens(self):
+    def test_generator_budgets_the_structured_planner_and_judge_output_tokens(self):
         class Client:
             base_url = "http://your-llm-server.local/v1"
             api_key = "none-needed"
@@ -1333,8 +1333,38 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 llm=LLM(),
             )
 
-        self.assertEqual(4096, lm_factory.call_args_list[0].kwargs["max_tokens"])
+        # The planner's typed plan carries multiple prose fields per shot and is
+        # prone to truncation at 4k on verbose/quantized models; default is 8k.
+        self.assertEqual(8192, lm_factory.call_args_list[0].kwargs["max_tokens"])
         self.assertEqual(2048, lm_factory.call_args_list[1].kwargs["max_tokens"])
+
+    def test_generator_honors_prompt_planner_max_tokens_override(self):
+        class Client:
+            base_url = "http://your-llm-server.local/v1"
+            api_key = "none-needed"
+
+        class LLM:
+            client = Client()
+            model = "gemma4-26b-a4b"
+            temperature = 0.75
+            max_tokens = 65536
+            prompt_planner_max_tokens = 12288
+            prompt_judge_max_tokens = 4096
+            dspy_cache = False
+
+        guides = files("feverslop.prompting.guides")
+        with patch("dspy.LM") as lm_factory:
+            generator = VideoPromptGenerator(
+                base_guide_path=guides / "minimax-h3-base.md",
+                reference_guide_path=guides / "minimax-h3-references.md",
+                llm=LLM(),
+            )
+
+        self.assertEqual(12288, lm_factory.call_args_list[0].kwargs["max_tokens"])
+        # The judge is still capped by _H3_JUDGE_MAX_TOKENS (2048) even when the
+        # override requests more.
+        self.assertEqual(2048, lm_factory.call_args_list[1].kwargs["max_tokens"])
+        self.assertEqual(12288, generator.planner_max_tokens)
 
     def test_reference_limits_use_plural_picture_field(self):
         generator = object.__new__(CoreVideoPromptGenerator)
@@ -2373,6 +2403,93 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertNotIn("data:image", result["dspy_error"])
         self.assertNotIn("A" * 100, result["dspy_error"])
         self.assertEqual("h3.fallback.plan_missing", result["dspy_error"])
+        # The real cause and retry diagnostics are surfaced next to the block
+        # reason so a blocked scene is actionable -- and the root cause is
+        # sanitized by the same rule, so the embedded payload never leaks.
+        self.assertEqual("<embedded image omitted>", result["dspy_error_root"])
+        self.assertNotIn("data:image", result["dspy_error_root"])
+        self.assertNotIn("A" * 100, result["dspy_error_root"])
+        self.assertIn("attempts", result["dspy_error_detail"])
+        self.assertEqual(3, len(result["dspy_error_detail"]["attempts"]))
+
+    def test_retries_flaky_planner_before_blocking(self):
+        from types import SimpleNamespace
+
+        attempts = {"count": 0}
+
+        class FlakyGenerator:
+            def __call__(self, request):
+                attempts["count"] += 1
+                if attempts["count"] < 3:
+                    raise RuntimeError("transient parse failure")
+                return SimpleNamespace(plan=ResolvedPromptPlan(
+                    creative_intent="A performer waits.",
+                    style_opening="Live-action cinematic imagery uses cool practical lighting.",
+                    shots=[PlannedShot(shot_number=1, start_seconds=0, end_seconds=2,
+                                       description="A performer waits.")],
+                    overall_soundscape="Quiet room tone.",
+                    music_intent=MusicIntent.NONE,
+                ))
+
+        result = DspyH3PromptBuilder(
+            FlakyGenerator(), planner_retries=2,
+        ).build_h3_prompt(
+            segment={"segment_id": "seg-1", "duration": 2},
+            concept="A performer waits.",
+            scene_details={},
+            global_context={},
+        )
+
+        self.assertEqual(3, attempts["count"])
+        self.assertEqual("ready", result["readiness"]["status"])
+        self.assertTrue(result["prompt_contract"]["valid"])
+        self.assertIn("dspy_section_plan", result["prompt_provenance"]["source"])
+        # A flaky failure that eventually succeeds must not leave stale diagnostics.
+        self.assertNotIn("dspy_error_root", result)
+
+    def test_exhausted_retries_without_synthesis_still_blocks_with_root_cause(self):
+        class BrokenGenerator:
+            def __call__(self, request):
+                raise RuntimeError("connection refused")
+
+        result = DspyH3PromptBuilder(
+            BrokenGenerator(), planner_retries=1,
+        ).build_h3_prompt(
+            segment={"segment_id": "seg-1"},
+            concept="fallback scene",
+            scene_details={},
+            global_context={},
+        )
+
+        self.assertEqual("blocked", result["readiness"]["status"])
+        self.assertEqual(["h3.fallback.plan_missing"], result["readiness"]["reason_codes"])
+        self.assertEqual("h3.fallback.plan_missing", result["dspy_error"])
+        self.assertIn("connection refused", result["dspy_error_root"])
+        # Both retry attempts were recorded (attempt 1 and retry attempt 2).
+        self.assertEqual(2, len(result["dspy_error_detail"]["attempts"]))
+
+    def test_synthesize_plan_fallback_keeps_scene_renderable(self):
+        from types import SimpleNamespace
+
+        class BrokenGenerator:
+            def __call__(self, request):
+                raise RuntimeError("DSPy unavailable")
+
+        result = DspyH3PromptBuilder(
+            BrokenGenerator(), planner_retries=0, synthesize_plan_fallback=True,
+        ).build_h3_prompt(
+            segment={"segment_id": "seg-1", "duration": 4, "type": "instrumental"},
+            concept="A drummer performs.",
+            scene_details={},
+            global_context={},
+        )
+
+        self.assertEqual("ready", result["readiness"]["status"])
+        self.assertTrue(result["prompt_contract"]["valid"])
+        self.assertIn("deterministic_scene_synthesis", result["prompt_provenance"]["source"])
+        self.assertTrue(str(result["prompt"] or "").strip())
+        # The synthesized default must not leak the original failure as a block.
+        self.assertNotIn("dspy_error_root", result)
 
     def test_production_mode_does_not_hide_dspy_failure(self):
         class BrokenGenerator:
