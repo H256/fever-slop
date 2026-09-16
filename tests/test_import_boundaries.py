@@ -377,6 +377,58 @@ class ImportBoundaryTests(unittest.TestCase):
 
         self.assertEqual([], offenders)
 
+    def test_root_cli_facades_do_not_assign_into_canonical_modules(self):
+        # #1198 (M-24): root CLI shims used to copy re-exported names back
+        # into the canonical feverslop.cli.* module (setattr(_cli, name,
+        # globals()[name])). Those monkey-patch assignments are invisible at
+        # runtime (each name is written back to the module it came from) but
+        # hide test double wiring and module-identity drift. No root facade
+        # may setattr() (or otherwise assign) onto an alias of a feverslop
+        # module; the two entry points must simply be the same objects.
+        root_files = [
+            path
+            for path in Path().glob("*.py")
+            if not path.name.startswith("_")
+        ]
+        offenders = []
+        for path in root_files:
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            feverslop_aliases = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name == "feverslop" or alias.name.startswith("feverslop."):
+                            feverslop_aliases[alias.asname or alias.name] = alias.name
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module and (
+                        node.module == "feverslop" or node.module.startswith("feverslop.")
+                    ):
+                        for alias in node.names:
+                            feverslop_aliases[alias.asname or alias.name] = node.module
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "setattr"
+                    and node.args
+                    and isinstance(node.args[0], ast.Name)
+                    and node.args[0].id in feverslop_aliases
+                ):
+                    offenders.append(f"{path}:{node.lineno} setattr({node.args[0].id}, ...)")
+                    continue
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if (
+                            isinstance(target, ast.Attribute)
+                            and isinstance(target.value, ast.Name)
+                            and target.value.id in feverslop_aliases
+                        ):
+                            offenders.append(
+                                f"{path}:{node.lineno} {target.value.id}.{target.attr} = ..."
+                            )
+
+        self.assertEqual([], offenders)
+
     def test_instrumental_segments_trigger_closed_mouth_policy(self):
         """Render plan scenes with only instrumental segments must get closed-mouth policy."""
         from feverslop.application.ingredients_render_plan import (
