@@ -54,7 +54,7 @@ def _render_performance_phases(text, phases, speaker_ids):
     # Remove authored claims before inserting any events, so later phases cannot
     # remove the compiler-owned dialogue from an earlier phase.
     for phase in phases:
-        content = _relay_vocal_content(phase)
+        content = relay_vocal_content(phase)
         if content:
             text = re.sub(r"(?<!\w)" + re.escape(content) + r"(?!\w)", "", text, flags=re.IGNORECASE)
         text = _remove_authored_vocal_claims(text, phase)
@@ -122,7 +122,7 @@ def plan_with_authoritative_relay(
             shots.append(shot)
             continue
         relay = relay_segments[index]
-        content = _relay_vocal_content(relay)
+        content = relay_vocal_content(relay)
         values: dict[str, str | None] = {}
         for field in fields:
             value = getattr(shot, field)
@@ -431,7 +431,7 @@ class DeterministicH3Compiler:
             for index, relay in enumerate(() if performance_phases else relay_segments or ()):
                 if index >= len(rendered_shots):
                     break
-                content = _relay_vocal_content(relay)
+                content = relay_vocal_content(relay)
                 if content:
                     rendered_shots[index] = re.sub(
                         re.escape(content),
@@ -1079,7 +1079,7 @@ def _insert_authoritative_vocal_event(
     state = str(relay.get("state") or "").strip().casefold()
     if state not in {"singing", "dialogue", "speech", "spoken", "vocals", "vocal"}:
         return shot_text
-    content = _relay_vocal_content(relay)
+    content = relay_vocal_content(relay)
     if not content:
         return shot_text
 
@@ -1221,7 +1221,7 @@ def _remove_authored_dialogue_blocks(text: str) -> str:
     return re.sub(r"\s+", " ", normalized).strip()
 
 
-def _relay_vocal_content(relay: Mapping[str, Any]) -> str:
+def relay_vocal_content(relay: Mapping[str, Any]) -> str:
     if relay.get("performance_phase"):
         if str(relay.get("state") or "").casefold() == "instrumental":
             return ""

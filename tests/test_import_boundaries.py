@@ -170,6 +170,71 @@ class ImportBoundaryTests(unittest.TestCase):
 
         self.assertEqual([], offenders)
 
+    def test_inner_layers_do_not_import_private_names(self):
+        """Cross-module imports of underscore-prefixed names are private access.
+
+        The module-name tests above only forbid specific adapter modules; they
+        never caught application/prompting code reaching for ``_private``
+        helpers in other modules. This test enforces the convention: private
+        names stay inside their defining module.
+        """
+        inner_layers = [
+            Path("src/feverslop/domain"),
+            Path("src/feverslop/ports"),
+            Path("src/feverslop/application"),
+            Path("src/feverslop/pipeline"),
+            Path("src/feverslop/prompting"),
+        ]
+        offenders = []
+        for layer_root in inner_layers:
+            for path in layer_root.rglob("*.py"):
+                tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+                for node in ast.walk(tree):
+                    if not isinstance(node, ast.ImportFrom):
+                        continue
+                    cross_module = (
+                        node.level == 0 and (node.module or "").startswith("feverslop.")
+                    ) or node.level > 0
+                    if not cross_module:
+                        continue
+                    for alias in node.names:
+                        if alias.name.startswith("_") and alias.name != "_":
+                            offenders.append(f"{path}:{node.lineno}: {alias.name}")
+
+        self.assertEqual([], offenders)
+
+    def test_application_layer_has_no_adapter_imports(self):
+        """Application code must not import concrete adapters.
+
+        ``redact_secrets`` was the last remaining adapter import in the
+        application layer (now in ``feverslop.domain.security``). A handful of
+        legacy modules are allowlisted until they are migrated; add new
+        offenders nowhere.
+        """
+        app_root = Path("src/feverslop/application")
+        allowed_files = {
+            "h3_prompt_pipeline.py",
+            "prompt_generation.py",
+            "startframe_director_prompts.py",
+            "movie_references.py",
+        }
+        offenders = []
+        for path in app_root.rglob("*.py"):
+            if path.name in allowed_files:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            for node in ast.walk(tree):
+                modules = []
+                if isinstance(node, ast.Import):
+                    modules = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    modules = [node.module or ""]
+                for module in modules:
+                    if module == "feverslop.adapters" or module.startswith("feverslop.adapters."):
+                        offenders.append(f"{path}:{node.lineno}: {module}")
+
+        self.assertEqual([], offenders)
+
     def test_new_pure_application_modules_do_not_import_runtime_io(self):
         legacy_filesystem_modules = {
             "continuity_handoff.py",
@@ -374,6 +439,58 @@ class ImportBoundaryTests(unittest.TestCase):
             for token in forbidden:
                 if token in text:
                     offenders.append(f"{path}: {token}")
+
+        self.assertEqual([], offenders)
+
+    def test_root_cli_facades_do_not_assign_into_canonical_modules(self):
+        # #1198 (M-24): root CLI shims used to copy re-exported names back
+        # into the canonical feverslop.cli.* module (setattr(_cli, name,
+        # globals()[name])). Those monkey-patch assignments are invisible at
+        # runtime (each name is written back to the module it came from) but
+        # hide test double wiring and module-identity drift. No root facade
+        # may setattr() (or otherwise assign) onto an alias of a feverslop
+        # module; the two entry points must simply be the same objects.
+        root_files = [
+            path
+            for path in Path().glob("*.py")
+            if not path.name.startswith("_")
+        ]
+        offenders = []
+        for path in root_files:
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            feverslop_aliases = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name == "feverslop" or alias.name.startswith("feverslop."):
+                            feverslop_aliases[alias.asname or alias.name] = alias.name
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module and (
+                        node.module == "feverslop" or node.module.startswith("feverslop.")
+                    ):
+                        for alias in node.names:
+                            feverslop_aliases[alias.asname or alias.name] = node.module
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "setattr"
+                    and node.args
+                    and isinstance(node.args[0], ast.Name)
+                    and node.args[0].id in feverslop_aliases
+                ):
+                    offenders.append(f"{path}:{node.lineno} setattr({node.args[0].id}, ...)")
+                    continue
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if (
+                            isinstance(target, ast.Attribute)
+                            and isinstance(target.value, ast.Name)
+                            and target.value.id in feverslop_aliases
+                        ):
+                            offenders.append(
+                                f"{path}:{node.lineno} {target.value.id}.{target.attr} = ..."
+                            )
 
         self.assertEqual([], offenders)
 

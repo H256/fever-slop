@@ -68,11 +68,59 @@ def export_render_plan_to_mlt(
     original_audio_playlist = ET.Element("playlist", {"id": "playlist2", "autoclose": "1"})
     ET.SubElement(original_audio_playlist, "property", {"name": "shotcut:audio"}).text = "1"
     ET.SubElement(original_audio_playlist, "property", {"name": "shotcut:name"}).text = "A2 - Original audio"
-    total_frames = 0
-    timeline_cursor = 0
+    total_frames, _cursor = _append_scene_clips(
+        root,
+        video_playlist,
+        clip_audio_playlist,
+        compute_timeline_intervals(entries, fps=fps),
+        clip_paths,
+        output,
+    )
 
-    indexed_entries = list(zip(compute_timeline_intervals(entries, fps=fps), clip_paths, strict=True))
-    for index, (interval, clip_path) in enumerate(indexed_entries, start=1):
+    if audio_path is not None:
+        audio = Path(audio_path)
+        if not audio.is_file():
+            raise FileNotFoundError(f"Audio file does not exist: {audio}")
+        _add_avformat_producer(
+            root,
+            "audio_original",
+            audio,
+            output,
+            max(0, total_frames - 1),
+            caption="Original audio",
+        )
+        ET.SubElement(original_audio_playlist, "entry", {
+            "producer": "audio_original",
+            "in": "0",
+            "out": str(max(0, total_frames - 1)),
+        })
+
+    root.append(video_playlist)
+    root.append(clip_audio_playlist)
+    root.append(original_audio_playlist)
+    _append_project_notes(root, plan, output, width, height, fps, total_frames, audio_path, render_plan_path, project_name)
+    _append_bin_and_background(root, plan, total_frames, audio_path)
+    _append_tractor(root, total_frames, audio_path)
+
+    ET.indent(root, space="  ")
+    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
+    atomic_write_text(output, payload)
+    return output
+
+
+def _append_scene_clips(
+    root: ET.Element,
+    video_playlist: ET.Element,
+    clip_audio_playlist: ET.Element,
+    intervals,
+    clip_paths: Sequence[str | Path],
+    output: Path,
+) -> tuple[int, int]:
+    """Add one producer and playlist entry per rendered clip; return (total_frames, cursor)."""
+    timeline_cursor = 0
+    total_frames = 0
+    indexed_entries = list(zip(intervals, clip_paths, strict=True))
+    for _position, (interval, clip_path) in enumerate(indexed_entries):
         original_index, entry, scene_number, duration, _start_seconds, start_frame, end_frame = interval
         path = Path(clip_path)
         if not path.is_file():
@@ -113,28 +161,21 @@ def export_render_plan_to_mlt(
         })
         timeline_cursor = start_frame + frames
         total_frames = max(total_frames, timeline_cursor)
+    return total_frames, timeline_cursor
 
-    if audio_path is not None:
-        audio = Path(audio_path)
-        if not audio.is_file():
-            raise FileNotFoundError(f"Audio file does not exist: {audio}")
-        _add_avformat_producer(
-            root,
-            "audio_original",
-            audio,
-            output,
-            max(0, total_frames - 1),
-            caption="Original audio",
-        )
-        ET.SubElement(original_audio_playlist, "entry", {
-            "producer": "audio_original",
-            "in": "0",
-            "out": str(max(0, total_frames - 1)),
-        })
 
-    root.append(video_playlist)
-    root.append(clip_audio_playlist)
-    root.append(original_audio_playlist)
+def _append_project_notes(
+    root: ET.Element,
+    plan: list[dict],
+    output: Path,
+    width: int,
+    height: int,
+    fps: int,
+    total_frames: int,
+    audio_path: str | Path | None,
+    render_plan_path: str | Path,
+    project_name: str | None,
+) -> None:
     ET.SubElement(root, "property", {"name": "shotcut:projectNotes"}).text = _project_notes(
         project_name=project_name or output.stem,
         scene_count=len(plan),
@@ -148,6 +189,13 @@ def export_render_plan_to_mlt(
         render_plan_path=render_plan_path,
     )
 
+
+def _append_bin_and_background(
+    root: ET.Element,
+    plan: list[dict],
+    total_frames: int,
+    audio_path: str | Path | None,
+) -> None:
     main_bin = ET.SubElement(root, "playlist", {"id": "main_bin"})
     ET.SubElement(main_bin, "property", {"name": "xml_retain"}).text = "1"
     for producer_id in [f"video_{index:04}" for index in range(1, len(plan) + 1)]:
@@ -163,6 +211,12 @@ def export_render_plan_to_mlt(
     ET.SubElement(background, "property", {"name": "shotcut:name"}).text = "Background"
     ET.SubElement(background, "entry", {"producer": "black", "in": "0", "out": str(max(0, total_frames - 1))})
 
+
+def _append_tractor(
+    root: ET.Element,
+    total_frames: int,
+    audio_path: str | Path | None,
+) -> None:
     tractor = ET.SubElement(root, "tractor", {
         "id": "main",
         "in": "0",
@@ -174,11 +228,6 @@ def export_render_plan_to_mlt(
     ET.SubElement(tractor, "track", {"producer": "playlist1", "hide": "video"})
     if audio_path is not None:
         ET.SubElement(tractor, "track", {"producer": "playlist2", "hide": "video"})
-
-    ET.indent(root, space="  ")
-    payload = ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8")
-    atomic_write_text(output, payload)
-    return output
 
 
 def _add_avformat_producer(

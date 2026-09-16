@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.application.msr_prompt_enrichment import (
-    _dspy_modules,
+    dspy_modules,
 )
 from feverslop.application.msr_validation import (
     validate_msr_vision_response,
@@ -89,7 +89,7 @@ def _enrich_shot(
 ) -> dict:
     enriched = deepcopy(shot)
     shot_card = _shot_card_for_id(shot_cards or {}, str(shot.get("shot_id") or ""))
-    prompt = _movie_video_prompt(shot, bible=bible, manifest=manifest)
+    prompt = movie_video_prompt(shot, bible=bible, manifest=manifest)
     continuity_notes = "; ".join(_safe_continuity_facts(shot.get("continuity_notes")))
     if continuity_notes:
         enriched["continuity_notes"] = continuity_notes
@@ -209,7 +209,7 @@ def _movie_vision_prompts(
     if not references:
         logger.warning("MSR image analysis fallback: shot=%s reason=no images", shot_id)
         return None
-    modules = modules or _dspy_modules(llm)
+    modules = modules or dspy_modules(llm)
     if modules is None:
         logger.warning("MSR image analysis fallback: shot=%s reason=vision unavailable", shot_id)
         return None
@@ -348,7 +348,7 @@ def _movie_reference_global_prompt(shot: dict, *, bible: dict, manifest: dict) -
     return " ".join(parts).strip()
 
 
-def _movie_video_prompt(shot: dict, *, bible: dict, manifest: dict) -> str:
+def movie_video_prompt(shot: dict, *, bible: dict, manifest: dict) -> str:
     references = shot.get("reference_ids") or {}
     actor_ids = references.get("actors") or shot.get("actor_ids") or []
     actor_names = _names_for_ids(manifest.get("actors") or bible.get("actors") or [], actor_ids)
@@ -484,7 +484,7 @@ def _safe_continuity_facts(value: Any) -> tuple[str, ...]:
     facts: list[str] = []
     for candidate in candidates:
         fact = " ".join(str(candidate or "").split()).strip(" .")
-        if not fact or _looks_like_screenplay_dump(fact):
+        if not fact or looks_like_screenplay_dump(fact):
             continue
         if fact not in facts:
             facts.append(fact)
@@ -496,7 +496,7 @@ def _split_continuity_text(value: Any) -> list[str]:
     return [part.strip() for part in re.split(r"[;\n]+", text) if part.strip()]
 
 
-_looks_like_screenplay_dump = looks_like_screenplay
+looks_like_screenplay_dump = looks_like_screenplay
 
 
 def _strip_reference_sheet_language(value: str) -> str:

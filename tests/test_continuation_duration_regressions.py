@@ -121,7 +121,7 @@ class ContinuationDurationRegressions(unittest.TestCase):
             [assembled] = _assemble_declared_cutless_groups(
                 entries, clips, output_dir=root, postprocessor=postprocessor,
             )
-            self.assertEqual(192, postprocessor._frame_count(assembled))
+            self.assertEqual(192, postprocessor.frame_count(assembled))
 
     def test_resume_rerenders_stale_successors_and_recovers_after_interruption(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -151,7 +151,7 @@ class ContinuationDurationRegressions(unittest.TestCase):
                 pipeline_name="minimax-h3-r2v", project_dir=root, render_video=render,
                 postprocessor=SimpleNamespace(
                     extract_last_frame=extract, last_frame_index=lambda clip: 71,
-                    _frame_count=lambda clip: 0 if clip.read_bytes() == b"corrupt" else 72,
+                    frame_count=lambda clip: 0 if clip.read_bytes() == b"corrupt" else 72,
                 ),
             )
             request = RenderVideoScenesRequest(

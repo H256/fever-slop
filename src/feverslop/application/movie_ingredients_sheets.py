@@ -14,7 +14,7 @@ from feverslop.application.ingredients_render_plan import (
 from feverslop.application.ingredients_vision_prompt import (
     build_ingredients_vision_prompt,
 )
-from feverslop.application.movie_msr_enrichment import _movie_video_prompt
+from feverslop.application.movie_msr_enrichment import movie_video_prompt
 from feverslop.application.reference_bible import (
     INGREDIENTS_SHEET_LAYOUT_VERSION,
     build_ingredients_target_binding,
@@ -198,7 +198,7 @@ def _enrich_shot(
             "frame_start": 0,
             "frame_end": frame_count,
             "state": "dialogue" if str(shot.get("dialogue") or "").strip() else "motion",
-            "prompt": _movie_video_prompt(shot, bible=bible, manifest=manifest),
+            "prompt": movie_video_prompt(shot, bible=bible, manifest=manifest),
         }]
     enriched["ingredients"] = {
         "sheet_path": enriched["ingredients_scene_sheet"],

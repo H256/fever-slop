@@ -51,7 +51,7 @@ def _shared_vision_response(*, prompt: str = _VALID_PROMPT) -> MSRPromptResult:
 
 
 class _ConfiguredLLM(FakeLLM):
-    """A FakeLLM that satisfies the ``_dspy_modules`` capability check."""
+    """A FakeLLM that satisfies the ``dspy_modules`` capability check."""
 
     model = "fake-model"
     client = object()

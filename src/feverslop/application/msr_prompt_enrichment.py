@@ -151,7 +151,7 @@ def enrich_scene_with_msr_prompts(
     for index, relay in enumerate(relays):
         msr_relay = dict(relay)
         prompt = llm_prompts.get(index) or _fallback_segment_prompt(result, relay)
-        msr_relay["prompt"] = _clean_segment_prompt(prompt)
+        msr_relay["prompt"] = clean_segment_prompt(prompt)
         msr_relays.append(msr_relay)
     ltx["msr_prompt_relay"] = msr_relays
     return _project_msr_effective(result)
@@ -192,7 +192,7 @@ def _build_vision_msr_prompts(
     if not references:
         logger.warning("MSR image analysis fallback: scene=%s reason=no images", scene_number)
         return None
-    modules = _dspy_modules(llm)
+    modules = dspy_modules(llm)
     if modules is None:
         logger.warning("MSR image analysis fallback: scene=%s reason=vision unavailable", scene_number)
         return None
@@ -299,7 +299,7 @@ def build_msr_global_prompt(references: dict) -> str:
 
 
 def _build_llm_segment_prompts(scene: dict, relays: list[dict], *, llm: LLMPort | None) -> dict[int, str]:
-    modules = _dspy_modules(llm)
+    modules = dspy_modules(llm)
     if modules is None:
         logger.warning("MSR segment prompt generation fallback: DSPy unavailable")
         return {}
@@ -318,13 +318,13 @@ def _build_llm_segment_prompts(scene: dict, relays: list[dict], *, llm: LLMPort 
         except (KeyError, TypeError, ValueError):
             continue
         if 0 <= index < len(relays):
-            prompt = _clean_segment_prompt(str(item.get("prompt", "")))
-            if _is_valid_segment_prompt(prompt, relays[index]):
+            prompt = clean_segment_prompt(str(item.get("prompt", "")))
+            if is_valid_segment_prompt(prompt, relays[index]):
                 prompts[index] = prompt
     return prompts
 
 
-def _dspy_modules(llm: Any) -> MSRPromptModules | None:
+def dspy_modules(llm: Any) -> MSRPromptModules | None:
     if not isinstance(getattr(llm, "model", None), str) or getattr(llm, "client", None) is None:
         return None
     try:
@@ -382,7 +382,7 @@ def _fallback_segment_prompt(scene: dict, relay: dict) -> str:
     motion = character_motion or base_concept or "the scene action builds with controlled physical intensity"
     camera_text = camera or "the camera holds a readable cinematic view"
     environment = base_concept or f"the atmosphere of {location} remains visible around the reference subject"
-    return _clean_segment_prompt(f"{action}; {motion}; {camera_text}; {environment}.")
+    return clean_segment_prompt(f"{action}; {motion}; {camera_text}; {environment}.")
 
 
 def _build_preroll_prompt(scene: dict) -> str:
@@ -396,7 +396,7 @@ def _build_preroll_prompt(scene: dict) -> str:
     atmosphere = base_concept or f"atmospheric detail gathers across {location}"
     motion = character_motion or f"{actor} remains physically present as the tension builds"
     camera_text = camera or "the camera holds a steady cinematic setup"
-    return _clean_segment_prompt(
+    return clean_segment_prompt(
         f"Cinematic atmosphere holds around {location}; {atmosphere}; {motion}; {camera_text} before the main action begins.",
     )
 
@@ -412,7 +412,7 @@ def _build_tail_prompt(scene: dict) -> str:
     motion = character_motion or f"{actor} carries the last action forward"
     environment = base_concept or f"the atmosphere of {location} keeps reacting around the subject"
     camera_text = camera or "the camera continues the same cinematic movement"
-    return _clean_segment_prompt(f"{motion} through {location}; {environment}; {camera_text}; the energy resolves without a new scene.")
+    return clean_segment_prompt(f"{motion} through {location}; {environment}; {camera_text}; the energy resolves without a new scene.")
 
 
 def _primary_actor_name(references: dict) -> str:
