@@ -124,153 +124,15 @@ class SequenceReferencePipeline:
                 description=request.description,
                 frames=request.frames,
             )
-            anchor_dir = staging_dir / "anchor"
-            anchor_dir.mkdir(parents=True)
-            style = " ".join(str(request.visual_style or "").split())
-            style_suffix = f" Visual style: {style}." if style and kind == "location" else ""
-            if kind == "character":
-                anchor_prompt = (
-                    f"{compiled_plan.anchor_description}. One character only, neutral relaxed pose, "
-                    "plain seamless studio backdrop. Prioritize face, hair, body proportions, "
-                    "wardrobe, materials, and colors. No performance action, no instrument, "
-                    f"no handheld prop, no scene location.{style_suffix}"
-                )
-            else:
-                anchor_prompt = self._build_location_anchor_prompt(
-                    image_prompt=request.image_prompt or compiled_plan.anchor_description,
-                    visual_style=request.visual_style,
-                    reference_mode=request.reference_mode,
-                )
-            self._report_phase(request, "anchor_start")
-            if request.source_image is not None:
-                source = Path(request.source_image)
-                if not source.is_file():
-                    raise FileNotFoundError(f"source image not found: {source}")
-                anchor = anchor_dir / "anchor.png"
-                with Image.open(source) as image:
-                    image.convert("RGB").save(anchor, format="PNG")
-            else:
-                anchor = self.anchor_backend.render_image(
-                    ImageRenderRequest(
-                        scene={"reference_id": request.asset_id, "kind": kind, "view": "anchor"},
-                        scene_number=1,
-                        prompt=anchor_prompt,
-                        workflow_path=Path(),
-                        output_dir=anchor_dir,
-                        width=(request.reference_image_size or (1920, 1080))[0],
-                        height=(request.reference_image_size or (1920, 1080))[1],
-                        reference_image=None,
-                    ),
-                )
-                anchor = Path(anchor)
-            if not anchor.is_file():
-                raise FileNotFoundError(f"anchor backend did not create an image: {anchor}")
-            self._report_phase(request, "anchor_complete", path=anchor)
-
             has_compiled_plan_backend = hasattr(self.sequence_backend, "build_sheet_prompt_from_plan")
-            if has_compiled_plan_backend:
-                prompt = self.sequence_backend.build_sheet_prompt_from_plan(compiled_plan)
-            else:
-                prompt = self.sequence_backend.build_sheet_prompt(
-                    request.description,
-                    kind=kind,
-                    shots=view_count,
-                    frames=request.frames,
-                )
-            sequence_prompt = prompt.prompt
-            if style and kind == "location":
-                sequence_prompt = f"{sequence_prompt}\n\nVisual style: {style}. Preserve this style throughout the sequence."
-            sequence = staging_dir / "sequence.mp4"
-            self._report_phase(request, "sequence_start")
-            aspect_ratio = (
-                "portrait"
-                if kind == "character"
-                else "landscape"
-            )
-            rendered = self.sequence_backend.render(
-                anchor_images=[anchor],
-                prompt=sequence_prompt,
-                output_path=sequence,
-                seed=request.seed,
-                frames=request.frames,
-                aspect_ratio=aspect_ratio,
-            )
-            sequence = Path(rendered)
-            if not sequence.is_file():
-                raise FileNotFoundError(f"sequence backend did not create a video: {sequence}")
-            self._report_phase(request, "sequence_complete", path=sequence)
+            anchor, anchor_prompt = self._generate_anchor(request, kind, compiled_plan, staging_dir)
+            sequence, sequence_prompt = self._generate_sequence(request, kind, compiled_plan, anchor, staging_dir, view_count)
             semantic_plan_hash = hashlib.sha256(
                 json.dumps(semantic_plan.model_dump() if hasattr(semantic_plan, "model_dump") else semantic_plan, sort_keys=True).encode(),
             ).hexdigest() if has_compiled_plan_backend else ""
             prompt_hash = hashlib.sha256(sequence_prompt.encode()).hexdigest()
-
-            frames_dir = staging_dir / "frames"
-            candidates = extract_video_frames(
-                sequence,
-                frames_dir,
-                sample_count=max(view_count * 4, view_count),
-            )
-            selected = select_orbitsheet_frames(
-                candidates,
-                count=view_count,
-                subject=request.description,
-            )
-            columns, panel_size = recommended_sheet_layout(kind)
-            contact_sheet = staging_dir / "contact-sheet.png"
-            compose_contact_sheet(
-                selected,
-                contact_sheet,
-                columns=3,
-                panel_size=panel_size,
-                include_labels=False,
-            )
-            sheet = staging_dir / "sheet.png"
-            compose_sheet_from_contact_sheet(
-                contact_sheet,
-                sheet,
-                frame_count=len(selected),
-                source_columns=3,
-                columns=columns,
-                panel_size=panel_size,
-            )
-
-            final_dir.parent.mkdir(parents=True, exist_ok=True)
-            out_staging = Path(
-                tempfile.mkdtemp(
-                    prefix=f".sequence-reference-{request.asset_id}-swap-",
-                    dir=final_dir.parent,
-                ),
-            )
-            backup_dir: Path | None = None
-            try:
-                destinations = {
-                    "anchor.png": anchor,
-                    "sequence.mp4": sequence,
-                    "contact-sheet.png": contact_sheet,
-                    "sheet.png": sheet,
-                }
-                for name, source in destinations.items():
-                    shutil.copy2(source, out_staging / name)
-                frame_destination = out_staging / "frames"
-                frame_destination.mkdir()
-                for index, source in enumerate(selected):
-                    shutil.copy2(source, frame_destination / f"frame_{index:04}.png")
-                if not all((out_staging / name).is_file() for name in destinations):
-                    raise OSError("staged reference artifacts are incomplete")
-                if len(list(frame_destination.iterdir())) != len(selected):
-                    raise OSError("staged reference frames are incomplete")
-                if final_dir.exists():
-                    backup_dir = final_dir.with_name(f".{final_dir.name}.previous-{uuid.uuid4().hex}")
-                    final_dir.replace(backup_dir)
-                out_staging.replace(final_dir)
-            except BaseException:
-                if backup_dir is not None and backup_dir.exists() and not final_dir.exists():
-                    backup_dir.replace(final_dir)
-                raise
-            finally:
-                shutil.rmtree(out_staging, ignore_errors=True)
-                if backup_dir is not None:
-                    shutil.rmtree(backup_dir, ignore_errors=True)
+            selected, contact_sheet, sheet = self._compose_sheets(request, kind, sequence, staging_dir, view_count)
+            self._install_final_artifacts(request, anchor, sequence, contact_sheet, sheet, selected, final_dir)
             return SequenceReferenceResult(
                 kind=kind,
                 asset_id=request.asset_id,
@@ -294,6 +156,158 @@ class SequenceReferencePipeline:
             )
         finally:
             shutil.rmtree(staging_dir, ignore_errors=True)
+
+    def _generate_anchor(self, request: SequenceReferenceRequest, kind: str, compiled_plan: Any, staging_dir: Path) -> tuple[Path, str]:
+        anchor_dir = staging_dir / "anchor"
+        anchor_dir.mkdir(parents=True)
+        style = " ".join(str(request.visual_style or "").split())
+        style_suffix = f" Visual style: {style}." if style and kind == "location" else ""
+        if kind == "character":
+            anchor_prompt = (
+                f"{compiled_plan.anchor_description}. One character only, neutral relaxed pose, "
+                "plain seamless studio backdrop. Prioritize face, hair, body proportions, "
+                "wardrobe, materials, and colors. No performance action, no instrument, "
+                f"no handheld prop, no scene location.{style_suffix}"
+            )
+        else:
+            anchor_prompt = self._build_location_anchor_prompt(
+                image_prompt=request.image_prompt or compiled_plan.anchor_description,
+                visual_style=request.visual_style,
+                reference_mode=request.reference_mode,
+            )
+        self._report_phase(request, "anchor_start")
+        if request.source_image is not None:
+            source = Path(request.source_image)
+            if not source.is_file():
+                raise FileNotFoundError(f"source image not found: {source}")
+            anchor = anchor_dir / "anchor.png"
+            with Image.open(source) as image:
+                image.convert("RGB").save(anchor, format="PNG")
+        else:
+            anchor = self.anchor_backend.render_image(
+                ImageRenderRequest(
+                    scene={"reference_id": request.asset_id, "kind": kind, "view": "anchor"},
+                    scene_number=1,
+                    prompt=anchor_prompt,
+                    workflow_path=Path(),
+                    output_dir=anchor_dir,
+                    width=(request.reference_image_size or (1920, 1080))[0],
+                    height=(request.reference_image_size or (1920, 1080))[1],
+                    reference_image=None,
+                ),
+            )
+            anchor = Path(anchor)
+        if not anchor.is_file():
+            raise FileNotFoundError(f"anchor backend did not create an image: {anchor}")
+        self._report_phase(request, "anchor_complete", path=anchor)
+        return anchor, anchor_prompt
+
+    def _generate_sequence(self, request: SequenceReferenceRequest, kind: str, compiled_plan: Any, anchor: Path, staging_dir: Path, view_count: int) -> tuple[Path, str]:
+        style = " ".join(str(request.visual_style or "").split())
+        has_compiled_plan_backend = hasattr(self.sequence_backend, "build_sheet_prompt_from_plan")
+        if has_compiled_plan_backend:
+            prompt = self.sequence_backend.build_sheet_prompt_from_plan(compiled_plan)
+        else:
+            prompt = self.sequence_backend.build_sheet_prompt(
+                request.description,
+                kind=kind,
+                shots=view_count,
+                frames=request.frames,
+            )
+        sequence_prompt = prompt.prompt
+        if style and kind == "location":
+            sequence_prompt = f"{sequence_prompt}\n\nVisual style: {style}. Preserve this style throughout the sequence."
+        sequence = staging_dir / "sequence.mp4"
+        self._report_phase(request, "sequence_start")
+        aspect_ratio = (
+            "portrait"
+            if kind == "character"
+            else "landscape"
+        )
+        rendered = self.sequence_backend.render(
+            anchor_images=[anchor],
+            prompt=sequence_prompt,
+            output_path=sequence,
+            seed=request.seed,
+            frames=request.frames,
+            aspect_ratio=aspect_ratio,
+        )
+        sequence = Path(rendered)
+        if not sequence.is_file():
+            raise FileNotFoundError(f"sequence backend did not create a video: {sequence}")
+        self._report_phase(request, "sequence_complete", path=sequence)
+        return sequence, sequence_prompt
+
+    def _compose_sheets(self, request: SequenceReferenceRequest, kind: str, sequence: Path, staging_dir: Path, view_count: int):
+        frames_dir = staging_dir / "frames"
+        candidates = extract_video_frames(
+            sequence,
+            frames_dir,
+            sample_count=max(view_count * 4, view_count),
+        )
+        selected = select_orbitsheet_frames(
+            candidates,
+            count=view_count,
+            subject=request.description,
+        )
+        columns, panel_size = recommended_sheet_layout(kind)
+        contact_sheet = staging_dir / "contact-sheet.png"
+        compose_contact_sheet(
+            selected,
+            contact_sheet,
+            columns=3,
+            panel_size=panel_size,
+            include_labels=False,
+        )
+        sheet = staging_dir / "sheet.png"
+        compose_sheet_from_contact_sheet(
+            contact_sheet,
+            sheet,
+            frame_count=len(selected),
+            source_columns=3,
+            columns=columns,
+            panel_size=panel_size,
+        )
+        return selected, contact_sheet, sheet
+
+    def _install_final_artifacts(self, request: SequenceReferenceRequest, anchor: Path, sequence: Path, contact_sheet: Path, sheet: Path, selected: tuple[Path, ...], final_dir: Path) -> None:
+        final_dir.parent.mkdir(parents=True, exist_ok=True)
+        out_staging = Path(
+            tempfile.mkdtemp(
+                prefix=f".sequence-reference-{request.asset_id}-swap-",
+                dir=final_dir.parent,
+            ),
+        )
+        backup_dir: Path | None = None
+        try:
+            destinations = {
+                "anchor.png": anchor,
+                "sequence.mp4": sequence,
+                "contact-sheet.png": contact_sheet,
+                "sheet.png": sheet,
+            }
+            for name, source in destinations.items():
+                shutil.copy2(source, out_staging / name)
+            frame_destination = out_staging / "frames"
+            frame_destination.mkdir()
+            for index, source in enumerate(selected):
+                shutil.copy2(source, frame_destination / f"frame_{index:04}.png")
+            if not all((out_staging / name).is_file() for name in destinations):
+                raise OSError("staged reference artifacts are incomplete")
+            if len(list(frame_destination.iterdir())) != len(selected):
+                raise OSError("staged reference frames are incomplete")
+            if final_dir.exists():
+                backup_dir = final_dir.with_name(f".{final_dir.name}.previous-{uuid.uuid4().hex}")
+                final_dir.replace(backup_dir)
+            out_staging.replace(final_dir)
+        except BaseException:
+            if backup_dir is not None and backup_dir.exists() and not final_dir.exists():
+                backup_dir.replace(final_dir)
+            raise
+        finally:
+            shutil.rmtree(out_staging, ignore_errors=True)
+            if backup_dir is not None:
+                shutil.rmtree(backup_dir, ignore_errors=True)
 
     def _report_phase(self, request: SequenceReferenceRequest, phase: str, **extra: Any) -> None:
         if self.on_phase is not None:
