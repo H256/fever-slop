@@ -188,7 +188,7 @@ UNIT_MODULES = (
     "subject_directives",
     "timeline_transform",
     "tooling_config",
-    "tools_imports",
+    "tools_hygiene",
     "url_validation",
     "video_postprocessor",
     "video_settings",

@@ -1,13 +1,25 @@
+import importlib
 import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from tools import r2v_prompt_check, repair_scene_srt
+from feverslop.tools import r2v_prompt_check, repair_scene_srt
 
 
 class ToolsHygieneTests(unittest.TestCase):
+    def test_root_tools_package_is_dismantled(self):
+        # #1201 (M-30): the root tools/ package is gone. The acceptance
+        # criterion is that "tools." (root) can no longer be imported, while
+        # the two real CLI modules now live in feverslop.tools.
+        with self.assertRaises(ModuleNotFoundError):
+            importlib.import_module("tools")
+        import feverslop.tools.generate_prompt
+        import feverslop.tools.r2v_prompt_check
+        self.assertTrue(callable(feverslop.tools.generate_prompt.main))
+        self.assertTrue(callable(feverslop.tools.r2v_prompt_check.main))
+
     def test_r2v_config_reads_utf8(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config = Path(temp_dir) / "app_config.json"
