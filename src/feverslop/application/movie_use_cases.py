@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.application.movie_bible import (
-    _bible_dict,
-    _reference_manifest,
-    _render_plan,
+    bible_dict,
+    reference_manifest,
+    render_plan,
     augment_movie_bible_from_shot_references,
     constrain_movie_shots_to_bible,
     generate_movie_bible,
@@ -18,7 +18,7 @@ from feverslop.application.movie_common import (
     MovieInput,
     MovieProductionResult,
     MovieScaffoldResult,
-    _planner_source_text,
+    planner_source_text,
 )
 from feverslop.application.movie_continuity import (
     apply_movie_continuity_to_shots,
@@ -79,7 +79,7 @@ class ScaffoldMovieUseCase:
         story_arch = self.planner.generate_story_arch(
             title=request.name,
             source_type=request.source_type,
-            story_text=_planner_source_text(request, config),
+            story_text=planner_source_text(request, config),
             desired_length=float(request.desired_length),
         )
         self.reporter.message(f"  Story arch: {len(story_arch.beats)} beats")
@@ -100,7 +100,7 @@ class ScaffoldMovieUseCase:
             bible=bible,
             story_arch=story_arch,
             config=config,
-            source_text=_planner_source_text(request, config),
+            source_text=planner_source_text(request, config),
         )
         self.reporter.message(f"  Story design: {len(story_design.act_structure)} acts, {len(story_design.scene_blueprint)} scenes")
 
@@ -112,7 +112,7 @@ class ScaffoldMovieUseCase:
             story_arch=story_arch,
             story_design=story_design,
             config=config,
-            source_text=_planner_source_text(request, config),
+            source_text=planner_source_text(request, config),
         )
         self.reporter.message(f"  Screenplay: {len(screenplay.scenes)} scenes")
 
@@ -189,7 +189,7 @@ class ScaffoldMovieUseCase:
         render_plan_path = movie_dir / "render_plan.json"
         reference_manifest_path = movie_dir / "references" / "manifest.json"
         writer.write_json(story_arch_path, asdict(movie.story_arch))
-        writer.write_json(bible_path, _bible_dict(movie.bible))
+        writer.write_json(bible_path, bible_dict(movie.bible))
         writer.write_json(story_design_path, movie_story_design_to_dict(story_design))
         writer.write_json(screenplay_path, movie_screenplay_to_dict(screenplay))
         writer.write_text(screenplay_md_path, movie_screenplay_to_markdown(screenplay))
@@ -199,8 +199,8 @@ class ScaffoldMovieUseCase:
         writer.write_json(shot_cards_path, movie_shot_cards_to_dict(shot_cards))
         if config:
             writer.write_json(project_dir / "config.json", config)
-        writer.write_json(render_plan_path, _render_plan(movie, shot_cards=shot_cards))
-        writer.write_json(reference_manifest_path, _reference_manifest(movie))
+        writer.write_json(render_plan_path, render_plan(movie, shot_cards=shot_cards))
+        writer.write_json(reference_manifest_path, reference_manifest(movie))
         return MovieScaffoldResult(
             slug,
             project_dir,

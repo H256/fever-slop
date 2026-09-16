@@ -5,7 +5,7 @@ from dataclasses import asdict, replace
 
 from feverslop.application.movie_common import (
     MovieInput,
-    _planner_source_text,
+    planner_source_text,
 )
 from feverslop.application.movie_continuity import (
     movie_continuity_plan_from_dict,
@@ -28,7 +28,7 @@ from feverslop.domain.movie_utils import clean_visual_description, safe_id
 from feverslop.ports.movie import ScenePlanningPort
 
 
-def _render_plan(movie: MovieProject, *, shot_cards: tuple = ()) -> dict:
+def render_plan(movie: MovieProject, *, shot_cards: tuple = ()) -> dict:
     cards_by_id = {card.shot_id: card for card in shot_cards}
     return {
         "project_type": "movie",
@@ -63,7 +63,7 @@ def _render_plan_shot(shot, config: dict, *, shot_card=None) -> dict:
     return data
 
 
-def _reference_manifest(movie: MovieProject) -> dict:
+def reference_manifest(movie: MovieProject) -> dict:
     return {
         "project_type": "movie",
         "actors": [
@@ -98,7 +98,7 @@ def generate_movie_bible(*, planner: ScenePlanningPort, request: MovieInput, sto
     bible = planner.generate_movie_bible(
         title=request.name,
         source_type=request.source_type,
-        story_text=_planner_source_text(request, config),
+        story_text=planner_source_text(request, config),
         desired_length=float(request.desired_length),
         story_arch=story_arch,
         config=config,
@@ -126,7 +126,7 @@ def generate_movie_continuity_plan(*, planner: ScenePlanningPort, request: Movie
     raw = planner.generate_movie_continuity_plan(
         title=request.name,
         source_type=request.source_type,
-        story_text=_planner_source_text(request, config),
+        story_text=planner_source_text(request, config),
         desired_length=float(request.desired_length),
         bible=bible,
         shots=shots,
@@ -149,7 +149,7 @@ def augment_movie_bible_from_shot_references(bible: MovieBible, shots: tuple[Cin
     return bible.augment_from_shots(shots, actors=augment_actors, locations=augment_locations)
 
 
-def _bible_dict(bible: MovieBible) -> dict:
+def bible_dict(bible: MovieBible) -> dict:
     return {
         "title": bible.title,
         "premise": bible.premise,

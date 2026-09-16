@@ -19,9 +19,9 @@ from feverslop.ports.project_requests import ProjectCreateRequest
 
 # Bible generation and normalization
 from feverslop.application.movie_bible import (
-    _bible_dict,
-    _reference_manifest,
-    _render_plan,
+    bible_dict,
+    reference_manifest,
+    render_plan,
     augment_movie_bible_from_shot_references,
     constrain_movie_shots_to_bible,
     generate_movie_bible,
@@ -35,8 +35,8 @@ from feverslop.application.movie_common import (
     MovieInput,
     MovieProductionResult,
     MovieScaffoldResult,
-    _looks_like_screenplay_dump,
-    _planner_source_text,
+    looks_like_screenplay_dump,
+    planner_source_text,
 )
 
 # Continuity planning
@@ -61,10 +61,6 @@ from feverslop.application.movie_use_cases import (
 
 # Domain types still needed by callers
 from feverslop.domain.movie import CinematicShot, MovieShotCard
-
-# Backwards-compatible re-exports of domain utilities (underscore-prefixed)
-from feverslop.domain.movie_utils import safe_id as _safe_id
-from feverslop.domain.movie_utils import string_list as _string_list
 
 # Slug utility
 from feverslop.domain.slug_utils import slugify_project_name
@@ -178,9 +174,9 @@ __all__ = [
     "AutoProduceMovieUseCase",
     "ScaffoldMovieUseCase",
     # Bible
-    "_bible_dict",
-    "_reference_manifest",
-    "_render_plan",
+    "bible_dict",
+    "reference_manifest",
+    "render_plan",
     "augment_movie_bible_from_shot_references",
     "constrain_movie_shots_to_bible",
     "generate_movie_bible",
@@ -196,9 +192,7 @@ __all__ = [
     "build_movie_actor_reference_prompt",
     "build_movie_actor_visual_description",
     # Helpers
-    "_looks_like_screenplay_dump",
-    "_planner_source_text",
-    "_safe_id",
-    "_string_list",
+    "looks_like_screenplay_dump",
+    "planner_source_text",
     "slugify_project_name",
 ]

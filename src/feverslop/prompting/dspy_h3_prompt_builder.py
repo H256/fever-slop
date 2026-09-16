@@ -981,8 +981,8 @@ class DspyH3PromptBuilder:
             if phases:
                 def words(value):
                     return re.findall(r"\w+", value.casefold())
-                from feverslop.prompting.deterministic_h3_compiler import _relay_vocal_content
-                expected = [words(_relay_vocal_content(p)) for p in phases if _relay_vocal_content(p)]
+                from feverslop.prompting.deterministic_h3_compiler import relay_vocal_content
+                expected = [words(relay_vocal_content(p)) for p in phases if relay_vocal_content(p)]
                 actual = [words(re.sub(r"^\[[^]]+\]\s*", "", text.strip()))
                           for text in re.findall(r"<d>(.*?)</d>", prompt, re.DOTALL)]
                 if [word for event in actual for word in event] != [word for event in expected for word in event]:
