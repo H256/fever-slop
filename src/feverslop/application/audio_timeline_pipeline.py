@@ -91,6 +91,40 @@ class AudioTimelinePipeline:
         skip_beats = bool(getattr(request, "skip_beat_analysis", False))
 
         log_step("1. Demucs Stem Separation")
+        files = self._run_stem_stage(config, paths, run_spinner, reporter, skip_stems)
+
+        log_step("2. Vocal Timeline Analysis")
+        timeline = self._run_vocal_stage(
+            config,
+            files,
+            timeline_json,
+            context,
+            run_spinner,
+            reporter,
+            skip_whisper,
+        )
+
+        log_step("3. Beat / Impact Analysis")
+        beat_data = self._run_beat_stage(
+            config,
+            files,
+            beat_json,
+            run_spinner,
+            reporter,
+            skip_beats,
+            context["artifact_store"],
+        )
+        log_file("Beat Data JSON", beat_json)
+        context.update(
+            {
+                "stem_files": files,
+                "timeline": timeline,
+                "beat_data": beat_data,
+            },
+        )
+        return context
+
+    def _run_stem_stage(self, config, paths, run_spinner, reporter, skip_stems: bool) -> dict:
         if skip_stems:
             files = self._load_existing_stems(paths.stems_dir, config.input_audio)
             reporter.message("[yellow]Skipping stem separation; using existing stems.[/yellow]")
@@ -104,7 +138,6 @@ class AudioTimelinePipeline:
                 files = discover_stem_files(paths.stems_dir, config.input_audio) or files
             finally:
                 _close_audio_component(separator, "Demucs", reporter)
-
         required_stems = {"vocals", "drums", "bass", "other"}
         missing = sorted(required_stems - set(files))
         if missing:
@@ -116,8 +149,18 @@ class AudioTimelinePipeline:
             ["Stem", "Path"],
             [[stem_name, str(files[stem_name])] for stem_name in sorted(files)],
         )
+        return files
 
-        log_step("2. Vocal Timeline Analysis")
+    def _run_vocal_stage(
+        self,
+        config,
+        files: dict,
+        timeline_json,
+        context,
+        run_spinner,
+        reporter,
+        skip_whisper: bool,
+    ) -> list[Any]:
         vocal_cfg = config.vocal_detection
         if skip_whisper:
             timeline = self._load_existing_timeline(timeline_json, context["artifact_store"])
@@ -159,8 +202,7 @@ class AudioTimelinePipeline:
             self.save_timeline_json(timeline, timeline_json)
         else:
             self.save_timeline_json(timeline, timeline_json, whisper_raw=raw_whisper)
-        log_file("Timeline JSON", timeline_json)
-
+        context["log_file"]("Timeline JSON", timeline_json)
         vocal_count = sum(1 for seg in timeline if seg.kind == "vocals")
         instrumental_count = sum(1 for seg in timeline if seg.kind == "instrumental")
         reporter.message(
@@ -169,8 +211,18 @@ class AudioTimelinePipeline:
             f"[yellow]{vocal_count}[/yellow] vocals, "
             f"[yellow]{instrumental_count}[/yellow] instrumental",
         )
+        return timeline
 
-        log_step("3. Beat / Impact Analysis")
+    def _run_beat_stage(
+        self,
+        config,
+        files: dict,
+        beat_json,
+        run_spinner,
+        reporter,
+        skip_beats: bool,
+        artifact_store,
+    ) -> dict:
         if skip_beats:
             if not beat_json.is_file():
                 raise FileNotFoundError(f"Cannot skip beat analysis; missing existing beat data: {beat_json}")
@@ -188,22 +240,13 @@ class AudioTimelinePipeline:
                     other_path=files["other"],
                 ),
             )
-        log_file("Beat Data JSON", beat_json)
-        beat_data = context["artifact_store"].read_json(beat_json)
+        beat_data = artifact_store.read_json(beat_json)
         reporter.message(
             f"[green]OK[/green] BPM: [yellow]{beat_data.get('bpm')}[/yellow], "
             f"beats: [yellow]{len(beat_data.get('beats', []))}[/yellow], "
             f"source: [yellow]{beat_data.get('source_used_for_beats')}[/yellow]",
         )
-
-        context.update(
-            {
-                "stem_files": files,
-                "timeline": timeline,
-                "beat_data": beat_data,
-            },
-        )
-        return context
+        return beat_data
 
     @staticmethod
     def _load_existing_stems(stems_dir, input_audio):

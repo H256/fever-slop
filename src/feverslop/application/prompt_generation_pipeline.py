@@ -327,34 +327,16 @@ class PromptGenerationPipeline:
         log_step("7. LLM Prompt Pipeline")
         llm = self.llm_factory(app_config)
         prompt_pipeline = self.prompt_pipeline_factory(llm)
-        all_lyrics = " ".join(
-            seg.get("lyrics", "")
-            for seg in stage1_segments
-            if seg.get("lyrics")
-        ).strip()
-        global_context = self.build_resolved_global_context(
+        global_context = self._prepare_global_context(
             config=config,
             app_config=app_config,
             prompt_pipeline=prompt_pipeline,
-            all_lyrics=all_lyrics,
+            stage1_segments=stage1_segments,
             run_spinner=run_spinner,
             reporter=reporter,
-        )
-        prompt_pipeline.save_json(
-            resolved_context_json,
-            global_context,
+            resolved_context_json=resolved_context_json,
             artifact_store=artifact_store,
-        )
-        log_file("Resolved Context JSON", resolved_context_json)
-        reporter.panel(global_context["story_idea"], title="Story Idea")
-        reporter.panel(global_context["style"], title="Style Block")
-        reporter.table(
-            "Resolved Subject / Locations",
-            ["Field", "Value"],
-            [
-                ["Subject", global_context["subject"]],
-                ["Locations", "\n".join(global_context["locations"])],
-            ],
+            log_file=log_file,
         )
 
         concept_story_input = join_notes(
@@ -362,85 +344,41 @@ class PromptGenerationPipeline:
             "STEERING:",
             get_steering_value(config, "concepts"),
         )
-        if request.concept_batch_size > 0:
-            reporter.message(
-                f"[cyan]Using batched concept generation: "
-                f"{request.concept_batch_size} segments per batch[/cyan]",
-            )
-            concept_batcher = self.concept_batcher_factory(
-                llm,
-                request.concept_batch_size,
-                request_timeout_seconds=app_config.llm.request_timeout_seconds,
-            )
-            # Optional seam: capable batchers checkpoint accepted concepts per
-            # batch so a mid-stage failure does not discard the whole stage.
-            enable_checkpoint = getattr(concept_batcher, "enable_checkpoint", None)
-            if callable(enable_checkpoint):
-                enable_checkpoint(
-                    path=concept_prompts_json.with_name(
-                        concept_prompts_json.stem.replace("concept_prompts", "concept_checkpoint", 1)
-                        + concept_prompts_json.suffix
-                    ),
-                    artifact_store=artifact_store,
-                )
-            reporter.message(
-                f"[cyan]Concept generation started: "
-                f"{len(stage1_segments)} scenes, batches of "
-                f"{request.concept_batch_size}[/cyan]",
-            )
-            concept_prompts = call_with_supported_kwargs(
-                concept_batcher.create_concept_prompts_batched,
-                stage1_segments=stage1_segments,
-                story_idea=concept_story_input,
-                global_context=global_context,
-                notes=get_steering_value(config, "concepts"),
-                progress_callback=lambda message: reporter.message(
-                    f"[cyan]{message}[/cyan]",
-                ),
-            )
-            reporter.message("[green]Concept generation finished.[/green]")
-        else:
-            reporter.message(
-                f"[cyan]Concept generation started for "
-                f"{len(stage1_segments)} scenes[/cyan]",
-            )
-            concept_prompts = call_with_supported_kwargs(
-                prompt_pipeline.create_concept_prompts,
-                stage1_segments=stage1_segments,
-                story_idea=concept_story_input,
-                global_context=global_context,
-                notes=get_steering_value(config, "concepts"),
-            )
-            reporter.message("[green]Concept generation finished.[/green]")
-
-        concept_prompts, extra_concepts = validate_and_order_concept_prompts(stage1_segments, concept_prompts)
-        if extra_concepts:
-            reporter.message(f"[yellow]Ignoring extra concept prompt keys: {extra_concepts}[/yellow]")
-        concept_prompts = validate_and_annotate_concept_chronology(
-            concept_prompts,
-            global_context.get("narrative_contract") or {},
-        )
-        prompt_pipeline.save_json(
-            concept_prompts_json,
-            concept_prompts,
+        concept_prompts = self._generate_concept_prompts(
+            config=config,
+            llm=llm,
+            app_config=app_config,
+            prompt_pipeline=prompt_pipeline,
+            request=request,
+            stage1_segments=stage1_segments,
+            concept_story_input=concept_story_input,
+            global_context=global_context,
+            concept_prompts_json=concept_prompts_json,
             artifact_store=artifact_store,
+            reporter=reporter,
         )
-        log_file("Concept Prompts JSON", concept_prompts_json)
-
+        concept_prompts = self._finalize_concept_prompts(
+            prompt_pipeline=prompt_pipeline,
+            reporter=reporter,
+            stage1_segments=stage1_segments,
+            concept_prompts=concept_prompts,
+            global_context=global_context,
+            concept_prompts_json=concept_prompts_json,
+            artifact_store=artifact_store,
+            log_file=log_file,
+        )
         reporter.message(
             f"[cyan]Scene details started: {len(stage1_segments)} scenes; "
             "camera and character motion per scene[/cyan]",
         )
-        scene_details_progress = SubStepProgress(reporter, "Scene details", len(stage1_segments))
-        scene_details = call_with_supported_kwargs(
-            prompt_pipeline.create_scene_details,
+        scene_details = self._generate_scene_details(
+            config=config,
+            prompt_pipeline=prompt_pipeline,
             concept_prompts=concept_prompts,
             stage1_segments=stage1_segments,
             global_context=global_context,
-            progress_callback=lambda current, total: scene_details_progress.update(current),
-            skip_llm=get_config_value(config, "video_pipeline") == "minimax-h3-r2v",
+            reporter=reporter,
         )
-        reporter.message("[green]Scene details finished.[/green]")
         prompt_pipeline.save_json(
             scene_details_json,
             scene_details,
@@ -449,31 +387,17 @@ class PromptGenerationPipeline:
         log_file("Scene Details JSON", scene_details_json)
 
         log_step("8. Scene Prompt Pack (Startframe + Base Motion Prompts)")
-        reporter.message(
-            f"[cyan]Scene prompt pack started: {len(stage1_segments)} scenes; "
-            "building still-image startframe and backend-neutral base motion prompts[/cyan]",
-        )
-        if get_config_value(config, "video_pipeline") == "minimax-h3-r2v":
-            reporter.message(
-                "[cyan]MiniMax H3 R2V selected: H3 structured prompts will be "
-                "generated after reference sheets.[/cyan]",
-            )
-        scene_prompt_builder = self.scene_prompt_builder_factory(llm)
-        scene_prompts_progress = SubStepProgress(reporter, "Scene prompts", len(stage1_segments))
-        scene_prompt_builder.build_scene_prompts(
+        self._build_scene_prompt_pack(
+            config=config,
+            llm=llm,
             stage1_segments=stage1_segments,
             concept_prompts=concept_prompts,
             scene_details=scene_details,
             global_context=global_context,
-            output_json_path=scene_prompts_json,
-            zimage_instructions=get_steering_value(config, "zimage"),
-            ltx_instructions=get_steering_value(config, "ltx"),
-            trigger_word=str(get_config_value(config, "trigger_word", "") or ""),
+            scene_prompts_json=scene_prompts_json,
             artifact_store=artifact_store,
-            progress_callback=lambda current, total: scene_prompts_progress.update(current),
-            status_callback=reporter.message,
+            reporter=reporter,
         )
-        reporter.message("[green]Scene prompt pack finished.[/green]")
         self._attach_subject_directives(
             stage1_segments=stage1_segments,
             scene_prompts_json=scene_prompts_json,
@@ -500,6 +424,235 @@ class PromptGenerationPipeline:
             },
         )
         return context
+
+    def _report_global_context(self, reporter: Any, global_context: dict[str, Any]) -> None:
+        reporter.panel(global_context["story_idea"], title="Story Idea")
+        reporter.panel(global_context["style"], title="Style Block")
+        reporter.table(
+            "Resolved Subject / Locations",
+            ["Field", "Value"],
+            [
+                ["Subject", global_context["subject"]],
+                ["Locations", "\n".join(global_context["locations"])],
+            ],
+        )
+
+    def _generate_concept_prompts(
+        self,
+        *,
+        config: Any,
+        llm: Any,
+        app_config: Any,
+        prompt_pipeline: Any,
+        request: Any,
+        stage1_segments: list[dict],
+        concept_story_input: str,
+        global_context: dict[str, Any],
+        concept_prompts_json: Path,
+        artifact_store: Any,
+        reporter: Any,
+    ) -> dict[str, Any]:
+        if request.concept_batch_size > 0:
+            return self._generate_concept_prompts_batched(
+                config=config,
+                llm=llm,
+                app_config=app_config,
+                request=request,
+                stage1_segments=stage1_segments,
+                concept_story_input=concept_story_input,
+                global_context=global_context,
+                concept_prompts_json=concept_prompts_json,
+                artifact_store=artifact_store,
+                reporter=reporter,
+            )
+        reporter.message(
+            f"[cyan]Concept generation started for "
+            f"{len(stage1_segments)} scenes[/cyan]",
+        )
+        concept_prompts = call_with_supported_kwargs(
+            prompt_pipeline.create_concept_prompts,
+            stage1_segments=stage1_segments,
+            story_idea=concept_story_input,
+            global_context=global_context,
+            notes=get_steering_value(config, "concepts"),
+        )
+        reporter.message("[green]Concept generation finished.[/green]")
+        return concept_prompts
+
+    def _generate_concept_prompts_batched(
+        self,
+        *,
+        config: Any,
+        llm: Any,
+        app_config: Any,
+        request: Any,
+        stage1_segments: list[dict],
+        concept_story_input: str,
+        global_context: dict[str, Any],
+        concept_prompts_json: Path,
+        artifact_store: Any,
+        reporter: Any,
+    ) -> dict[str, Any]:
+        reporter.message(
+            f"[cyan]Using batched concept generation: "
+            f"{request.concept_batch_size} segments per batch[/cyan]",
+        )
+        concept_batcher = self.concept_batcher_factory(
+            llm,
+            request.concept_batch_size,
+            request_timeout_seconds=app_config.llm.request_timeout_seconds,
+        )
+        # Optional seam: capable batchers checkpoint accepted concepts per
+        # batch so a mid-stage failure does not discard the whole stage.
+        enable_checkpoint = getattr(concept_batcher, "enable_checkpoint", None)
+        if callable(enable_checkpoint):
+            enable_checkpoint(
+                path=concept_prompts_json.with_name(
+                    concept_prompts_json.stem.replace("concept_prompts", "concept_checkpoint", 1)
+                    + concept_prompts_json.suffix
+                ),
+                artifact_store=artifact_store,
+            )
+        reporter.message(
+            f"[cyan]Concept generation started: "
+            f"{len(stage1_segments)} scenes, batches of "
+            f"{request.concept_batch_size}[/cyan]",
+        )
+        concept_prompts = call_with_supported_kwargs(
+            concept_batcher.create_concept_prompts_batched,
+            stage1_segments=stage1_segments,
+            story_idea=concept_story_input,
+            global_context=global_context,
+            notes=get_steering_value(config, "concepts"),
+            progress_callback=lambda message: reporter.message(
+                f"[cyan]{message}[/cyan]",
+            ),
+        )
+        reporter.message("[green]Concept generation finished.[/green]")
+        return concept_prompts
+
+    def _prepare_global_context(
+        self,
+        *,
+        config: Any,
+        app_config: Any,
+        prompt_pipeline: Any,
+        stage1_segments: list[dict],
+        run_spinner: Callable[[str, Callable[[], Any]], Any],
+        reporter: Any,
+        resolved_context_json: Path,
+        artifact_store: Any,
+        log_file: Callable[[str, Path], None],
+    ) -> dict:
+        all_lyrics = " ".join(
+            seg.get("lyrics", "")
+            for seg in stage1_segments
+            if seg.get("lyrics")
+        ).strip()
+        global_context = self.build_resolved_global_context(
+            config=config,
+            app_config=app_config,
+            prompt_pipeline=prompt_pipeline,
+            all_lyrics=all_lyrics,
+            run_spinner=run_spinner,
+            reporter=reporter,
+        )
+        prompt_pipeline.save_json(
+            resolved_context_json,
+            global_context,
+            artifact_store=artifact_store,
+        )
+        log_file("Resolved Context JSON", resolved_context_json)
+        self._report_global_context(reporter, global_context)
+        return global_context
+
+    def _finalize_concept_prompts(
+        self,
+        *,
+        prompt_pipeline: Any,
+        reporter: Any,
+        stage1_segments: list[dict],
+        concept_prompts: dict[str, Any],
+        global_context: dict[str, Any],
+        concept_prompts_json: Path,
+        artifact_store: Any,
+        log_file: Callable[[str, Path], None],
+    ) -> dict[str, Any]:
+        concept_prompts, extra_concepts = validate_and_order_concept_prompts(stage1_segments, concept_prompts)
+        if extra_concepts:
+            reporter.message(f"[yellow]Ignoring extra concept prompt keys: {extra_concepts}[/yellow]")
+        concept_prompts = validate_and_annotate_concept_chronology(
+            concept_prompts,
+            global_context.get("narrative_contract") or {},
+        )
+        prompt_pipeline.save_json(
+            concept_prompts_json,
+            concept_prompts,
+            artifact_store=artifact_store,
+        )
+        log_file("Concept Prompts JSON", concept_prompts_json)
+        return concept_prompts
+
+    def _generate_scene_details(
+        self,
+        *,
+        config: Any,
+        prompt_pipeline: Any,
+        concept_prompts: dict[str, Any],
+        stage1_segments: list[dict],
+        global_context: dict[str, Any],
+        reporter: Any,
+    ) -> Any:
+        scene_details_progress = SubStepProgress(reporter, "Scene details", len(stage1_segments))
+        scene_details = call_with_supported_kwargs(
+            prompt_pipeline.create_scene_details,
+            concept_prompts=concept_prompts,
+            stage1_segments=stage1_segments,
+            global_context=global_context,
+            progress_callback=lambda current, total: scene_details_progress.update(current),
+            skip_llm=get_config_value(config, "video_pipeline") == "minimax-h3-r2v",
+        )
+        reporter.message("[green]Scene details finished.[/green]")
+        return scene_details
+
+    def _build_scene_prompt_pack(
+        self,
+        *,
+        config: Any,
+        llm: Any,
+        stage1_segments: list[dict],
+        concept_prompts: dict[str, Any],
+        scene_details: Any,
+        global_context: dict[str, Any],
+        scene_prompts_json: Path,
+        artifact_store: Any,
+        reporter: Any,
+    ) -> None:
+        reporter.message(
+            f"[cyan]Scene prompt pack started: {len(stage1_segments)} scenes; "
+            "building still-image startframe and backend-neutral base motion prompts[/cyan]",
+        )
+        if get_config_value(config, "video_pipeline") == "minimax-h3-r2v":
+            reporter.message(
+                "[cyan]MiniMax H3 R2V selected: H3 structured prompts will be "
+                "generated after reference sheets.[/cyan]",
+            )
+        scene_prompt_builder = self.scene_prompt_builder_factory(llm)
+        scene_prompts_progress = SubStepProgress(reporter, "Scene prompts", len(stage1_segments))
+        scene_prompt_builder.build_scene_prompts(
+            stage1_segments=stage1_segments,
+            concept_prompts=concept_prompts,
+            scene_details=scene_details,
+            global_context=global_context,
+            output_json_path=scene_prompts_json,
+            zimage_instructions=get_steering_value(config, "zimage"),
+            ltx_instructions=get_steering_value(config, "ltx"),
+            trigger_word=str(get_config_value(config, "trigger_word", "") or ""),
+            artifact_store=artifact_store,
+            progress_callback=lambda current, total: scene_prompts_progress.update(current),
+            status_callback=reporter.message,
+        )
+        reporter.message("[green]Scene prompt pack finished.[/green]")
 
     @staticmethod
     def _attach_subject_directives(
@@ -654,43 +807,8 @@ class PromptGenerationPipeline:
                 + "[/yellow]",
             )
 
-    def build_resolved_global_context(
-        self,
-        *,
-        config: Any,
-        app_config: Any = None,
-        prompt_pipeline: Any,
-        all_lyrics: str,
-        run_spinner: Callable[[str, Callable[[], Any]], Any],
-        reporter: Any = None,
-        console: Any = None,
-    ) -> dict:
-        if reporter is None and console is not None:
-            reporter = console
-        story_notes = join_notes(
-            get_steering_value(config, "global_"),
-            get_steering_value(config, "story_idea"),
-        )
-        style_notes = join_notes(
-            get_steering_value(config, "global_"),
-            get_steering_value(config, "style"),
-        )
-        configured_actor_items = config_items_as_dicts(get_config_value(config, "actors", []) or [])
-        cast_anchor_notes = "\n".join(
-            f"- id={actor.get('id')}; name={actor.get('name')}; "
-            f"role={actor.get('role') or '(generate)'}; gender={actor.get('gender') or '(generate)'}"
-            for actor in configured_actor_items
-        )
-        subject_location_notes = join_notes(
-            get_steering_value(config, "global_"),
-            get_steering_value(config, "subject"),
-            get_steering_value(config, "locations"),
-            "Configured cast anchors. Preserve these ids and any non-empty role/gender values. "
-            "Generate missing role/gender and all missing visual_description/image_prompt fields "
-            "from the story and character arc; do not invent a conflicting gender.\n" + cast_anchor_notes
-            if cast_anchor_notes else "",
-        )
-
+    @staticmethod
+    def _collect_config_values(config: Any) -> dict:
         config_story_idea = str(get_config_value(config, "story_idea", "") or "").strip()
         config_style = str(get_config_value(config, "style", "") or "").strip()
         config_subject = str(get_config_value(config, "subject", "") or "").strip()
@@ -706,65 +824,35 @@ class PromptGenerationPipeline:
         silent_mode = bool(get_config_value(config, "silent_mode", False))
         audio_config = getattr(config, "audio", None)
         language = str(getattr(audio_config, "language", "") or "").strip()
+        return {
+            "story_idea": config_story_idea,
+            "style": config_style,
+            "subject": config_subject,
+            "locations": config_locations,
+            "actors": config_actors,
+            "cast_idea": cast_idea,
+            "cast_mode": cast_mode,
+            "cast_target_size": cast_target_size,
+            "structured_locations": config_structured_locations,
+            "subject_mode": subject_mode,
+            "max_scene_actors": max_scene_actors,
+            "silent_mode": silent_mode,
+            "language": language,
+        }
 
-        story_idea = resolve_text_override(
-            configured_value=config_story_idea,
-            reporter=reporter,
-            message="[yellow]Using story_idea override from project config.[/yellow]",
-            generated_value_factory=lambda: run_spinner(
-                "Generating story idea...",
-                lambda: prompt_pipeline.create_story_idea(
-                    lyrics=all_lyrics,
-                    notes=story_notes,
-                ),
-            ),
-        )
-
-        style_block = resolve_text_override(
-            configured_value=config_style,
-            reporter=reporter,
-            message="[yellow]Using style override from project config.[/yellow]",
-            generated_value_factory=lambda: run_spinner(
-                "Generating style block...",
-                lambda: prompt_pipeline.create_style_block(
-                    lyrics=all_lyrics,
-                    notes=style_notes,
-                ),
-            ),
-        )
-
-        has_configured_subject_assets = bool(
-            config_subject
-            and config_items_as_dicts(config_actors)
-            and config_items_as_dicts(config_structured_locations),
-        )
-        subject_locations = (
-            {}
-            if has_configured_subject_assets
-            and not any(_actor_needs_llm_enrichment(actor) for actor in configured_actor_items)
-            else run_spinner(
-                "Generating subject and locations fallback...",
-                lambda: _create_subject_and_locations(
-                    prompt_pipeline,
-                    story_idea=story_idea,
-                    notes=subject_location_notes,
-                    cast_idea=cast_idea,
-                ),
-            )
-        )
-
-        subject = resolve_text_override(
-            configured_value=config_subject,
-            reporter=reporter,
-            message="[yellow]Using subject override from project config.[/yellow]",
-            generated_value_factory=lambda: subject_locations["subject"],
-        )
-        locations = resolve_locations_override(
-            configured_locations=config_locations,
-            generated_locations=subject_locations.get("locations", []),
-            reporter=reporter,
-        )
-
+    def _resolve_actors_and_locations(
+        self,
+        *,
+        config: Any,
+        app_config: Any,
+        subject_locations: dict,
+        configured_actor_items: list[dict],
+    ) -> tuple:
+        config_actors = get_config_value(config, "actors", []) or []
+        config_structured_locations = get_config_value(config, "structured_locations", []) or []
+        cast_policy = get_config_value(config, "cast_policy", None)
+        cast_mode = str(getattr(cast_policy, "mode", "extend") or "extend").strip().lower()
+        cast_target_size = getattr(cast_policy, "target_size", None)
         actors = config_items_as_dicts(config_actors)
         generated_actors = config_items_as_dicts(subject_locations.get("actors", []))
         actors = (
@@ -797,6 +885,161 @@ class PromptGenerationPipeline:
         actor_ids = [str(actor.get("id") or "").strip() for actor in actors]
         if "" in actor_ids or len(actor_ids) != len(set(actor_ids)):
             raise FeverSlopValidationError("Resolved cast contains missing or duplicate actor ids")
+        return actors, structured_locations, global_resolution
+
+    def _build_generation_notes(self, config: Any) -> dict:
+        story_notes = join_notes(
+            get_steering_value(config, "global_"),
+            get_steering_value(config, "story_idea"),
+        )
+        style_notes = join_notes(
+            get_steering_value(config, "global_"),
+            get_steering_value(config, "style"),
+        )
+        configured_actor_items = config_items_as_dicts(get_config_value(config, "actors", []) or [])
+        cast_anchor_notes = "\n".join(
+            f"- id={actor.get('id')}; name={actor.get('name')}; "
+            f"role={actor.get('role') or '(generate)'}; gender={actor.get('gender') or '(generate)'}"
+            for actor in configured_actor_items
+        )
+        subject_location_notes = join_notes(
+            get_steering_value(config, "global_"),
+            get_steering_value(config, "subject"),
+            get_steering_value(config, "locations"),
+            "Configured cast anchors. Preserve these ids and any non-empty role/gender values. "
+            "Generate missing role/gender and all missing visual_description/image_prompt fields "
+            "from the story and character arc; do not invent a conflicting gender.\n" + cast_anchor_notes
+            if cast_anchor_notes else "",
+        )
+        return {
+            "story_notes": story_notes,
+            "style_notes": style_notes,
+            "subject_location_notes": subject_location_notes,
+            "configured_actor_items": configured_actor_items,
+        }
+
+    def _resolve_story_idea(self, *, config_values: dict, prompt_pipeline: Any, all_lyrics: str, notes: dict, run_spinner: Callable, reporter: Any) -> str:
+        return resolve_text_override(
+            configured_value=config_values["story_idea"],
+            reporter=reporter,
+            message="[yellow]Using story_idea override from project config.[/yellow]",
+            generated_value_factory=lambda: run_spinner(
+                "Generating story idea...",
+                lambda: prompt_pipeline.create_story_idea(
+                    lyrics=all_lyrics,
+                    notes=notes["story_notes"],
+                ),
+            ),
+        )
+
+    def _resolve_style_block(self, *, config_values: dict, prompt_pipeline: Any, all_lyrics: str, notes: dict, run_spinner: Callable, reporter: Any) -> str:
+        return resolve_text_override(
+            configured_value=config_values["style"],
+            reporter=reporter,
+            message="[yellow]Using style override from project config.[/yellow]",
+            generated_value_factory=lambda: run_spinner(
+                "Generating style block...",
+                lambda: prompt_pipeline.create_style_block(
+                    lyrics=all_lyrics,
+                    notes=notes["style_notes"],
+                ),
+            ),
+        )
+
+    def _resolve_subject_and_locations(
+        self,
+        *,
+        config: Any,
+        prompt_pipeline: Any,
+        config_values: dict,
+        notes: dict,
+        story_idea: str,
+        run_spinner: Callable[[str, Callable[[], Any]], Any],
+        reporter: Any,
+    ) -> tuple:
+        has_configured_subject_assets = bool(
+            config_values["subject"]
+            and config_items_as_dicts(config_values["actors"])
+            and config_items_as_dicts(config_values["structured_locations"]),
+        )
+        subject_locations = (
+            {}
+            if has_configured_subject_assets
+            and not any(_actor_needs_llm_enrichment(actor) for actor in notes["configured_actor_items"])
+            else run_spinner(
+                "Generating subject and locations fallback...",
+                lambda: _create_subject_and_locations(
+                    prompt_pipeline,
+                    story_idea=story_idea,
+                    notes=notes["subject_location_notes"],
+                    cast_idea=config_values["cast_idea"],
+                ),
+            )
+        )
+        subject = resolve_text_override(
+            configured_value=config_values["subject"],
+            reporter=reporter,
+            message="[yellow]Using subject override from project config.[/yellow]",
+            generated_value_factory=lambda: subject_locations["subject"],
+        )
+        locations = resolve_locations_override(
+            configured_locations=config_values["locations"],
+            generated_locations=subject_locations.get("locations", []),
+            reporter=reporter,
+        )
+        return subject_locations, subject, locations
+
+    def build_resolved_global_context(
+        self,
+        *,
+        config: Any,
+        app_config: Any = None,
+        prompt_pipeline: Any,
+        all_lyrics: str,
+        run_spinner: Callable[[str, Callable[[], Any]], Any],
+        reporter: Any = None,
+        console: Any = None,
+    ) -> dict:
+        if reporter is None and console is not None:
+            reporter = console
+        notes = self._build_generation_notes(config)
+        config_values = self._collect_config_values(config)
+        story_idea = self._resolve_story_idea(
+            config_values=config_values,
+            prompt_pipeline=prompt_pipeline,
+            all_lyrics=all_lyrics,
+            notes=notes,
+            run_spinner=run_spinner,
+            reporter=reporter,
+        )
+        style_block = self._resolve_style_block(
+            config_values=config_values,
+            prompt_pipeline=prompt_pipeline,
+            all_lyrics=all_lyrics,
+            notes=notes,
+            run_spinner=run_spinner,
+            reporter=reporter,
+        )
+
+        cast_idea = config_values["cast_idea"]
+        cast_mode = config_values["cast_mode"]
+        cast_target_size = config_values["cast_target_size"]
+        subject_locations, subject, locations = self._resolve_subject_and_locations(
+            config=config,
+            prompt_pipeline=prompt_pipeline,
+            config_values=config_values,
+            notes=notes,
+            story_idea=story_idea,
+            run_spinner=run_spinner,
+            reporter=reporter,
+        )
+
+        actors, structured_locations, global_resolution = self._resolve_actors_and_locations(
+            config=config,
+            app_config=app_config,
+            subject_locations=subject_locations,
+            configured_actor_items=notes["configured_actor_items"],
+        )
 
         audio_refs = get_config_value(config, "minimax_h3_audio_refs", None)
         audio_subject_bindings = (
@@ -816,22 +1059,22 @@ class PromptGenerationPipeline:
             "cast_contract": {
                 "target_size": cast_target_size,
                 "resolved_size": len(actors),
-                "configured_ids": [str(actor.get("id")) for actor in configured_actor_items],
+                "configured_ids": [str(actor.get("id")) for actor in notes["configured_actor_items"]],
                 "source": "configured_and_cast_idea" if cast_idea else "configured_or_generated",
             },
             "structured_locations": structured_locations,
             "props": list(global_resolution.props) if global_resolution else [],
             "styles": list(global_resolution.styles) if global_resolution else [],
             "global_asset_snapshots": list(global_resolution.snapshots) if global_resolution else [],
-            "subject_mode": subject_mode,
-            "max_scene_actors": max_scene_actors,
+            "subject_mode": config_values["subject_mode"],
+            "max_scene_actors": config_values["max_scene_actors"],
             "narrative_contract": dict(
                 get_config_value(config, "narrative_contract", {}) or {},
             ),
             "audio_subject_bindings": audio_subject_bindings,
             "video_pipeline": str(get_config_value(config, "video_pipeline", "ltx_i2v") or "ltx_i2v").strip(),
-            "language": language,
-            "silent_mode": silent_mode,
+            "language": config_values["language"],
+            "silent_mode": config_values["silent_mode"],
             "location_constraint": build_location_constraint(locations),
             "steering": {
                 "global": get_steering_value(config, "global_"),

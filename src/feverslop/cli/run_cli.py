@@ -286,7 +286,7 @@ def _blocked_h3_scene_numbers(project: Path) -> list[int]:
     """Return scene numbers whose H3 prompt checkpoint is blocked.
 
     Scans the canonical (base) plan for active scene numbers, then checks
-    each scene's ``h3_prompt.json`` for ``readiness["status"] == "blocked"``.
+    each scene's ``h3_prompt.json`` for top-level ``status == "blocked"``.
     Returns the sorted list of blocked scene numbers so ``--replan-failed``
     can target exactly those scenes.
     """

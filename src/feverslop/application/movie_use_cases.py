@@ -74,7 +74,24 @@ class ScaffoldMovieUseCase:
         movie_dir.mkdir(parents=True, exist_ok=False)
 
         config = dict(request.config or {})
+        story_arch, bible, story_design, screenplay, narrative_plan = self._generate_story_pipeline(request, config)
+        bible, shots, continuity_plan = self._plan_shots(request, bible, screenplay)
+        return self._write_scaffold_artifacts(
+            request,
+            slug,
+            project_dir,
+            movie_dir,
+            config,
+            story_arch,
+            bible,
+            story_design,
+            screenplay,
+            narrative_plan,
+            continuity_plan,
+            shots,
+        )
 
+    def _generate_story_pipeline(self, request: MovieInput, config: dict):
         self.reporter.step("[bold cyan]Step 1/7[/] — Generating story architecture...")
         story_arch = self.planner.generate_story_arch(
             title=request.name,
@@ -125,7 +142,9 @@ class ScaffoldMovieUseCase:
             config=config,
         )
         self.reporter.message(f"  Narrative plan: {len(narrative_plan.sequences)} sequences, {len(narrative_plan.causal_chain)} causal links")
+        return story_arch, bible, story_design, screenplay, narrative_plan
 
+    def _plan_shots(self, request: MovieInput, bible, screenplay):
         self.reporter.step("[bold cyan]Step 6/7[/] — Planning movie shots...")
         shots = plan_movie_shots_from_bible(
             planner=self.planner,
@@ -139,6 +158,7 @@ class ScaffoldMovieUseCase:
         )
         self.reporter.message(f"  Planned {len(shots)} shots")
 
+        config = dict(request.config or {})
         bible = augment_movie_bible_from_shot_references(bible, shots, config=config)
         shots = constrain_movie_shots_to_bible(shots, bible)
 
@@ -146,6 +166,23 @@ class ScaffoldMovieUseCase:
         continuity_plan = generate_movie_continuity_plan(planner=self.planner, request=request, bible=bible, shots=shots, config=config)
         self.reporter.message(f"  Continuity plan: {len(continuity_plan.narrative_chain)} narrative beats, {len(continuity_plan.scene_continuity)} scenes")
         shots = apply_movie_continuity_to_shots(shots, continuity_plan)
+        return bible, shots, continuity_plan
+
+    def _write_scaffold_artifacts(
+        self,
+        request: MovieInput,
+        slug: str,
+        project_dir: Path,
+        movie_dir: Path,
+        config: dict,
+        story_arch,
+        bible,
+        story_design,
+        screenplay,
+        narrative_plan,
+        continuity_plan,
+        shots,
+    ) -> MovieScaffoldResult:
         scene_cards = build_movie_scene_cards(screenplay=screenplay, shots=shots)
         shot_cards = build_movie_shot_cards(shots=shots, scene_cards=scene_cards)
         movie = MovieProject(

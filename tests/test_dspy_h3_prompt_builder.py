@@ -2469,8 +2469,6 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual(2, len(result["dspy_error_detail"]["attempts"]))
 
     def test_synthesize_plan_fallback_keeps_scene_renderable(self):
-        from types import SimpleNamespace
-
         class BrokenGenerator:
             def __call__(self, request):
                 raise RuntimeError("DSPy unavailable")

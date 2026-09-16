@@ -130,80 +130,17 @@ def preflight_visual_consistency(
             )
             previous_contract = None
             continue
-        available_actors = [
-            {"id": actor_id, "name": actor_id}
-            for actor_id in dict.fromkeys(key[0] for key in snapshot.actors)
-        ]
-        known_selected = tuple(
-            actor_id
-            for actor_id in actor_ids
-            if any(key[0] == actor_id for key in snapshot.actors)
-        )
-        cast = resolve_scene_cast(
-            selected_actor_ids=known_selected,
-            available_actors=available_actors,
-            subject_mode=str(
-                (scene.get("references") or {}).get("subject_mode")
-                or subject_mode
-            ),
-            max_scene_actors=max_scene_actors,
-            scene_number=scene_number,
-        )
-        if known_selected and cast.visible_actor_ids != known_selected:
-            issues.append(
-                _issue(
-                    "subject_limit_exceeded",
-                    scene_number,
-                    f"Scene {scene_number} exceeds the configured visible actor limit",
-                    policy,
-                ),
-            )
-        missing_bindings = False
-        for actor_id in actor_ids:
-            if (actor_id, _actor_look(scene, actor_id)) in snapshot.actors:
-                continue
-            missing_bindings = True
-            actor_exists = any(key[0] == actor_id for key in snapshot.actors)
-            issues.append(
-                _issue(
-                    "missing_actor_look" if actor_exists else "missing_actor_reference",
-                    scene_number,
-                    (
-                        f"Scene {scene_number} references unavailable look "
-                        f"{_actor_look(scene, actor_id)!r} for actor {actor_id!r}"
-                        if actor_exists
-                        else f"Scene {scene_number} references unavailable actor "
-                        f"{actor_id!r}"
-                    ),
-                    policy,
-                ),
-            )
-        if location_id and (
+        missing_bindings, binding_issues = _check_scene_bindings(
+            scene,
+            scene_number,
+            actor_ids,
             location_id,
-            _location_look(scene),
-        ) not in snapshot.locations:
-            missing_bindings = True
-            location_exists = any(
-                key[0] == location_id for key in snapshot.locations
-            )
-            issues.append(
-                _issue(
-                    (
-                        "missing_location_look"
-                        if location_exists
-                        else "missing_location_reference"
-                    ),
-                    scene_number,
-                    (
-                        f"Scene {scene_number} references unavailable look "
-                        f"{_location_look(scene)!r} for location {location_id!r}"
-                        if location_exists
-                        else f"Scene {scene_number} references unavailable location "
-                        f"{location_id!r}"
-                    ),
-                    policy,
-                ),
-            )
+            snapshot,
+            subject_mode=subject_mode,
+            max_scene_actors=max_scene_actors,
+            policy=policy,
+        )
+        issues.extend(binding_issues)
         if missing_bindings:
             previous_contract = None
             continue
@@ -250,6 +187,96 @@ def preflight_visual_consistency(
             )
         previous_contract = contract
     return VisualConsistencyPreflightResult(tuple(contracts), tuple(issues))
+
+
+def _check_scene_bindings(
+    scene: Mapping[str, Any],
+    scene_number: int,
+    actor_ids: tuple[str, ...],
+    location_id: str,
+    snapshot: ReferenceManifestSnapshot,
+    *,
+    subject_mode: str,
+    max_scene_actors: int,
+    policy: PreflightMode,
+) -> tuple[bool, list[ConsistencyIssue]]:
+    """Check cast limits and reference availability for one scene's bindings."""
+    issues: list[ConsistencyIssue] = []
+    available_actors = [
+        {"id": actor_id, "name": actor_id}
+        for actor_id in dict.fromkeys(key[0] for key in snapshot.actors)
+    ]
+    known_selected = tuple(
+        actor_id
+        for actor_id in actor_ids
+        if any(key[0] == actor_id for key in snapshot.actors)
+    )
+    cast = resolve_scene_cast(
+        selected_actor_ids=known_selected,
+        available_actors=available_actors,
+        subject_mode=str(
+            (scene.get("references") or {}).get("subject_mode")
+            or subject_mode
+        ),
+        max_scene_actors=max_scene_actors,
+        scene_number=scene_number,
+    )
+    if known_selected and cast.visible_actor_ids != known_selected:
+        issues.append(
+            _issue(
+                "subject_limit_exceeded",
+                scene_number,
+                f"Scene {scene_number} exceeds the configured visible actor limit",
+                policy,
+            ),
+        )
+    missing_bindings = False
+    for actor_id in actor_ids:
+        if (actor_id, _actor_look(scene, actor_id)) in snapshot.actors:
+            continue
+        missing_bindings = True
+        actor_exists = any(key[0] == actor_id for key in snapshot.actors)
+        issues.append(
+            _issue(
+                "missing_actor_look" if actor_exists else "missing_actor_reference",
+                scene_number,
+                (
+                    f"Scene {scene_number} references unavailable look "
+                    f"{_actor_look(scene, actor_id)!r} for actor {actor_id!r}"
+                    if actor_exists
+                    else f"Scene {scene_number} references unavailable actor "
+                    f"{actor_id!r}"
+                ),
+                policy,
+            ),
+        )
+    if location_id and (
+        location_id,
+        _location_look(scene),
+    ) not in snapshot.locations:
+        missing_bindings = True
+        location_exists = any(
+            key[0] == location_id for key in snapshot.locations
+        )
+        issues.append(
+            _issue(
+                (
+                    "missing_location_look"
+                    if location_exists
+                    else "missing_location_reference"
+                ),
+                scene_number,
+                (
+                    f"Scene {scene_number} references unavailable look "
+                    f"{_location_look(scene)!r} for location {location_id!r}"
+                    if location_exists
+                    else f"Scene {scene_number} references unavailable location "
+                    f"{location_id!r}"
+                ),
+                policy,
+            ),
+        )
+    return missing_bindings, issues
 
 
 def _mode_issues(

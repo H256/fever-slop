@@ -224,6 +224,119 @@ def _configured_audio_paths(
     return selected or None
 
 
+def _prepare_h3_segments(context: GenerateRenderPlanContext) -> tuple[list[dict], dict[str, Any]]:
+    """Load optional artifacts and enrich the H3 input segments."""
+    config = context["config"]
+    global_context = dict(context["global_context"])
+    configured_audio_bindings = getattr(
+        getattr(config, "minimax_h3_audio_refs", None),
+        "subject_bindings",
+        {},
+    )
+    if configured_audio_bindings:
+        global_context["audio_subject_bindings"] = configured_audio_bindings
+    stage1_segments = _normalize_h3_scene_references(context["stage1_segments"], global_context)
+    artifact_store = context["artifact_store"]
+    render_plan_json = context["render_plan_json"] if "render_plan_json" in context.keys() else None
+    if render_plan_json is not None:
+        try:
+            render_plan = artifact_store.read_json(render_plan_json)
+        except FileNotFoundError:
+            render_plan = None
+        if isinstance(render_plan, list):
+            stage1_segments = _attach_h3_overrides(stage1_segments, render_plan)
+    relay_path = context.setdefault("ltx_prompt_relay_json", None)
+    if relay_path is not None:
+        stage1_segments = _attach_relay_segments(
+            stage1_segments,
+            artifact_store.read_json(relay_path),
+        )
+    scene_prompts_path = context.setdefault("scene_prompts_json", None)
+    if scene_prompts_path is not None:
+        try:
+            stage1_segments = _attach_subject_directives(
+                stage1_segments,
+                artifact_store.read_json(scene_prompts_path),
+                global_context=global_context,
+            )
+        except (FileNotFoundError, KeyError):
+            pass
+    beat_path = context.setdefault("beat_json", None)
+    if beat_path is not None:
+        try:
+            beat_data = artifact_store.read_json(beat_path)
+        except FileNotFoundError:
+            beat_data = None
+        if isinstance(beat_data, dict):
+            stage1_segments = _attach_beat_events(stage1_segments, beat_data)
+    return stage1_segments, global_context
+
+
+def _announce_h3_compiler(
+    llm: Any,
+    model_spec: Any,
+    generator_revision: dict[str, Any],
+    reporter: Any,
+) -> None:
+    """Surface compiler identity and prompt output budgets before generation starts."""
+    if reporter is None or model_spec is None or not model_spec.is_minimax_h3:
+        return
+    compiler_name = generator_revision.get("compiler")
+    compiler_version = generator_revision.get("compiler_version")
+    if compiler_name and compiler_version is not None:
+        reporter.message(
+            f"[cyan]H3 prompt compiler: {compiler_name} v{compiler_version}. "
+            "Matching checkpoints are reused; stale compiler checkpoints are "
+            "invalidated and saved structured plans are recompiled.[/cyan]",
+        )
+    output_budget = getattr(llm, "max_tokens", None)
+    if output_budget is not None:
+        reporter.message(
+            f"[cyan]H3 planner output budget: {output_budget} tokens per structured plan.[/cyan]",
+        )
+    judge_output_budget = getattr(llm, "prompt_judge_max_tokens", None)
+    if judge_output_budget is not None:
+        reporter.message(
+            f"[cyan]H3 judge output budget: {judge_output_budget} tokens per verdict.[/cyan]",
+        )
+    judge_enabled = bool(getattr(llm, "prompt_judge_enabled", True))
+    reporter.message(
+        "[cyan]H3 judge mode: "
+        + ("advisory; BAD verdicts are saved but never stop render preparation."
+           if judge_enabled else "disabled; deterministic prompt validation remains active.")
+        + "[/cyan]",
+    )
+
+
+def _report_h3_judge_findings(h3_prompts: list[dict], reporter: Any) -> None:
+    # H3 quality diagnostics are advisory. A valid scene must keep moving
+    # to rendering even when the creative planner, compiler diagnostics, or
+    # judge report an imperfect prompt. The builder records whether it used
+    # a deterministic fallback so callers can surface that state.
+    if reporter is None:
+        return
+    bad_judgements = [
+        item for item in h3_prompts
+        if (item.get("prompt_judge") or {}).get("verdict") == "bad"
+    ]
+    if bad_judgements:
+        reporter.table(
+            "[yellow]H3 prompt judge findings[/yellow]",
+            ["Scene", "Issue", "Finding"],
+            _h3_judge_issue_rows(bad_judgements),
+        )
+        reporter.message(
+            "[yellow]H3 prompt judge summary: "
+            f"{len(bad_judgements)} scene(s) marked BAD. "
+            "Prompts were saved; review and optionally correct them manually "
+            "before rendering: "
+            + ", ".join(str(item.get("segment_id")) for item in bad_judgements)
+            + "[/yellow]",
+        )
+    else:
+        reporter.message("[green]H3 prompt preparation complete; no advisory BAD verdicts recorded.[/green]")
+
+
 class H3PromptPipeline:
     """Application service for H3-structured prompt generation (stage 8.5)."""
 
@@ -261,62 +374,15 @@ class H3PromptPipeline:
         return self.run(context)
 
     def run(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
-        app_config = context["app_config"]
         config = context["config"]
-        stage1_segments = context["stage1_segments"]
-        concept_prompts = context["concept_prompts"]
-        scene_details = context["scene_details"]
-        global_context = dict(context["global_context"])
-        configured_audio_bindings = getattr(
-            getattr(config, "minimax_h3_audio_refs", None),
-            "subject_bindings",
-            {},
-        )
-        if configured_audio_bindings:
-            global_context["audio_subject_bindings"] = configured_audio_bindings
-        stage1_segments = _normalize_h3_scene_references(stage1_segments, global_context)
+        stage1_segments, global_context = _prepare_h3_segments(context)
         h3_prompts_json = context["h3_prompts_json"]
-        artifact_store = context["artifact_store"]
         log_step = context["log_step"]
         log_file = context["log_file"]
 
-        render_plan_json = context["render_plan_json"] if "render_plan_json" in context.keys() else None
-        if render_plan_json is not None:
-            try:
-                render_plan = artifact_store.read_json(render_plan_json)
-            except FileNotFoundError:
-                render_plan = None
-            if isinstance(render_plan, list):
-                stage1_segments = _attach_h3_overrides(stage1_segments, render_plan)
-
-        relay_path = context.setdefault("ltx_prompt_relay_json", None)
-        if relay_path is not None:
-            stage1_segments = _attach_relay_segments(
-                stage1_segments,
-                artifact_store.read_json(relay_path),
-            )
-        scene_prompts_path = context.setdefault("scene_prompts_json", None)
-        if scene_prompts_path is not None:
-            try:
-                stage1_segments = _attach_subject_directives(
-                    stage1_segments,
-                    artifact_store.read_json(scene_prompts_path),
-                    global_context=global_context,
-                )
-            except (FileNotFoundError, KeyError):
-                pass
-        beat_path = context.setdefault("beat_json", None)
-        if beat_path is not None:
-            try:
-                beat_data = artifact_store.read_json(beat_path)
-            except FileNotFoundError:
-                beat_data = None
-            if isinstance(beat_data, dict):
-                stage1_segments = _attach_beat_events(stage1_segments, beat_data)
-
         log_step("8.5. H3 Structured Prompts")
+        app_config = context["app_config"]
         llm = self.llm_factory(app_config)
-        builder_factory = self.h3_prompt_builder_factory
         reporter = context["reporter"] if "reporter" in context.keys() else None
         try:
             model_spec = resolve_model_type(config.video_pipeline)
@@ -327,6 +393,7 @@ class H3PromptPipeline:
                     f"video_pipeline '{config.video_pipeline}' has no H3 model spec ({exc}); "
                     "falling back to the legacy H3 prompt builder with T2V mode",
                 )
+        builder_factory = self.h3_prompt_builder_factory
         if model_spec and model_spec.is_minimax_h3 and self.dspy_prompt_builder_factory:
             builder_factory = self.dspy_prompt_builder_factory
         builder = builder_factory(llm)
@@ -336,48 +403,9 @@ class H3PromptPipeline:
             else None
         )
         generator_revision = _generator_revision(app_config, builder)
-        compiler_name = generator_revision.get("compiler")
         compiler_version = generator_revision.get("compiler_version")
-        if (
-            reporter is not None
-            and model_spec is not None
-            and model_spec.is_minimax_h3
-            and compiler_name
-            and compiler_version is not None
-        ):
-            reporter.message(
-                f"[cyan]H3 prompt compiler: {compiler_name} v{compiler_version}. "
-                "Matching checkpoints are reused; stale compiler checkpoints are "
-                "invalidated and saved structured plans are recompiled.[/cyan]",
-            )
-        output_budget = getattr(llm, "max_tokens", None)
-        if (
-            reporter is not None
-            and model_spec is not None
-            and model_spec.is_minimax_h3
-            and output_budget is not None
-        ):
-            reporter.message(
-                f"[cyan]H3 planner output budget: {output_budget} tokens per structured plan.[/cyan]",
-            )
-        judge_output_budget = getattr(llm, "prompt_judge_max_tokens", None)
-        if (
-            reporter is not None
-            and model_spec is not None
-            and model_spec.is_minimax_h3
-            and judge_output_budget is not None
-        ):
-            reporter.message(
-                f"[cyan]H3 judge output budget: {judge_output_budget} tokens per verdict.[/cyan]",
-            )
-        if reporter is not None and model_spec is not None and model_spec.is_minimax_h3:
-            judge_enabled = bool(getattr(llm, "prompt_judge_enabled", True))
-            reporter.message(
-                "[cyan]H3 judge mode: "
-                + ("advisory; BAD verdicts are saved but never stop render preparation."
-                   if judge_enabled else "disabled; deterministic prompt validation remains active.")
-                + "[/cyan]",
-            )
+        _announce_h3_compiler(llm, model_spec, generator_revision, reporter)
+
         selected_scene_numbers = (
             context["selected_scene_numbers"]
             if "selected_scene_numbers" in context.keys()
@@ -407,13 +435,13 @@ class H3PromptPipeline:
         ).strip()
         builder.build_all_h3_prompts(
             stage1_segments=stage1_segments,
-            concept_prompts=concept_prompts,
-            scene_details=scene_details,
+            concept_prompts=context["concept_prompts"],
+            scene_details=context["scene_details"],
             global_context=global_context,
             mode=mode,
             video_type=video_type,
             output_json_path=h3_prompts_json,
-            artifact_store=artifact_store,
+            artifact_store=context["artifact_store"],
             audio_paths=audio_paths,
             reference_root=getattr(config, "project_dir", None),
             progress_callback=lambda current, total: progress.update(current),
@@ -443,36 +471,12 @@ class H3PromptPipeline:
             ) and not replan_requested,
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
-        context["h3_prompts"] = artifact_store.read_json(h3_prompts_json)
+        context["h3_prompts"] = context["artifact_store"].read_json(h3_prompts_json)
         require_ready_scenes(
             context["h3_prompts"],
             project_path=getattr(config, "project_dir", None),
         )
-        # H3 quality diagnostics are advisory. A valid scene must keep moving
-        # to rendering even when the creative planner, compiler diagnostics, or
-        # judge report an imperfect prompt. The builder records whether it used
-        # a deterministic fallback so callers can surface that state.
-        if reporter is not None:
-            bad_judgements = [
-                item for item in context["h3_prompts"]
-                if (item.get("prompt_judge") or {}).get("verdict") == "bad"
-            ]
-            if bad_judgements:
-                reporter.table(
-                    "[yellow]H3 prompt judge findings[/yellow]",
-                    ["Scene", "Issue", "Finding"],
-                    _h3_judge_issue_rows(bad_judgements),
-                )
-                reporter.message(
-                    "[yellow]H3 prompt judge summary: "
-                    f"{len(bad_judgements)} scene(s) marked BAD. "
-                    "Prompts were saved; review and optionally correct them manually "
-                    "before rendering: "
-                    + ", ".join(str(item.get("segment_id")) for item in bad_judgements)
-                    + "[/yellow]",
-                )
-            else:
-                reporter.message("[green]H3 prompt preparation complete; no advisory BAD verdicts recorded.[/green]")
+        _report_h3_judge_findings(context["h3_prompts"], reporter)
         return context
 
 
