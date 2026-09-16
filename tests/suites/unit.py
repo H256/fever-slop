@@ -113,6 +113,7 @@ UNIT_MODULES = (
     "movie_h3_preparation",
     "movie_input_validation",
     "movie_msr_enrichment",
+    "msr_enrichment_parity",
     "movie_pipeline_modes",
     "movie_scene_cards",
     "movie_planning_dspy_contracts",

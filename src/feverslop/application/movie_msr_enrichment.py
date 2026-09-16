@@ -7,8 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.application.msr_prompt_enrichment import (
-    clean_segment_prompt,
-    is_valid_segment_prompt,
+    dspy_modules,
+)
+from feverslop.application.msr_validation import (
+    validate_msr_vision_response,
 )
 from feverslop.application.reference_bible import (
     build_runtime_consistency_contract,
@@ -23,7 +25,6 @@ from feverslop.domain.visual_consistency_runtime import (
 )
 from feverslop.errors import FeverSlopLMLError
 from feverslop.ports.llm import VisionLLMPort
-from feverslop.prompting.msr_modules import MSRPromptModules
 from feverslop.utils.io import atomic_write_json, read_json_object
 
 logger = logging.getLogger(__name__)
@@ -208,7 +209,7 @@ def _movie_vision_prompts(
     if not references:
         logger.warning("MSR image analysis fallback: shot=%s reason=no images", shot_id)
         return None
-    modules = modules or _movie_msr_modules(llm)
+    modules = modules or dspy_modules(llm)
     if modules is None:
         logger.warning("MSR image analysis fallback: shot=%s reason=vision unavailable", shot_id)
         return None
@@ -231,32 +232,20 @@ def _movie_vision_prompts(
             exc_info=exc,
         )
         return None
-    try:
-        items = data.get("references")
-        relays = data.get("relays")
-        if not isinstance(items, list) or not isinstance(relays, list) or len(relays) != 1:
-            raise ValueError("missing lists")
-        descriptions = {}
-        for item in items:
-            pair = (str(item.get("id") or ""), str(item.get("type") or ""))
-            description = str(item.get("description") or "").strip()
-            if not all(pair) or not description or pair in descriptions:
-                raise ValueError("invalid reference")
-            descriptions[pair] = description
-        if set(descriptions) != {(ref.id, ref.type) for ref in references}:
-            raise ValueError("reference mismatch")
-        if int(relays[0].get("index", -1)) != 0:
-            raise ValueError("relay mismatch")
-        relay_prompt = clean_segment_prompt(str(relays[0].get("prompt") or ""))
-        if not is_valid_segment_prompt(relay_prompt, relay):
-            raise ValueError("invalid relay")
-    except (FeverSlopLMLError, ValueError, TypeError, KeyError, IndexError) as exc:
+    expected_pairs = {(ref.id, ref.type) for ref in references}
+    validated = validate_msr_vision_response(
+        data,
+        expected_pairs=expected_pairs,
+        relays=[relay],
+    )
+    if validated is None:
         logger.warning(
             "MSR image analysis fallback: shot=%s reason=invalid response",
             shot_id,
-            exc_info=exc,
         )
         return None
+    descriptions, prompts = validated
+    relay_prompt = prompts[0]
 
     parts = []
     for index, reference in enumerate(references, start=1):
@@ -264,15 +253,6 @@ def _movie_vision_prompts(
         label = "Scene" if reference.type == "location" else str(item.get("name") or reference.id)
         parts.append(f"Reference image {index} ({label}): {descriptions[(reference.id, reference.type)]}.")
     return " ".join(parts), relay_prompt
-
-
-def _movie_msr_modules(llm):
-    if not isinstance(getattr(llm, "model", None), str) or getattr(llm, "client", None) is None:
-        return None
-    try:
-        return MSRPromptModules(llm)
-    except (ImportError, RuntimeError):
-        return None
 
 
 def _movie_relay_state(shot: dict) -> str:
