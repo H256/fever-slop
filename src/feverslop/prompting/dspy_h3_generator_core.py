@@ -234,6 +234,42 @@ def _deterministic_reference_definitions(refs: list[ResolvedReference]) -> list[
     return definitions
 
 
+def _truncation_suspected(raw: str) -> bool:
+    """Heuristic: an unclosed JSON structure is a strong truncation signature.
+
+    The planner's typed fields arrive as JSON. A response that starts a JSON
+    container ({ or [) but never closes it is almost always cut off at the
+    response budget rather than a JSON authoring mistake -- surfacing this lets
+    an operator raise ``prompt_planner_max_tokens`` instead of guessing.
+    """
+    text = str(raw or "").rstrip()
+    if not text:
+        return False
+    if not (text.startswith("{") or text.startswith("[")):
+        return False
+    # Track brackets while ignoring JSON string literals so a closing brace
+    # inside prose is not miscounted.
+    depth = 0
+    in_string = False
+    escaped = False
+    for char in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char in "{[":
+            depth += 1
+        elif char in "}]":
+            depth -= 1
+    return depth > 0
+
+
 class VideoPromptGenerator:
     """Integrated DSPy planner, analyzer, and renderer."""
 
@@ -265,7 +301,16 @@ class VideoPromptGenerator:
         self.judge_attempts = 1
         self.prompt_judge_blocking = False
         self.warning_callback = warning_callback
-        self.lm = self.dspy_runtime.make_lm(llm, max_tokens=H3_PLANNER_MAX_TOKENS)
+        # An operator can raise the planner's typed-output budget when the
+        # serving model is verbose or the guide demands long prose; this mirrors
+        # the existing `prompt_judge_max_tokens` override. Truncation is a common
+        # cause of h3.fallback.plan_missing (see H3_PLANNER_MAX_TOKENS).
+        planner_max_tokens = int(
+            getattr(llm, "prompt_planner_max_tokens", H3_PLANNER_MAX_TOKENS),
+        ) or H3_PLANNER_MAX_TOKENS
+        self.planner_max_tokens = planner_max_tokens
+        self.last_planner_history: list[Any] = []
+        self.lm = self.dspy_runtime.make_lm(llm, max_tokens=planner_max_tokens)
         self.judge_lm = self.dspy_runtime.make_lm(
             llm,
             max_tokens=min(
@@ -441,6 +486,8 @@ class VideoPromptGenerator:
         return result
 
     def _plan(self, request: VideoPromptRequest, refs: list[ResolvedReference]) -> ResolvedPromptPlan:
+        lm = getattr(self, "lm", None)
+        history_start = len(getattr(lm, "history", []) or [])
         prediction = self.planner(
             mode=request.mode.value,
             user_prompt=request.user_prompt,
@@ -450,6 +497,9 @@ class VideoPromptGenerator:
             strict_fidelity=request.strict_fidelity,
             requested_music_intent=request.music_intent.value if request.music_intent else "",
             relay_segments=compact_planning_payload(request.relay_segments),
+        )
+        self.last_planner_history = (
+            list(getattr(lm, "history", []) or [])[history_start:]
         )
         creative = prediction.plan
         music_intent = request.music_intent or creative.music_intent
@@ -518,6 +568,39 @@ class VideoPromptGenerator:
             alignment_instruction=None,
             continuation_intents=_authoritative_continuation_intents(request),
         )
+
+    def planner_diagnostic(self) -> dict[str, Any]:
+        """Compact, JSON-safe snapshot of the last planner call for failed scenes.
+
+        Surfaces the raw LM output and a truncation heuristic so a blocked scene
+        stops being an opaque ``h3.fallback.plan_missing`` -- the operator can
+        see *why* the planner did not produce a usable typed plan.
+        """
+        history = list(getattr(self, "last_planner_history", None) or [])
+        entry = history[-1] if history else None
+        diagnostic: dict[str, Any] = {
+            "budget_max_tokens": getattr(self, "planner_max_tokens", H3_PLANNER_MAX_TOKENS),
+        }
+        if not isinstance(entry, Mapping):
+            diagnostic.update({"history_entries": len(history), "raw_output": None})
+            return diagnostic
+        response = entry.get("response")
+        raw = ""
+        if isinstance(response, list) and response:
+            raw = str(response[-1])
+        elif isinstance(response, str):
+            raw = response
+        kwargs = entry.get("request_kwargs")
+        if isinstance(kwargs, Mapping):
+            diagnostic["requested_max_tokens"] = (
+                kwargs.get("max_tokens") or kwargs.get("max_completion_tokens")
+            )
+        diagnostic["history_entries"] = len(history)
+        diagnostic["truncation_suspected"] = _truncation_suspected(raw)
+        # Keep the artifact small; include the last response text so the actual
+        # model output is never lost on the diagnostic path.
+        diagnostic["raw_output"] = raw[-8000:] if raw else None
+        return diagnostic
 
     def _render_reference(
         self,

@@ -41,7 +41,14 @@ MSR_PER_RELAY_TOKENS = 2048
 
 # H3 is called once per scene. Never inherit the application's large global
 # response budget for these bounded structured/advisory tasks.
-H3_PLANNER_MAX_TOKENS = 4096
+#
+# The planner's typed plan (creative_intent, style_opening, overall_soundscape
+# and one planned shot per authoritative relay segment, each carrying several
+# prose fields) is closer to 6-8k tokens than 4k when the model is verbose. At
+# 4096 the response is frequently truncated mid-JSON on weaker/quantized models,
+# which surfaces downstream as h3.fallback.plan_missing. The budget is component
+# configurable via `prompt_planner_max_tokens` on the LLM override.
+H3_PLANNER_MAX_TOKENS = 8192
 H3_JUDGE_MAX_TOKENS = 2048
 
 # Batched tasks are budgeted by the per-call-site multiplier functions

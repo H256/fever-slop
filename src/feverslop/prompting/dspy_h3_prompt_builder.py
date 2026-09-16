@@ -18,6 +18,8 @@ from feverslop.prompting.dspy_h3_models import (
     AudioSubjectBinding,
     H3PromptSections,
     MusicIntent,
+    PlannedShot,
+    ResolvedPromptPlan,
 )
 from feverslop.prompting.deterministic_h3_compiler import (
     H3_COMPILER_NAME,
@@ -786,11 +788,24 @@ class DspyH3PromptBuilder:
         # construction must pass False so DSPy failures are surfaced.
         allow_fallback: bool = True,
         reporter: Any = None,
+        # A single LLM call on a quantized/verbose serving model frequently
+        # returns an unparseable typed plan. Retry the planner a bounded number
+        # of times (total attempts = 1 + planner_retries) before falling back,
+        # so a transient bad output does not hard-block the scene.
+        planner_retries: int = 2,
+        # Opt-in last resort: when the planner produced no usable plan and
+        # retries are exhausted, synthesize a single-shot, fact-faithful plan
+        # from the locked scene facts and base concept so the scene stays
+        # renderable instead of blocking. Off by default: this trades fidelity
+        # for progress and the output is legitimately generic.
+        synthesize_plan_fallback: bool = False,
     ):
         self.generator = generator
         self.reference_root = reference_root
         self.allow_fallback = allow_fallback
         self.reporter = reporter
+        self.planner_retries = max(0, int(planner_retries or 0))
+        self.synthesize_plan_fallback = bool(synthesize_plan_fallback)
 
     def set_reporter(self, reporter: Any) -> None:
         self.reporter = reporter
@@ -868,6 +883,13 @@ class DspyH3PromptBuilder:
             result["prompt_contract"] = {"valid": False}
             result["validation_audio_delivery"] = (kwargs.get("global_context") or {}).get("h3_audio_delivery")
             result["dspy_error"] = "; ".join(reasons)
+            root_cause = getattr(exc, "root_cause", None)
+            if isinstance(root_cause, Mapping):
+                # Preserve the block reason in dspy_error (unchanged contract)
+                # and surface the real planner failure + LLM diagnostics next to
+                # it so a blocked scene is actionable instead of opaque.
+                result["dspy_error_root"] = str(root_cause.get("cause") or "")
+                result["dspy_error_detail"] = dict(root_cause)
             result["readiness"] = recovery.finish("blocked", reasons, stage="validation") if recovery is not None else {
                 "status": "blocked", "stage": "validation", "reason_codes": reasons,
                 "policy_version": 1, "attempt_revision": 0, "attempts": []}
@@ -885,6 +907,58 @@ class DspyH3PromptBuilder:
         if recovery is not None and not recovery.reserve(stage):
             raise PromptContractError([PromptContractIssue(
                 "h3.recovery.exhausted", stage, "This input revision has already reserved this attempt")])
+
+    def _planner_diagnostic(self) -> dict[str, Any]:
+        capture = getattr(self.generator, "planner_diagnostic", None)
+        if not callable(capture):
+            return {}
+        try:
+            value = capture()
+        except Exception:
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    def _generate_with_retries(
+        self,
+        request: dict[str, Any],
+        *,
+        segment: dict[str, Any],
+        retry_diagnostics: list[dict[str, Any]],
+    ) -> Any:
+        """Call the DSPy generator, retrying a bounded number of times.
+
+        Generation is the only step retried here: a single attempt is a coin
+        flip on weaker models and a transient bad parse must not hard-block a
+        scene. Contract/compile failures are handled by their own repair loop
+        and by the deterministic fallback, not by this budget. All reserved
+        attempts share the single "generate" recovery reservation.
+        """
+        attempts = 1 + self.planner_retries
+        segment_id = str(segment.get("segment_id") or "")
+        last_error: BaseException | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                with api_observability_context(
+                    stage="h3_prompt",
+                    scene_id=segment_id,
+                    operation="planner",
+                    attempt=attempt,
+                    checkpoint="miss",
+                ):
+                    return self.generator(request)
+            except Exception as exc:
+                last_error = exc
+                retry_diagnostics.append({
+                    "attempt": attempt,
+                    "planned_attempts": attempts,
+                    "cause": _safe_error_message(exc),
+                    "llm": self._planner_diagnostic(),
+                })
+        # All attempts failed; surface the final cause (the caller attaches it
+        # as the root cause so a blocked scene is actionable, not opaque).
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("H3 DSPy generator returned no result")
 
     @staticmethod
     def _validate_final_result(result: dict, *, segment: dict, mode: str) -> None:
@@ -1048,16 +1122,14 @@ class DspyH3PromptBuilder:
         facts = locked_scene_facts_from_scene(segment)
         generated = None
         current_plan = None
+        retry_diagnostics: list[dict[str, Any]] = []
         self._reserve(recovery, "generate")
         try:
-            with api_observability_context(
-                stage="h3_prompt",
-                scene_id=str(segment.get("segment_id") or ""),
-                operation="planner",
-                attempt=1,
-                checkpoint="miss",
-            ):
-                generated = self.generator(request)
+            generated = self._generate_with_retries(
+                request,
+                segment=segment,
+                retry_diagnostics=retry_diagnostics,
+            )
             if hasattr(generated, "plan"):
                 # Generation is intentionally single-pass. A scene must fall
                 # back or retain an advisory BAD verdict rather than entering a
@@ -1206,6 +1278,13 @@ class DspyH3PromptBuilder:
                 if current_plan is not None:
                     fallback_error.candidate_result = {"references": references, "sections": {
                         "h3_sections": H3PromptSections.from_plan(current_plan).model_dump(), "facts": facts.to_dict()}}
+                # Preserve the true planner failure for diagnostics. Without
+                # this the block reports only h3.fallback.plan_missing and a
+                # failed scene is unactionable.
+                fallback_error.root_cause = {
+                    "cause": safe_error,
+                    "attempts": list(retry_diagnostics),
+                }
                 raise
             result["dspy_error"] = safe_error
             return result
@@ -1250,8 +1329,28 @@ class DspyH3PromptBuilder:
     ) -> dict[str, Any]:
         """Repair only deterministic fields of the last structured creative plan."""
         if plan is None:
-            raise PromptContractError([PromptContractIssue(
-                "h3.fallback.plan_missing", "fallback", "No structured creative plan survived generation")])
+            if not self.synthesize_plan_fallback:
+                raise PromptContractError([PromptContractIssue(
+                    "h3.fallback.plan_missing", "fallback", "No structured creative plan survived generation")])
+            plan = self._synthesize_minimal_plan(
+                mode=mode, segment=segment, concept=concept, facts=facts,
+                references=references,
+            )
+            result = self._build_structured_prompt(
+                mode=mode, segment=segment, concept=concept,
+                global_context=global_context, judge=False, sections={
+                    "facts": facts.to_dict(),
+                    "h3_sections": H3PromptSections.from_plan(plan).model_dump(),
+                    "resolved_references": references,
+                })
+            # Synthesized plans are deterministic defaults, never model prose.
+            # Mark the provenance so a generic result stays identifiable.
+            result["prompt_provenance"] = {
+                "compiler": H3_COMPILER_NAME,
+                "compiler_version": H3_COMPILER_VERSION,
+                "source": "deterministic_scene_synthesis",
+            }
+            return result
         if not str(plan.style_opening or "").strip():
             plan = plan.model_copy(update={
                 "style_opening": "Live-action cinematic imagery preserves the planned composition and scene facts.",
@@ -1263,6 +1362,51 @@ class DspyH3PromptBuilder:
             })
         result["prompt_provenance"]["source"] = "deterministic_fallback"
         return result
+
+    @staticmethod
+    def _synthesize_minimal_plan(
+        *, mode: str, segment: dict[str, Any], concept: str,
+        facts: LockedSceneFacts, references: list[dict[str, Any]],
+    ) -> ResolvedPromptPlan:
+        """Build a single-shot, fact-faithful plan when the planner produced none.
+
+        Opt-in via ``synthesize_plan_fallback=True``. Never invents subjects,
+        characters, or music; it reuses the locked scene facts and the base
+        concept so a scene stays renderable instead of hard-blocking. The
+        resulting prompt is generic and is marked with deterministic
+        provenance. If it fails the strict contract gate it still blocks
+        (fail-closed is preserved).
+        """
+        duration = float(
+            segment.get("duration_seconds") or segment.get("duration") or 0
+        ) or 1.0
+        creative_intent = str(concept or "").strip()
+        if not creative_intent:
+            creative_intent = (
+                "Live-action cinematic imagery preserves the locked scene "
+                "composition, subjects, and facts from the supplied references."
+            )
+        style_opening = (
+            "Live-action cinematic imagery preserves the locked scene "
+            "composition, subjects, and facts."
+        )
+        return ResolvedPromptPlan(
+            creative_intent=creative_intent,
+            style_opening=style_opening,
+            shots=[
+                PlannedShot(
+                    shot_number=1,
+                    start_seconds=0,
+                    end_seconds=duration,
+                    description=creative_intent,
+                ),
+            ],
+            overall_soundscape=(
+                "The scene's ambient and performance sound is carried by the "
+                "supplied audio reference."
+            ),
+            music_intent=MusicIntent.NONE,
+        )
 
     def _report_warning(self, message: str, *, title: str) -> None:
         warning = getattr(self.generator, "_warning", None)
