@@ -1908,6 +1908,91 @@ class AudioPromptSuffixTests(unittest.TestCase):
             ref_audio_paths=["vocals.wav"],
         )
 
+    def test_preflight_allows_no_vocal_prompt_touching_accepted_word_onset(self):
+        """Silence window ending exactly at a word onset is rounding, not a conflict.
+
+        Section boundaries in performance_intervals are stored against the
+        unrounded scene start, so they can sit a few ms before the word times
+        that the H3 compiler used to lay out prompt windows.
+        """
+        backend = self._backend()
+        scene = {
+            "scene": 7,
+            "abs_start_seconds": 31.9,
+            "references": {
+                "actor_ids": ["ravena"],
+                "actor_sheet_paths": ["actor.png"],
+                "audio_subject_bindings": {
+                    "vocals": {"subject_id": "ravena", "speaker_id": "S1"},
+                },
+            },
+            "stem_audio": {"paths": {"vocals": "vocals.wav"}},
+            "performance_intervals": [{
+                "performance_phase": True,
+                # 35.4 - 31.903 / 36.22 - 31.903: 3 ms earlier than word
+                # times expressed against abs_start_seconds (31.9).
+                "start_seconds": 3.497,
+                "end_seconds": 4.317,
+                "state": "singing",
+                "transcript_status": "accepted",
+                "word_timestamps": [
+                    {"word": "the", "start": 35.4, "end": 35.58, "source": "whisper"},
+                    {"word": "mountain,", "start": 35.58, "end": 36.22, "source": "whisper"},
+                ],
+            }],
+        }
+
+        backend.build_workflow(
+            scene,
+            prompt=(
+                "Within this continuous camera shot, "
+                "From 3.127-3.500 seconds, No sung vocal performance occurs; "
+                "continue the established camera movement. "
+                "From 3.500-4.320 seconds, <Subject 1> (S1) sings with visible mouth "
+                "movements precisely synchronized to the vocal, "
+                "<d>[English] the mountain,.</d>"
+            ),
+            ref_audio_paths=["vocals.wav"],
+        )
+
+    def test_preflight_rejects_no_vocal_prompt_over_accepted_word_span(self):
+        """A silence window covering an accepted word span still raises."""
+        backend = self._backend()
+        scene = {
+            "scene": 7,
+            "abs_start_seconds": 31.9,
+            "references": {
+                "actor_ids": ["ravena"],
+                "actor_sheet_paths": ["actor.png"],
+                "audio_subject_bindings": {
+                    "vocals": {"subject_id": "ravena", "speaker_id": "S1"},
+                },
+            },
+            "stem_audio": {"paths": {"vocals": "vocals.wav"}},
+            "performance_intervals": [{
+                "performance_phase": True,
+                "start_seconds": 3.497,
+                "end_seconds": 4.317,
+                "state": "singing",
+                "transcript_status": "accepted",
+                "word_timestamps": [
+                    {"word": "the", "start": 35.4, "end": 35.58, "source": "whisper"},
+                    {"word": "mountain,", "start": 35.58, "end": 36.22, "source": "whisper"},
+                ],
+            }],
+        }
+
+        with self.assertRaisesRegex(FeverSlopValidationError, "contradicts accepted vocal timing"):
+            backend.build_workflow(
+                scene,
+                prompt=(
+                    "Within this continuous camera shot, "
+                    "From 3.550-3.700 seconds, No sung vocal performance occurs; "
+                    "continue the established camera movement."
+                ),
+                ref_audio_paths=["vocals.wav"],
+            )
+
     def test_preflight_keeps_missing_transcript_non_vocal_fallback(self):
         backend = self._backend()
         scene = {
