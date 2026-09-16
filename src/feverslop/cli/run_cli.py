@@ -313,10 +313,8 @@ def _blocked_h3_scene_numbers(project: Path) -> list[int]:
             continue
         try:
             h3_data = json.loads(h3_path.read_text(encoding="utf-8-sig"))
-            if isinstance(h3_data, dict):
-                readiness = h3_data.get("readiness") or {}
-                if isinstance(readiness, dict) and readiness.get("status") == "blocked":
-                    blocked.append(num)
+            if isinstance(h3_data, dict) and h3_data.get("status") == "blocked":
+                blocked.append(num)
         except (json.JSONDecodeError, OSError, TypeError, KeyError):
             continue
     return blocked

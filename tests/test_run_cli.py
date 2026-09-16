@@ -593,14 +593,14 @@ class RunCliTests(unittest.TestCase):
         scene_dir3 = scene_dir / "scene_0003"
         scene_dir3.mkdir(exist_ok=True)
         (scene_dir3 / "h3_prompt.json").write_text(
-            json.dumps({"readiness": {"status": "blocked"}}),
+            json.dumps({"status": "blocked"}),
             encoding="utf-8",
         )
         # Create ready scene 5
         scene_dir5 = scene_dir / "scene_0005"
         scene_dir5.mkdir(exist_ok=True)
         (scene_dir5 / "h3_prompt.json").write_text(
-            json.dumps({"readiness": {"status": "ready"}}),
+            json.dumps({"status": "good"}),
             encoding="utf-8",
         )
         # Create base plan
