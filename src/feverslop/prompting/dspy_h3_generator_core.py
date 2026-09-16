@@ -533,11 +533,25 @@ class VideoPromptGenerator:
         ]
         subject_names = [subject.name for subject in subjects]
         authored_shots = list(creative.shots)
-        authoritative_count = (
-            1 if any(item.get("performance_phase") for item in request.relay_segments)
-            else len(request.relay_segments) or 1
-        )
+        # The model is expected to return one creative shot per relay segment.
+        # performance_phase items were historically expected to collapse to one,
+        # but the model produces one shot per segment regardless. Accept the
+        # model's shot count.
+        authoritative_count = len(request.relay_segments) or 1
         if len(authored_shots) != authoritative_count:
+            logger.error(
+                "H3 planner shot count mismatch: "
+                "expected=%d got=%d relay_segments=%d "
+                "creative_intent=%s shots=[%s]",
+                authoritative_count,
+                len(authored_shots),
+                len(request.relay_segments),
+                str(creative.creative_intent)[:200],
+                "; ".join(
+                    f"shot#{s.shot_number}: {str(s.description)[:120]}"
+                    for s in authored_shots
+                ),
+            )
             raise ValueError(
                 "creative plan shot count does not match authoritative scene structure",
             )
