@@ -1448,5 +1448,340 @@ class CollateralContinuityRepairTests(unittest.TestCase):
         self.assertEqual(1, len([call for call in modules.calls if call[0] == "repair_concepts"]))
 
 
+class RepairContextCompletenessTests(unittest.TestCase):
+    """Contiguous repair gaps must not blind the repair model (#1174/#1176 shape).
+
+    When a generation response loses a contiguous suffix, every neighbor of
+    every repair target is itself a repair target. The repair payload must
+    still carry the nearest accepted boundary state (across the gap), the full
+    state of any duplicated prior scene, and a compact ledger of all accepted
+    semantic states. Strict duplicate validation must stay intact.
+    """
+
+    @staticmethod
+    def _concept(beat: str, *, cast: str = "advancing") -> dict:
+        return boundary_concept(
+            f"Ravena performs {beat.replace('_', ' ')}.",
+            story_beat=beat,
+            action=beat,
+            action_phase="ongoing",
+            location="cave_system",
+            cast_states={"ravena": cast},
+        )
+
+    def test_repair_boundary_context_falls_back_across_repair_gaps(self):
+        c1 = self._concept("enter_caves", cast="walking")
+        c2 = self._concept("cross_chamber", cast="advancing")
+        modules = FakeConceptModules([
+            {"s1": c1, "s2": c2},
+            {"s3": self._concept("observe_throne"), "s4": self._concept("approach_throne")},
+            {"s5": self._concept("face_guardian")},
+            "summary",
+        ])
+        batcher = ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=5)
+
+        batcher.create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": f"s{i}", "scene": i} for i in range(1, 6)],
+            story_idea="Ravena crosses the lair.",
+            global_context={},
+        )
+
+        repairs = [call[1] for call in modules.calls if call[0] == "repair_concepts"]
+        self.assertEqual(2, len(repairs))
+        first = repairs[0]
+        self.assertEqual(["s3", "s4"], first["EXPECTED_KEYS"])
+        # s3 has an adjacent accepted predecessor: unchanged shape, no distance key.
+        s3_boundary = first["BOUNDARY_CONTEXT"]["s3"]["predecessor"]
+        self.assertEqual("s2", s3_boundary["scene_id"])
+        self.assertNotIn("neighbor_distance", s3_boundary)
+        self.assertNotIn("successor", first["BOUNDARY_CONTEXT"]["s3"])
+        # s4's immediate predecessor is itself being repaired: the boundary
+        # entry must fall back to the nearest accepted scene across the gap.
+        s4_boundary = first["BOUNDARY_CONTEXT"]["s4"]["predecessor"]
+        self.assertEqual("s2", s4_boundary["scene_id"])
+        self.assertEqual(2, s4_boundary["neighbor_distance"])
+        self.assertEqual("cross_chamber", s4_boundary["outgoing"]["action"])
+        self.assertNotIn("successor", first["BOUNDARY_CONTEXT"]["s4"])
+
+    def test_gap_fallback_repair_that_duplicates_boundary_neighbor_still_fails(self):
+        # Negative guard: enriching the gap context must not soften the gate.
+        # A repair that reproduces the neighbor's full semantic state must
+        # still fail immediately with exactly one repair attempt.
+        c1 = self._concept("enter_caves", cast="walking")
+        c2 = self._concept("cross_chamber", cast="advancing")
+        from copy import deepcopy
+        modules = FakeConceptModules([
+            {"s1": c1, "s2": c2},
+            {"s3": deepcopy(c2)},
+            "summary",
+        ])
+        with self.assertRaisesRegex(ValueError, "semantic scene duplicates s2"):
+            ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=3).create_concept_prompts_batched(
+                stage1_segments=[{"segment_id": f"s{i}", "scene": i} for i in range(1, 4)],
+                story_idea="Ravena crosses the lair.",
+                global_context={},
+            )
+        self.assertEqual(1, len([call for call in modules.calls if call[0] == "repair_concepts"]))
+
+    def test_invalid_repair_payload_carries_prior_segment_state(self):
+        first = semantic_concept(
+            "Ravena raises the silver cup at the fountain.",
+            story_beat="raise_the_cup",
+            action="raise_silver_cup",
+            action_phase="ongoing",
+            milestone="cup_raised",
+            prop_state="unseen",
+        )
+        from copy import deepcopy
+        modules = FakeConceptModules([
+            {"s1": first, "s2": deepcopy(first)},
+            {"s2": semantic_concept(
+                "Ravena kneels before the fountain.",
+                story_beat="kneel_before_fountain",
+                action="kneel",
+                action_phase="ongoing",
+                milestone="kneeled",
+                prop_state="unseen",
+            )},
+            "summary",
+        ])
+
+        ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=2).create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": "s1"}, {"segment_id": "s2"}],
+            story_idea="Ravena completes the fountain rite.",
+            global_context={},
+        )
+
+        repair = next(call for call in modules.calls if call[0] == "repair_concepts")
+        invalid = repair[1]["INVALID_SEGMENTS"][0]
+        self.assertEqual("s2", invalid["segment_id"])
+        self.assertEqual("s1", invalid["prior_segment_id"])
+        state = invalid["prior_segment_state"]
+        self.assertEqual(
+            {
+                "story_beat", "objective", "action", "action_phase",
+                "milestones", "location", "cast_states", "props",
+            },
+            set(state),
+        )
+        self.assertEqual("raise_the_cup", state["story_beat"])
+        self.assertEqual({"ravena": "corporeal"}, state["cast_states"])
+
+    def test_generation_payload_includes_accepted_state_ledger(self):
+        first = semantic_concept(
+            "Ravena raises the silver cup at the fountain.",
+            story_beat="raise_the_cup",
+            action="raise_silver_cup",
+            action_phase="ongoing",
+            milestone="cup_raised",
+            prop_state="unseen",
+        )
+        modules = FakeConceptModules([
+            {"s1": first},
+            "summary",
+            {"s2": semantic_concept(
+                "Ravena kneels before the fountain.",
+                story_beat="kneel_before_fountain",
+                action="kneel",
+                action_phase="ongoing",
+                milestone="kneeled",
+                prop_state="unseen",
+            )},
+            "summary",
+        ])
+        batcher = ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=1)
+
+        batcher.create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": "s1"}, {"segment_id": "s2"}],
+            story_idea="Ravena completes the fountain rite.",
+            global_context={},
+        )
+
+        generations = [call[1] for call in modules.calls if call[0] == "concepts"]
+        self.assertEqual([], generations[0]["ACCEPTED_STATE_LEDGER"])
+        self.assertEqual(
+            [{
+                "scene_id": "s1",
+                "story_beat": "raise_the_cup",
+                "action": "raise_silver_cup",
+                "action_phase": "ongoing",
+                "location": "fountain_grotto",
+            }],
+            generations[1]["ACCEPTED_STATE_LEDGER"],
+        )
+
+    def test_repair_payload_includes_accepted_state_ledger(self):
+        first = semantic_concept(
+            "Ravena raises the silver cup at the fountain.",
+            story_beat="raise_the_cup",
+            action="raise_silver_cup",
+            action_phase="ongoing",
+            milestone="cup_raised",
+            prop_state="unseen",
+        )
+        modules = FakeConceptModules([
+            {"s1": first},
+            {"s2": semantic_concept(
+                "Ravena kneels before the fountain.",
+                story_beat="kneel_before_fountain",
+                action="kneel",
+                action_phase="ongoing",
+                milestone="kneeled",
+                prop_state="unseen",
+            )},
+            "summary",
+        ])
+
+        ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=2).create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": "s1"}, {"segment_id": "s2"}],
+            story_idea="Ravena completes the fountain rite.",
+            global_context={},
+        )
+
+        repair = next(call for call in modules.calls if call[0] == "repair_concepts")
+        ledger = repair[1]["ACCEPTED_STATE_LEDGER"]
+        self.assertEqual(["s1"], [entry["scene_id"] for entry in ledger])
+        self.assertEqual("raise_the_cup", ledger[0]["story_beat"])
+
+    def test_incomplete_repair_response_is_reported(self):
+        modules = FakeConceptModules([
+            {},  # generation lost every key
+            {"s1": "concept one"},  # chunk (s1, s2) answered only s1
+            {"s3": "concept three"},  # chunk (s3) answered
+            "summary",
+        ])
+        progress = []
+        batcher = ConceptPromptBatcher(
+            object(), prompt_modules=modules, batch_size=3, progress_callback=progress.append,
+        )
+
+        result = batcher.create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": f"s{i}"} for i in range(1, 4)],
+            story_idea="idea",
+            global_context={},
+        )
+
+        self.assertTrue(
+            any("repair response incomplete for s2" in message for message in progress),
+            progress,
+        )
+        # Existing fallback semantics are preserved (documented one-shot rule),
+        # but the gap is now visible instead of silent.
+        self.assertIn("s2", result["s2"])
+
+
+class ConceptCheckpointTests(unittest.TestCase):
+    """Concept work must survive a mid-stage crash without stale reuse."""
+
+    class CrashingModules(FakeConceptModules):
+        def __init__(self, responses):
+            super().__init__(responses)
+            self.generation_calls = 0
+
+        def concepts(self, payload, *, batch=False, silent_mode=False, timeout=None):
+            self.generation_calls += 1
+            if self.generation_calls == 2:
+                raise RuntimeError("simulated batch 2 failure")
+            return super().concepts(
+                payload, batch=batch, silent_mode=silent_mode, timeout=timeout,
+            )
+
+    @staticmethod
+    def _store():
+        from feverslop.adapters.local_artifacts import JsonArtifactStore
+
+        return JsonArtifactStore()
+
+    @staticmethod
+    def _segments():
+        return [{"segment_id": f"s{i}", "scene": i} for i in range(1, 3)]
+
+    def _batcher(self, modules, temp, name="concept_checkpoint.json"):
+        from pathlib import Path
+
+        batcher = ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=1)
+        batcher.enable_checkpoint(
+            path=Path(temp) / name, artifact_store=self._store(),
+        )
+        return batcher
+
+    def test_checkpoint_skips_completed_batches_and_is_cleared_on_success(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as temp:
+            checkpoint = Path(temp) / "concept_checkpoint.json"
+            crashing = self.CrashingModules([{"s1": "concept one"}, "summary"])
+            with self.assertRaises(RuntimeError):
+                self._batcher(crashing, temp).create_concept_prompts_batched(
+                    stage1_segments=self._segments(), story_idea="idea", global_context={},
+                )
+            self.assertTrue(checkpoint.is_file())
+            saved = self._store().read_json(checkpoint)
+            self.assertEqual(["s1"], sorted(saved["concepts"]))
+
+            modules = FakeConceptModules(["summary", {"s2": "concept two"}, "summary"])
+            progress = []
+            batcher = ConceptPromptBatcher(
+                object(), prompt_modules=modules, batch_size=1, progress_callback=progress.append,
+            )
+            batcher.enable_checkpoint(path=checkpoint, artifact_store=self._store())
+
+            result = batcher.create_concept_prompts_batched(
+                stage1_segments=self._segments(), story_idea="idea", global_context={},
+            )
+
+            self.assertEqual({"s1", "s2"}, set(result))
+            self.assertEqual(
+                [2],
+                [call[1]["BATCH_INDEX"] for call in modules.calls if call[0] == "concepts"],
+                "batch 1 must not be regenerated after a checkpoint restore",
+            )
+            self.assertTrue(
+                any("Resuming concept generation from checkpoint" in message for message in progress),
+                progress,
+            )
+            self.assertFalse(checkpoint.exists(), "checkpoint must be cleared after success")
+
+    def test_stale_checkpoint_is_ignored_and_inputs_regenerated(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp:
+            from pathlib import Path
+
+            checkpoint = Path(temp) / "concept_checkpoint.json"
+            crashing = self.CrashingModules([{"s1": "concept one"}, "summary"])
+            with self.assertRaises(RuntimeError):
+                self._batcher(crashing, temp).create_concept_prompts_batched(
+                    stage1_segments=self._segments(), story_idea="idea", global_context={},
+                )
+            data = self._store().read_json(checkpoint)
+            data["identity"] = "stale-identity"
+            self._store().write_json(checkpoint, data)
+
+            modules = FakeConceptModules(
+                [{"s1": "concept one"}, "summary", {"s2": "concept two"}, "summary"],
+            )
+            progress = []
+            batcher = ConceptPromptBatcher(
+                object(), prompt_modules=modules, batch_size=1, progress_callback=progress.append,
+            )
+            batcher.enable_checkpoint(path=checkpoint, artifact_store=self._store())
+
+            result = batcher.create_concept_prompts_batched(
+                stage1_segments=self._segments(), story_idea="changed idea", global_context={},
+            )
+
+            self.assertEqual({"s1", "s2"}, set(result))
+            self.assertEqual(
+                [1, 2],
+                [call[1]["BATCH_INDEX"] for call in modules.calls if call[0] == "concepts"],
+            )
+            self.assertTrue(
+                any("Ignoring stale concept checkpoint" in message for message in progress),
+                progress,
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

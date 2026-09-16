@@ -372,6 +372,17 @@ class PromptGenerationPipeline:
                 request.concept_batch_size,
                 request_timeout_seconds=app_config.llm.request_timeout_seconds,
             )
+            # Optional seam: capable batchers checkpoint accepted concepts per
+            # batch so a mid-stage failure does not discard the whole stage.
+            enable_checkpoint = getattr(concept_batcher, "enable_checkpoint", None)
+            if callable(enable_checkpoint):
+                enable_checkpoint(
+                    path=concept_prompts_json.with_name(
+                        concept_prompts_json.stem.replace("concept_prompts", "concept_checkpoint", 1)
+                        + concept_prompts_json.suffix
+                    ),
+                    artifact_store=artifact_store,
+                )
             reporter.message(
                 f"[cyan]Concept generation started: "
                 f"{len(stage1_segments)} scenes, batches of "

@@ -495,6 +495,61 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
                 result.global_context["narrative_contract"],
             )
 
+    def test_pipeline_enables_concept_checkpoint_on_capable_batcher(self):
+        class CheckpointCapableBatcher(FakeConceptBatcher):
+            def __init__(self, llm, batch_size, request_timeout_seconds=None):
+                super().__init__(llm, batch_size, request_timeout_seconds=request_timeout_seconds)
+                self.checkpoint = None
+
+            def enable_checkpoint(self, *, path, artifact_store):
+                self.checkpoint = (Path(path), artifact_store)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            llm = object()
+            batcher = CheckpointCapableBatcher(llm, 2)
+            context = _prompt_context(temp, concept_batch_size=2)
+
+            def concept_batcher_factory(llm_arg, batch_size, request_timeout_seconds=None):
+                batcher.batch_size = batch_size
+                return batcher
+
+            pipeline = PromptGenerationPipeline(
+                llm_factory=lambda app_config: llm,
+                prompt_pipeline_factory=lambda llm_arg: FakePromptPipeline(llm_arg),
+                concept_batcher_factory=concept_batcher_factory,
+                scene_prompt_builder_factory=lambda llm_arg: FakeScenePromptBuilder(llm_arg),
+            )
+
+            pipeline.execute(context)
+
+            self.assertIsNotNone(batcher.checkpoint)
+            checkpoint_path, checkpoint_store = batcher.checkpoint
+            self.assertEqual(temp, checkpoint_path.parent)
+            self.assertEqual("concept_checkpoint.json", checkpoint_path.name)
+            self.assertIs(context.artifact_store, checkpoint_store)
+
+    def test_pipeline_tolerates_batchers_without_checkpoint_support(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            llm = object()
+            batcher = FakeConceptBatcher(llm, 2)
+
+            pipeline = PromptGenerationPipeline(
+                llm_factory=lambda app_config: llm,
+                prompt_pipeline_factory=lambda llm_arg: FakePromptPipeline(llm_arg),
+                concept_batcher_factory=(
+                    lambda llm_arg, size, request_timeout_seconds=None: batcher
+                ),
+                scene_prompt_builder_factory=lambda llm_arg: FakeScenePromptBuilder(llm_arg),
+            )
+            context = _prompt_context(temp, concept_batch_size=2)
+
+            result = pipeline.execute(context)
+
+            self.assertTrue(batcher.used)
+            self.assertEqual({"segment_001": "batched concept"}, result.concept_prompts)
+
 
 def _prompt_context(temp: Path, concept_batch_size: int) -> GenerateRenderPlanContext:
     return GenerateRenderPlanContext(

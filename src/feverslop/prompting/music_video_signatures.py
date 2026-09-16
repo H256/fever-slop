@@ -37,6 +37,11 @@ def build_music_video_signature_bundle(dspy_module: Any | None = None):
         guide: str = dspy_module.InputField()
         story_idea: str = dspy_module.InputField()
         notes: str = dspy_module.InputField()
+        # Declared so a configured cast_idea reaches the model instead of
+        # being dropped as an out-of-signature field; empty when unset.
+        cast_idea: str = dspy_module.InputField(
+            desc="Explicit cast/design guidance from the project config; may be empty.",
+        )
         result: MusicVideoSubjectLocations = dspy_module.OutputField()
 
     class ConceptMap(dspy_module.Signature):
