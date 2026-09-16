@@ -93,6 +93,7 @@ from feverslop.pipeline.render_plan_builder import build_render_plan
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.prompting.dspy_h3_prompt_builder import (
     DspyH3PromptBuilder,
+    _normalize_relay_segments,
     build_dspy_generator,
 )
 from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
