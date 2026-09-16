@@ -173,6 +173,10 @@ class VideoPostProcessor:
         )
         return int(result.stdout.strip())
 
+    def frame_count(self, video_file: Path) -> int:
+        """Public probe for the number of video frames in *video_file*."""
+        return self._frame_count(video_file)
+
     def _pad_short_audio(self, video_file: Path, target_duration: float) -> None:
         audio_duration = self._audio_duration(video_file)
         if audio_duration is None or audio_duration + 0.05 >= float(target_duration):

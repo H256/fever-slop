@@ -101,7 +101,7 @@ class MovieProductionResult(MovieScaffoldResult):
     final_video_path: Path | None = None
 
 
-def _planner_source_text(request: MovieInput, config: dict) -> str:
+def planner_source_text(request: MovieInput, config: dict) -> str:
     parts = [request.story_text]
     for label, value in [
         ("story_idea", config.get("story_idea")),
@@ -118,4 +118,4 @@ def _planner_source_text(request: MovieInput, config: dict) -> str:
     return "\n".join(parts).strip()
 
 
-_looks_like_screenplay_dump = looks_like_screenplay
+looks_like_screenplay_dump = looks_like_screenplay

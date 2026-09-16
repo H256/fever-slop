@@ -13,10 +13,10 @@ from feverslop.application.movie_ingredients_sheets import (
 )
 from feverslop.application.movie_msr_enrichment import (
     _diegetic_audio_device,
-    _movie_video_prompt,
     _read_json,
     _read_json as _read_json_msr,
     enrich_movie_render_plan_with_msr_prompts,
+    movie_video_prompt,
 )
 from feverslop.errors import FeverSlopDataError
 
@@ -160,7 +160,7 @@ class TestDiegeticAudioHeuristic(unittest.TestCase):
             "dialogue": dialogue,
             "actor_ids": ["actor-1"],
         }
-        return _movie_video_prompt(shot, bible={}, manifest=self.MANIFEST)
+        return movie_video_prompt(shot, bible={}, manifest=self.MANIFEST)
 
     def test_bare_voice_in_dialogue_is_not_diegetic(self):
         prompt = self._prompt('Mara: Your voice is familiar.')
