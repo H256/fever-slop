@@ -82,8 +82,8 @@ def enrich_movie_render_plan_with_ingredients_sheets(
     except (FileNotFoundError, IsADirectoryError):
         shot_cards = {}
 
-    base_w, base_h = _read_json(render_plan_path).get("resolution", {}).get("width", 1280), \
-        _read_json(render_plan_path).get("resolution", {}).get("height", 704)
+    base_w, base_h = render_plan.get("resolution", {}).get("width", 1280), \
+        render_plan.get("resolution", {}).get("height", 704)
     sheet_size = ingredients_sheet_size(base_w, base_h, sheet_scale)
 
     enriched = deepcopy(render_plan)
