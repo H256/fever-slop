@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import re
 from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
@@ -12,6 +11,11 @@ from typing import Any
 from feverslop.application.effective_render_plan import (
     project_effective_plan,
     project_effective_scene,
+)
+from feverslop.application.msr_validation import (
+    clean_segment_prompt,
+    is_valid_segment_prompt,
+    validate_msr_vision_response,
 )
 from feverslop.domain.canonical_render_plan import PromptRole
 from feverslop.domain.vision_references import ReferenceImage
@@ -220,39 +224,20 @@ def _build_vision_msr_prompts(
             exc_info=exc,
         )
         return None
-    try:
-        parsed_references = data.get("references")
-        parsed_relays = data.get("relays")
-        expected_pairs = {(reference.id, reference.type) for reference in references}
-        if not isinstance(parsed_references, list) or not isinstance(parsed_relays, list):
-            raise ValueError("missing lists")
-        descriptions: dict[tuple[str, str], str] = {}
-        for item in parsed_references:
-            pair = (str(item.get("id") or ""), str(item.get("type") or ""))
-            description = str(item.get("description") or "").strip()
-            if not all(pair) or not description or pair in descriptions:
-                raise ValueError("invalid reference")
-            descriptions[pair] = description
-        if set(descriptions) != expected_pairs:
-            raise ValueError("reference mismatch")
-        prompts: dict[int, str] = {}
-        for item in parsed_relays:
-            index = int(item["index"])
-            if index in prompts or not 0 <= index < len(relays):
-                raise ValueError("invalid relay index")
-            prompt = _clean_segment_prompt(str(item.get("prompt") or ""))
-            if not _is_valid_segment_prompt(prompt, relays[index]):
-                raise ValueError("invalid relay prompt")
-            prompts[index] = prompt
-        if set(prompts) != set(range(len(relays))):
-            raise ValueError("missing relay index")
-    except (FeverSlopLMLError, ValueError, TypeError, KeyError, IndexError) as exc:
+
+    expected_pairs = {(reference.id, reference.type) for reference in references}
+    validated = validate_msr_vision_response(
+        data,
+        expected_pairs=expected_pairs,
+        relays=relays,
+    )
+    if validated is None:
         logger.warning(
             "MSR image analysis fallback: scene=%s reason=invalid response",
             scene_number,
-            exc_info=exc,
         )
         return None
+    descriptions, prompts = validated
 
     parts = []
     for index, reference in enumerate(references, start=1):
@@ -453,35 +438,11 @@ def _describe_reference_item(item: dict) -> str:
     return ", ".join(chunk for chunk in (name, role, visual or image_prompt) if chunk)
 
 
-def _clean_segment_prompt(prompt: str) -> str:
-    cleaned = " ".join(str(prompt or "").replace("\n", " ").split())
-    cleaned = re.sub(r"(?is)\bStart frame:\s*", "", cleaned)
-    cleaned = re.sub(r"(?is)\bLock the first frame\b.*?(?:\.|$)", "", cleaned)
-    cleaned = re.sub(r"(?is)\bpreserve same shot\b", "", cleaned)
-    cleaned = re.sub(r"(?is)\bpreserve the same shot\b", "", cleaned)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,;")
-    return cleaned
-
-
-def _is_valid_segment_prompt(prompt: str, relay: dict) -> bool:
-    lower = prompt.lower()
-    banned = (
-        "preserve same subject",
-        "keep identity",
-        "keep same subject",
-        "lock first frame",
-        "start frame",
-    )
-    if not prompt or any(text in lower for text in banned):
-        return False
-    state = str(relay.get("state") or "").strip().lower()
-    if state == "singing":
-        return "sing" in lower and ("lip sync" in lower or "lip-sync" in lower)
-    if state == "dialogue":
-        return ("speak" in lower or "talk" in lower or "say" in lower) and (
-            "lip sync" in lower or "lip-sync" in lower
-        )
-    return "lip sync" not in lower and "lip-sync" not in lower
+# Backwards-compatible aliases: the canonical implementations live in
+# ``msr_validation`` (shared leaf module). Kept here because other modules
+# (``msr_validation`` callers, legacy imports) reference the underscore names.
+_clean_segment_prompt = clean_segment_prompt
+_is_valid_segment_prompt = is_valid_segment_prompt
 
 
 def _scene_silent_mode(scene: dict) -> bool:
