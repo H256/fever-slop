@@ -400,7 +400,7 @@ class RunnerScriptTests(unittest.TestCase):
                     )
 
             with patch(
-                "feverslop.application.movie_msr_enrichment.MSRPromptModules",
+                "feverslop.application.msr_prompt_enrichment.MSRPromptModules",
                 return_value=OfflineMovieVisionModules(),
             ):
                 result = movie_pipeline.run(
