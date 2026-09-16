@@ -66,7 +66,10 @@ class RichProgressTests(unittest.TestCase):
         progress.update.assert_called_once()
 
     def test_storyboard_cli_uses_shared_progress_factory(self):
-        import render_storyboard
+        # Patch the canonical module: the root ``render_storyboard.py`` is a
+        # thin re-export facade and no longer copies names into the package
+        # module (see #1198), so the real lookup happens here.
+        from feverslop.cli import render_storyboard
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

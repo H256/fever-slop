@@ -1,24 +1,28 @@
 # ruff: noqa: F401
-import argparse
+"""Compatibility facade for the ``fix_ltx_prompt_anchors`` CLI; prefer
+``feverslop.cli.fix_ltx_prompt_anchors``.
 
-from feverslop.cli import fix_ltx_prompt_anchors as _cli
+Re-exports the canonical entry points so the public ``fix_ltx_prompt_anchors.py``
+interface keeps working. It no longer copies names back into the canonical
+module: the two entry points are literally the same objects.
+"""
 from feverslop.cli.fix_ltx_prompt_anchors import (
-    Console,
-    Panel,
     LTXPromptAnchorFixer,
-    validate_anchor_file,
     build_arg_parser,
     coerce_local_path,
     console,
-    main as _package_main,
+    main,
+    validate_anchor_file,
 )
 
-
-def main():
-    for name in "LTXPromptAnchorFixer", "validate_anchor_file", "coerce_local_path", "console", "Panel", "Console":
-        setattr(_cli, name, globals()[name])
-    return _package_main()
-
+__all__ = [
+    "LTXPromptAnchorFixer",
+    "build_arg_parser",
+    "coerce_local_path",
+    "console",
+    "main",
+    "validate_anchor_file",
+]
 
 if __name__ == "__main__":
     main()

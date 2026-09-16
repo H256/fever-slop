@@ -12,6 +12,48 @@ attempt. The fallback preserves the last structured camera/action plan; it canno
 invent a replacement scene when no usable plan survived. All results, including
 manual overrides, must pass the same final contract checks.
 
+### Planner retries reduce flaky hard-blocks
+
+The DSPy planner call is retried automatically (total attempts = `1 + planner_retries`,
+default 2) when it returns an unparseable typed plan or throws. This absorbs a
+transient bad output from a quantized/verbose serving model instead of hard-blocking
+the scene on the first attempt. The repair pass and the deterministic fallback are
+unaffected and still run after retries are exhausted. Set `planner_retries=0` to
+restore single-attempt behavior.
+
+### Why a scene reports `h3.fallback.plan_missing`
+
+A blocked scene with `h3.fallback.plan_missing` means the DSPy planner produced no
+usable structured creative plan at all — it is not an input-validation error. The
+most common cause on a local/quantized model is the plan output being truncated
+before the typed JSON is complete, which surfaces the plan as missing. The planner's
+response token budget is configurable per LLM via `prompt_planner_max_tokens`
+(default `H3_PLANNER_MAX_TOKENS = 8192`); raise it if `truncation_suspected` is set
+in the diagnostics below. A stronger or more capable serving model is the most
+effective fix for persistent recurrence.
+
+### Reading the real failure in a blocked scene
+
+When retries and the deterministic fallback are exhausted, the block record keeps
+the concise `h3.fallback.plan_missing` reason in `dspy_error` but now also carries:
+
+- `dspy_error_root`: the underlying planner exception (sanitized of embedded payloads).
+- `dspy_error_detail.attempts`: one entry per generation attempt with `cause` and
+  an `llm` diagnostic (`budget_max_tokens`, `truncation_suspected`, and the tail of
+  the raw model output).
+
+These are persisted with the scene result in `output/render/scenes/scene_NNNN/h3_prompt.json`
+so a blocked scene is actionable instead of opaque.
+
+### Opt-in synthesized fallback
+
+`DspyH3PromptBuilder(..., synthesize_plan_fallback=True)` is a last resort that
+builds a single-shot, fact-faithful plan from the locked scene facts and base
+concept when generation and retries fail, so the scene stays renderable. It is off
+by default: the output is deterministic and generic (provenance source
+`deterministic_scene_synthesis`), and it still must pass the same final contract
+gate — prefer raising the model/token budget or correcting inputs over enabling it.
+
 ## Continue or correct a blocked scene
 
 Use the normal safe resume command after correcting the reported timing, lyrics,

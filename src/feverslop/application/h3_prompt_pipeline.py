@@ -472,7 +472,10 @@ class H3PromptPipeline:
         )
         log_file("H3 Prompts JSON", h3_prompts_json)
         context["h3_prompts"] = context["artifact_store"].read_json(h3_prompts_json)
-        require_ready_scenes(context["h3_prompts"])
+        require_ready_scenes(
+            context["h3_prompts"],
+            project_path=getattr(config, "project_dir", None),
+        )
         _report_h3_judge_findings(context["h3_prompts"], reporter)
         return context
 

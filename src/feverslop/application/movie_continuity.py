@@ -14,8 +14,8 @@ from feverslop.domain.movie import (
     MovieSceneContinuityPacket,
 )
 from feverslop.domain.movie_continuity import (
-    _narrative_for_shot,
-    _safe_continuity_facts,
+    narrative_for_shot,
+    safe_continuity_facts,
 )
 from feverslop.domain.movie_utils import string_list
 
@@ -30,9 +30,9 @@ def apply_movie_continuity_to_shots(shots: tuple[CinematicShot, ...], continuity
         continuity_notes = "; ".join(
             part
             for part in [
-                "; ".join(_safe_continuity_facts(packet.incoming)) if packet else "",
-                "; ".join(_safe_continuity_facts(packet.required_carryovers)) if packet else "",
-                "; ".join(_safe_continuity_facts(packet.outgoing)) if packet else "",
+                "; ".join(safe_continuity_facts(packet.incoming)) if packet else "",
+                "; ".join(safe_continuity_facts(packet.required_carryovers)) if packet else "",
+                "; ".join(safe_continuity_facts(packet.outgoing)) if packet else "",
             ]
             if part
         )
@@ -185,7 +185,7 @@ def movie_continuity_plan_from_dict(data: dict, *, bible: MovieBible, shots: tup
     }
     narrative_data = data.get("narrative_chain") or []
     narrative_chain = tuple(
-        _narrative_for_shot(
+        narrative_for_shot(
             shot.shot_id,
             tuple(_narrative_from_dict(item) for item in narrative_data if isinstance(item, dict)),
             fallback.narrative_chain,

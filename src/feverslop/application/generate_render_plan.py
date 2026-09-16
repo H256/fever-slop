@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from feverslop.adapters.api_observability import redact_secrets
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
 from feverslop.domain.scene_duration_limits import ResolvedSceneDurationPolicy
 from feverslop.domain.duration_capability import DurationCapability
+from feverslop.domain.security import redact_secrets
 from feverslop.errors import FeverSlopConfigError, FeverSlopValidationError
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.reporting import ConsoleReporter, NullReporter, Reporter, install_reporter_logging

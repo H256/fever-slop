@@ -207,7 +207,7 @@ class RenderVideoScenesUseCase:
         if predecessor_id and not boundary_is_current:
             existing_path = None
             video_request = replace(video_request, skip_existing=False)
-        probe_frames = getattr(getattr(self.backend, "postprocessor", None), "_frame_count", None)
+        probe_frames = getattr(getattr(self.backend, "postprocessor", None), "frame_count", None)
         if existing_path and scene_payload.get("technical_segment_id") and callable(probe_frames):
             expected_frames = int(scene_payload.get("frame_count") or 0) + int(
                 scene_payload.get("anchor_frames") or 0,

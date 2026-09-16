@@ -6,7 +6,6 @@ import json
 import logging
 import hashlib
 import math
-import re
 import time
 import uuid
 from collections import defaultdict
@@ -17,25 +16,7 @@ from threading import Lock
 from time import perf_counter
 from typing import Any
 
-_SENSITIVE_URL_PART = re.compile(
-    r"(?P<key>(?:api[_-]?key|access[_-]?token|auth(?:orization)?|bearer|password|secret|token))"
-    r"(?P<sep>\s*[:=]\s*|\s+)(?P<value>[^\s&;,]+)",
-    re.IGNORECASE,
-)
-_SENSITIVE_QUERY_PART = re.compile(
-    r"(?P<key>(?:api[_-]?key|access[_-]?token|auth(?:orization)?|password|secret|token))"
-    r"=(?P<value>[^&\s]+)",
-    re.IGNORECASE,
-)
-_BEARER_TOKEN = re.compile(r"\bBearer\s+[^\s&;,]+", re.IGNORECASE)
-
-
-def redact_secrets(value: object) -> str:
-    """Redact credential-like values before they enter logs or exceptions."""
-    text = str(value)
-    text = _BEARER_TOKEN.sub("Bearer [REDACTED]", text)
-    text = _SENSITIVE_QUERY_PART.sub(lambda match: f"{match.group('key')}=[REDACTED]", text)
-    return _SENSITIVE_URL_PART.sub(lambda match: f"{match.group('key')}{match.group('sep')}[REDACTED]", text)
+from feverslop.domain.security import redact_secrets  # noqa: F401  (re-exported for adapter consumers)
 
 
 def require_json_object(payload: Any, *, context: str) -> dict[str, Any]:
