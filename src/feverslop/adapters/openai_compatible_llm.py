@@ -24,6 +24,7 @@ class OpenAICompatibleLLMClient(LocalOpenAIClient):
             "prompt_judge_max_tokens": llm.prompt_judge_max_tokens,
             "prompt_judge_blocking": llm.prompt_judge_blocking,
             "prompt_judge_enabled": llm.prompt_judge_enabled,
+            "prompt_planner_max_tokens": llm.prompt_planner_max_tokens,
             "chat_template_kwargs": llm.chat_template_kwargs,
         }
         params.update(overrides)
