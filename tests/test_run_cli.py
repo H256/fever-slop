@@ -538,10 +538,13 @@ class RunCliTests(unittest.TestCase):
             (sdir / "h3_prompt.json").write_text(
                 json.dumps(
                     {
-                        "readiness": {
-                            "status": "blocked",
-                            "reason_codes": ["h3.fallback.plan_missing"],
-                        }
+                        "status": "blocked",
+                        "generated": {
+                            "readiness": {
+                                "status": "blocked",
+                                "reason_codes": ["h3.fallback.plan_missing"],
+                            }
+                        },
                     }
                 ),
                 encoding="utf-8",
@@ -550,7 +553,7 @@ class RunCliTests(unittest.TestCase):
         sdir7 = scene_dir / "scene_0007"
         sdir7.mkdir(exist_ok=True)
         (sdir7 / "h3_prompt.json").write_text(
-            json.dumps({"readiness": {"status": "ready"}}),
+            json.dumps({"status": "good"}),
             encoding="utf-8",
         )
         # Create base plan
