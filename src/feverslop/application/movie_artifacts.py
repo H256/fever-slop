@@ -6,7 +6,7 @@ from pathlib import Path
 
 from feverslop.application.movie import (
     MovieInput,
-    _bible_dict,
+    bible_dict,
     build_movie_actor_reference_prompt,
     generate_movie_bible,
     movie_bible_from_dict,
@@ -104,7 +104,7 @@ def regenerate_movie_bible(project_dir: Path, *, planner) -> Path:
     movie_dir.mkdir(parents=True, exist_ok=True)
     (movie_dir / "story_arch.json").write_text(json.dumps(asdict(story_arch), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     bible_path = movie_dir / "bible.json"
-    bible_path.write_text(json.dumps(_bible_dict(bible), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    bible_path.write_text(json.dumps(bible_dict(bible), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return bible_path
 
 

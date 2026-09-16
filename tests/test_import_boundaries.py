@@ -170,6 +170,71 @@ class ImportBoundaryTests(unittest.TestCase):
 
         self.assertEqual([], offenders)
 
+    def test_inner_layers_do_not_import_private_names(self):
+        """Cross-module imports of underscore-prefixed names are private access.
+
+        The module-name tests above only forbid specific adapter modules; they
+        never caught application/prompting code reaching for ``_private``
+        helpers in other modules. This test enforces the convention: private
+        names stay inside their defining module.
+        """
+        inner_layers = [
+            Path("src/feverslop/domain"),
+            Path("src/feverslop/ports"),
+            Path("src/feverslop/application"),
+            Path("src/feverslop/pipeline"),
+            Path("src/feverslop/prompting"),
+        ]
+        offenders = []
+        for layer_root in inner_layers:
+            for path in layer_root.rglob("*.py"):
+                tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+                for node in ast.walk(tree):
+                    if not isinstance(node, ast.ImportFrom):
+                        continue
+                    cross_module = (
+                        node.level == 0 and (node.module or "").startswith("feverslop.")
+                    ) or node.level > 0
+                    if not cross_module:
+                        continue
+                    for alias in node.names:
+                        if alias.name.startswith("_") and alias.name != "_":
+                            offenders.append(f"{path}:{node.lineno}: {alias.name}")
+
+        self.assertEqual([], offenders)
+
+    def test_application_layer_has_no_adapter_imports(self):
+        """Application code must not import concrete adapters.
+
+        ``redact_secrets`` was the last remaining adapter import in the
+        application layer (now in ``feverslop.domain.security``). A handful of
+        legacy modules are allowlisted until they are migrated; add new
+        offenders nowhere.
+        """
+        app_root = Path("src/feverslop/application")
+        allowed_files = {
+            "h3_prompt_pipeline.py",
+            "prompt_generation.py",
+            "startframe_director_prompts.py",
+            "movie_references.py",
+        }
+        offenders = []
+        for path in app_root.rglob("*.py"):
+            if path.name in allowed_files:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            for node in ast.walk(tree):
+                modules = []
+                if isinstance(node, ast.Import):
+                    modules = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    modules = [node.module or ""]
+                for module in modules:
+                    if module == "feverslop.adapters" or module.startswith("feverslop.adapters."):
+                        offenders.append(f"{path}:{node.lineno}: {module}")
+
+        self.assertEqual([], offenders)
+
     def test_new_pure_application_modules_do_not_import_runtime_io(self):
         legacy_filesystem_modules = {
             "continuity_handoff.py",

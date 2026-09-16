@@ -10,7 +10,7 @@ from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.movie_visual import _references_from_ids
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS
-from feverslop.application.movie_msr_enrichment import _movie_video_prompt
+from feverslop.application.movie_msr_enrichment import movie_video_prompt
 from feverslop.application.render_video import RenderVideoScenesRequest
 from feverslop.composition.render_video import (
     RenderVideoCompositionOptions,
@@ -324,7 +324,7 @@ def _h3_movie_prompt(scene: dict) -> str:
         definitions.append(f"<Subject {index}> ({name}): {description} Source references: <Picture {index}>.")
     prompt = str((scene.get("ltx") or {}).get("msr_global_prompt") or "").strip()
     prompt = re.sub(r"Reference image (\d+)", r"<Picture \1>", prompt, flags=re.IGNORECASE)
-    action = _movie_video_prompt(scene, bible={}, manifest={})
+    action = movie_video_prompt(scene, bible={}, manifest={})
     parts = ["subject_definitions:", "\n".join(definitions), f"summary: {action}", prompt]
     parts.extend(part for part in (reference_prompt, relay_prompt) if part)
     return "\n\n".join(part for part in parts if part.strip())

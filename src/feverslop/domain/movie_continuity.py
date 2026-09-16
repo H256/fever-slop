@@ -177,7 +177,7 @@ class MovieContinuityPlan:
             carryovers = tuple(
                 item
                 for item in [
-                    *_safe_continuity_facts(rule.description for rule in bible.continuity if rule.description),
+                    *safe_continuity_facts(rule.description for rule in bible.continuity if rule.description),
                     *(f"{actor_id} identity and wardrobe remain consistent" for actor_id in shot.actor_ids),
                     f"location remains {location.name or shot.location}" if location.name or shot.location else "",
                 ]
@@ -236,7 +236,7 @@ class MovieContinuityPlan:
                 shot_id: self.scene_continuity.get(shot_id) or fallback.scene_continuity[shot_id] for shot_id in shot_ids
             },
             narrative_chain=tuple(
-                _narrative_for_shot(shot_id, self.narrative_chain, fallback.narrative_chain) for shot_id in shot_ids
+                narrative_for_shot(shot_id, self.narrative_chain, fallback.narrative_chain) for shot_id in shot_ids
             ),
         )
 
@@ -246,7 +246,12 @@ class MovieContinuityPlan:
 # ---------------------------------------------------------------------------
 
 
-def _safe_continuity_facts(value: Any) -> tuple[str, ...]:
+def safe_continuity_facts(value: Any) -> tuple[str, ...]:
+    """Split *value* into clean, de-duplicated continuity facts.
+
+    Public entry point for the application layer; filters screenplay-style
+    noise and normalizes whitespace.
+    """
     candidates = _split_continuity_text(value)
     facts: list[str] = []
     for candidate in candidates:
@@ -278,11 +283,12 @@ def _looks_like_continuity_noise(text: str) -> bool:
     return False
 
 
-def _narrative_for_shot(
+def narrative_for_shot(
     shot_id: str,
     planned: tuple[MovieNarrativeBeat, ...],
     fallback: tuple[MovieNarrativeBeat, ...],
 ) -> MovieNarrativeBeat:
+    """Merge a planned narrative beat for *shot_id* over the fallback beat."""
     by_id = {beat.shot_id: beat for beat in planned}
     fallback_by_id = {beat.shot_id: beat for beat in fallback}
     candidate = by_id.get(shot_id)
