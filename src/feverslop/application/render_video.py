@@ -84,91 +84,13 @@ class RenderVideoScenesUseCase:
         for scene in plan.scenes:
             if self.reporter is not None:
                 self.reporter.message(f"Preparing render segment {len(rendered) + 1}/{total}")
-            scene_payload = scene.to_dict()
-            technical_segment_id = str(
-                scene_payload.get("technical_segment_id")
-                or scene_payload.get("segment_id")
-                or (scene_payload.get("metadata") or {}).get("segment_id")
-                or "",
-            ).strip()
-            predecessor_id = str(
-                scene_payload.get("continuation_predecessor_id") or "",
-            ).strip()
-            predecessor_clip: Path | None = None
-            boundary_is_current = False
-            if predecessor_id and getattr(self.backend, "pipeline_name", "") == "minimax-h3-r2v":
-                predecessor_clip = rendered_by_segment.get(predecessor_id)
-                if predecessor_clip is None or not predecessor_clip.is_file():
-                    raise ValueError(
-                        f"Continuation segment {technical_segment_id or scene.scene_number} "
-                        f"requires rendered predecessor {predecessor_id}",
-                    )
-                boundary_is_current = _continuation_boundary_is_current(
-                    scene_number=scene.scene_number,
-                    predecessor_clip=predecessor_clip,
-                    output_dir=request.output_dir,
-                    backend=self.backend,
-                )
-            if predecessor_id and getattr(self.backend, "pipeline_name", "") == "minimax-h3-r2v":
-                assert predecessor_clip is not None
-                if boundary_is_current:
-                    scene_payload = _restore_r2v_continuation_anchor(
-                        scene_payload,
-                        predecessor_id=predecessor_id,
-                        scene_number=scene.scene_number,
-                        output_dir=request.output_dir,
-                        backend=self.backend,
-                    )
-                else:
-                    scene_payload = _attach_r2v_continuation_anchor(
-                        scene_payload,
-                        predecessor_id=predecessor_id,
-                        predecessor_clip=predecessor_clip,
-                        output_dir=request.output_dir,
-                        backend=self.backend,
-                    )
-                scene = type(scene).from_dict(scene_payload)
-            video_request = VideoRenderRequest(
-                scene=scene_payload,
-                scene_number=scene.scene_number,
-                prompt=scene.video_prompt,
-                workflow_path=request.workflow_path,
-                output_dir=request.output_dir,
-                audio_file=request.audio_file,
-                storyboard_dir=request.storyboard_dir,
-                render_mode=request.render_mode,
-                single_prompt_workflow_path=request.single_prompt_workflow_path,
-                skip_existing=request.skip_existing,
-                uploaded_audio_name=request.uploaded_audio_name,
-                upload_audio=request.upload_audio,
-                upload_startframes=request.upload_startframes,
-                anchors=request.anchors,
-                render_plan_path=request.render_plan_path,
+            scene, scene_payload, technical_segment_id, predecessor_id, boundary_is_current = self._prepare_continuation(
+                request, scene, rendered_by_segment,
             )
-            final_path = request.output_dir / "final" / f"scene_{scene.scene_number:04}.mp4"
-            direct_path = request.output_dir / f"scene_{scene.scene_number:04}.mp4"
-            per_scene_path = request.output_dir / f"scene_{scene.scene_number:04}" / "final.mp4"
-            existing_path = (
-                final_path if file_is_valid(final_path)
-                else (direct_path if file_is_valid(direct_path)
-                      else (per_scene_path if file_is_valid(per_scene_path) else None))
+            video_request = self._build_video_request(request, scene, scene_payload)
+            existing_path, video_request = self._resolve_existing(
+                request, scene_payload, predecessor_id, boundary_is_current, video_request,
             )
-            if predecessor_id and not boundary_is_current:
-                existing_path = None
-                video_request = replace(video_request, skip_existing=False)
-            probe_frames = getattr(getattr(self.backend, "postprocessor", None), "_frame_count", None)
-            if existing_path and scene_payload.get("technical_segment_id") and callable(probe_frames):
-                expected_frames = int(scene_payload.get("frame_count") or 0) + int(
-                    scene_payload.get("anchor_frames") or 0,
-                )
-                if expected_frames:
-                    try:
-                        valid = int(probe_frames(existing_path)) == expected_frames
-                    except (OSError, ValueError, subprocess.SubprocessError):
-                        valid = False
-                    if not valid:
-                        existing_path = None
-                        video_request = replace(video_request, skip_existing=False)
             if request.skip_existing and existing_path:
                 ensure_manifest = getattr(self.backend, "ensure_scene_manifest", None)
                 if ensure_manifest is not None:
@@ -182,41 +104,9 @@ class RenderVideoScenesUseCase:
                     rendered_by_segment[technical_segment_id] = existing_path
                 continue
 
-            if predecessor_id:
-                # A failed rerender must not leave its old successful boundary
-                # sidecar available to authorize a later cache hit.
-                (request.output_dir / f"scene_{scene.scene_number:04}" / "continuation_boundary.json").unlink(
-                    missing_ok=True,
-                )
-            randomize_seed = bool(getattr(self.backend, "randomize_seed", False))
-            if randomize_seed:
-                new_seed = random.SystemRandom().randint(0, 2**63 - 1)
-                scene_payload["seed"] = new_seed
-                render_plan_data = patch_render_plan_seed(
-                    render_plan_data,
-                    scene_number=scene.scene_number,
-                    seed=new_seed,
-                )
-                self.artifact_store.write_render_plan(request.render_plan_path, render_plan_data)
-                original_randomize_seed = self.backend.randomize_seed
-                self.backend.randomize_seed = False
-                try:
-                    output_path = self.backend.render_video(video_request)
-                finally:
-                    self.backend.randomize_seed = original_randomize_seed
-            else:
-                output_path = self.backend.render_video(video_request)
-            if predecessor_id:
-                boundary_manifest = (scene_payload.get("keyframes") or {}).get(
-                    "boundary_frame_manifest"
-                )
-                if isinstance(boundary_manifest, dict):
-                    atomic_write_json(
-                        request.output_dir
-                        / f"scene_{scene.scene_number:04}"
-                        / "continuation_boundary.json",
-                        boundary_manifest,
-                    )
+            output_path, render_plan_data = self._render_scene(
+                request, scene, scene_payload, video_request, predecessor_id, render_plan_data,
+            )
             rendered.append(output_path)
             progress.update(len(rendered))
             if technical_segment_id:
@@ -226,6 +116,158 @@ class RenderVideoScenesUseCase:
                 request.on_scene_complete(output_path, len(rendered), total)
 
         return rendered
+
+    def _prepare_continuation(self, request: RenderVideoScenesRequest, scene, rendered_by_segment: dict[str, Path]):
+        """Resolve R2V continuation anchors; return (scene, payload, segment_id, predecessor_id, boundary_is_current)."""
+        scene_payload = scene.to_dict()
+        technical_segment_id = str(
+            scene_payload.get("technical_segment_id")
+            or scene_payload.get("segment_id")
+            or (scene_payload.get("metadata") or {}).get("segment_id")
+            or "",
+        ).strip()
+        predecessor_id = str(
+            scene_payload.get("continuation_predecessor_id") or "",
+        ).strip()
+        boundary_is_current = False
+        if predecessor_id and getattr(self.backend, "pipeline_name", "") == "minimax-h3-r2v":
+            predecessor_clip = rendered_by_segment.get(predecessor_id)
+            if predecessor_clip is None or not predecessor_clip.is_file():
+                raise ValueError(
+                    f"Continuation segment {technical_segment_id or scene.scene_number} "
+                    f"requires rendered predecessor {predecessor_id}",
+                )
+            boundary_is_current = _continuation_boundary_is_current(
+                scene_number=scene.scene_number,
+                predecessor_clip=predecessor_clip,
+                output_dir=request.output_dir,
+                backend=self.backend,
+            )
+            if boundary_is_current:
+                scene_payload = _restore_r2v_continuation_anchor(
+                    scene_payload,
+                    predecessor_id=predecessor_id,
+                    scene_number=scene.scene_number,
+                    output_dir=request.output_dir,
+                    backend=self.backend,
+                )
+            else:
+                scene_payload = _attach_r2v_continuation_anchor(
+                    scene_payload,
+                    predecessor_id=predecessor_id,
+                    predecessor_clip=predecessor_clip,
+                    output_dir=request.output_dir,
+                    backend=self.backend,
+                )
+            scene = type(scene).from_dict(scene_payload)
+        return scene, scene_payload, technical_segment_id, predecessor_id, boundary_is_current
+
+    def _build_video_request(
+        self,
+        request: RenderVideoScenesRequest,
+        scene,
+        scene_payload: dict[str, Any],
+    ) -> VideoRenderRequest:
+        return VideoRenderRequest(
+            scene=scene_payload,
+            scene_number=scene.scene_number,
+            prompt=scene.video_prompt,
+            workflow_path=request.workflow_path,
+            output_dir=request.output_dir,
+            audio_file=request.audio_file,
+            storyboard_dir=request.storyboard_dir,
+            render_mode=request.render_mode,
+            single_prompt_workflow_path=request.single_prompt_workflow_path,
+            skip_existing=request.skip_existing,
+            uploaded_audio_name=request.uploaded_audio_name,
+            upload_audio=request.upload_audio,
+            upload_startframes=request.upload_startframes,
+            anchors=request.anchors,
+            render_plan_path=request.render_plan_path,
+        )
+
+    def _resolve_existing(
+        self,
+        request: RenderVideoScenesRequest,
+        scene_payload: dict[str, Any],
+        predecessor_id: str,
+        boundary_is_current: bool,
+        video_request: VideoRenderRequest,
+    ) -> tuple[Path | None, VideoRenderRequest]:
+        """Find a valid existing clip for the scene, or force a rerender."""
+        scene_dir = request.output_dir / f"scene_{int(scene_payload['scene']):04d}"
+        final_path = request.output_dir / "final" / f"scene_{int(scene_payload['scene']):04d}.mp4"
+        direct_path = request.output_dir / f"scene_{int(scene_payload['scene']):04d}.mp4"
+        per_scene_path = scene_dir / "final.mp4"
+        existing_path = (
+            final_path if file_is_valid(final_path)
+            else (direct_path if file_is_valid(direct_path)
+                  else (per_scene_path if file_is_valid(per_scene_path) else None))
+        )
+        if predecessor_id and not boundary_is_current:
+            existing_path = None
+            video_request = replace(video_request, skip_existing=False)
+        probe_frames = getattr(getattr(self.backend, "postprocessor", None), "_frame_count", None)
+        if existing_path and scene_payload.get("technical_segment_id") and callable(probe_frames):
+            expected_frames = int(scene_payload.get("frame_count") or 0) + int(
+                scene_payload.get("anchor_frames") or 0,
+            )
+            if expected_frames:
+                try:
+                    valid = int(probe_frames(existing_path)) == expected_frames
+                except (OSError, ValueError, subprocess.SubprocessError):
+                    valid = False
+                if not valid:
+                    existing_path = None
+                    video_request = replace(video_request, skip_existing=False)
+        return existing_path, video_request
+
+    def _render_scene(
+        self,
+        request: RenderVideoScenesRequest,
+        scene,
+        scene_payload: dict[str, Any],
+        video_request: VideoRenderRequest,
+        predecessor_id: str,
+        render_plan_data: list[dict[str, Any]],
+    ) -> tuple[Path, list[dict[str, Any]]]:
+        """Render one scene, persisting seed/continuation side effects."""
+        if predecessor_id:
+            # A failed rerender must not leave its old successful boundary
+            # sidecar available to authorize a later cache hit.
+            (request.output_dir / f"scene_{scene.scene_number:04}" / "continuation_boundary.json").unlink(
+                missing_ok=True,
+            )
+        randomize_seed = bool(getattr(self.backend, "randomize_seed", False))
+        if randomize_seed:
+            new_seed = random.SystemRandom().randint(0, 2**63 - 1)
+            scene_payload["seed"] = new_seed
+            render_plan_data = patch_render_plan_seed(
+                render_plan_data,
+                scene_number=scene.scene_number,
+                seed=new_seed,
+            )
+            self.artifact_store.write_render_plan(request.render_plan_path, render_plan_data)
+            original_randomize_seed = self.backend.randomize_seed
+            self.backend.randomize_seed = False
+            try:
+                output_path = self.backend.render_video(video_request)
+            finally:
+                self.backend.randomize_seed = original_randomize_seed
+        else:
+            output_path = self.backend.render_video(video_request)
+        if predecessor_id:
+            boundary_manifest = (scene_payload.get("keyframes") or {}).get(
+                "boundary_frame_manifest"
+            )
+            if isinstance(boundary_manifest, dict):
+                atomic_write_json(
+                    request.output_dir
+                    / f"scene_{scene.scene_number:04}"
+                    / "continuation_boundary.json",
+                    boundary_manifest,
+                )
+        return Path(output_path), render_plan_data
 
     def _log_scene_available(self, output_path: Path, completed: int, total: int, *, skipped: bool) -> None:
         if self.reporter is None:
