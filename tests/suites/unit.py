@@ -157,6 +157,7 @@ UNIT_MODULES = (
     "reference_sheet_planning",
     "reference_workspace_domain",
     "relay_direction_dspy_contracts",
+    "relay_range",
     "render_plan_builder",
     "render_plan_ingredients_sheets",
     "render_plan_references",
