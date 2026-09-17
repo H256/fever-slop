@@ -121,7 +121,7 @@ class ReferenceBibleToolTests(unittest.TestCase):
             fake_generator.generate_location_bible.return_value = temp / "location.json"
             generator_factory = Mock(return_value=fake_generator)
             generator_factory.view_names = ("front", "right", "rear", "left", "wide", "close")
-            record_console = Console(file=io.StringIO(), record=True, force_terminal=False)
+            record_console = Console(file=io.StringIO(), record=True, force_terminal=False, width=120)
 
             with patch("feverslop.tools.reference_bible.AppConfig.load") as app_config, \
                     patch("feverslop.tools.reference_bible.ComfyUIClient"), \
@@ -284,7 +284,7 @@ class ReferenceBibleToolTests(unittest.TestCase):
             fake_generator.view_names = ("hero", "front")
             fake_generator.generate_subject_bible.return_value = temp / "manifest.json"
             generator_factory = Mock(return_value=fake_generator)
-            record_console = Console(file=io.StringIO(), record=True, force_terminal=False)
+            record_console = Console(file=io.StringIO(), record=True, force_terminal=False, width=120)
 
             with patch("feverslop.tools.reference_bible.AppConfig.load") as app_config, \
                     patch("feverslop.tools.reference_bible.ComfyUIClient"), \
@@ -329,7 +329,7 @@ class ReferenceBibleToolTests(unittest.TestCase):
             fake_generator = Mock()
             fake_generator.generate_subject_bible.return_value = temp / "manifest.json"
             generator_factory = Mock(return_value=fake_generator)
-            record_console = Console(file=io.StringIO(), record=True, force_terminal=False)
+            record_console = Console(file=io.StringIO(), record=True, force_terminal=False, width=120)
 
             with patch("feverslop.tools.reference_bible.AppConfig.load") as app_config, \
                     patch("feverslop.tools.reference_bible.ComfyUIClient"), \
