@@ -18,6 +18,7 @@ from feverslop.domain.continuation_segments import split_semantic_action
 from feverslop.pipeline.continuation_render_plan import materialize_continuation_entries
 from feverslop.domain.duration_capability import DurationCapability
 from feverslop.domain.performance_sync import select_performance_stems
+from feverslop.domain.relay_range import RelayRange
 from feverslop.domain.subject_directives import (
     SubjectDirectivePlan,
     validate_subject_directive_plan,
@@ -150,18 +151,16 @@ class DetailListPicker:
         return f"start with {picks[0]} then follow with {picks[1]}"
 
 def _clamp_relay_segment(frame_start: int, frame_end: int, frame_count: int) -> tuple[int, int] | None:
-    """Clamp a relay segment to valid frame range.
+    """Clamp a relay segment to a valid frame range.
 
-    frame_end is EXCLUSIVE (Python slice convention). Returned range covers
-    frames [frame_start, frame_end), covering (frame_end - frame_start) frames.
+    Delegates to :meth:`RelayRange.clamp`, the single site that owns the
+    exclusive-end convention. Returns a ``[start, end_exclusive)`` tuple, or
+    ``None`` if the segment could not be clamped to at least one frame.
     """
-    frame_start = max(0, min(frame_start, frame_count - 1))
-    frame_end = max(frame_start + 1, min(frame_end, frame_count))
-
-    if frame_end <= frame_start:
+    clamped = RelayRange(frame_start, frame_end).clamp(frame_count)
+    if clamped is None:
         return None
-
-    return frame_start, frame_end
+    return clamped.start, clamped.end_exclusive
 
 
 def _relay_states(prompt_relay: list[dict]) -> set[str]:
