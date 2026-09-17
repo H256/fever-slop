@@ -979,10 +979,16 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 or not phase.get("word_timestamps")
             ):
                 continue
-            start = float(phase.get("start_seconds", float(phase.get("start") or 0.0) - origin))
-            end = float(phase.get("end_seconds", float(phase.get("end") or 0.0) - origin))
-            if end > start:
-                accepted_windows.append((start, end))
+            # Accepted content is the timed words (absolute song time), the same
+            # values the H3 compiler uses to lay out prompt windows. Section
+            # boundaries (start_seconds) are stored against the unrounded scene
+            # start and can drift a few ms from word times, so they must not be
+            # the contradiction basis.
+            for word in phase["word_timestamps"]:
+                left = float(word.get("start", word.get("source_start") or 0.0))
+                right = float(word.get("end", word.get("source_end") or left))
+                if right > left:
+                    accepted_windows.append((left - origin, right - origin))
         if not accepted_windows:
             return
 
@@ -995,13 +1001,20 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             "no sung vocal performance", "no vocal performance", "does not sing",
             "mouth closed", "do not create lip-sync", "no singing mouth movement",
         )
+        # A few ms of drift between prompt windows and word times is rounding
+        # noise (2-decimal abs_start_seconds, float math), not a contradiction;
+        # a real overlap covers a meaningful part of an accepted word.
+        tolerance = 0.01
         for index, match in enumerate(window_matches):
             block_end = window_matches[index + 1].start() if index + 1 < len(window_matches) else len(lowered)
             block = lowered[match.end():block_end]
             if not any(phrase in block for phrase in contradictions):
                 continue
             start, end = float(match.group(1)), float(match.group(2))
-            if any(start < accepted_end and end > accepted_start for accepted_start, accepted_end in accepted_windows):
+            if any(
+                start + tolerance < accepted_end and end - tolerance > accepted_start
+                for accepted_start, accepted_end in accepted_windows
+            ):
                 raise FeverSlopValidationError(
                     f"Scene {scene.get('scene', '?')} H3 prompt contradicts accepted vocal timing "
                     f"for bound performer {subject_id}/{speaker_id}",
