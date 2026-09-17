@@ -74,8 +74,8 @@ class RunPipelinePathTests(unittest.TestCase):
                 patch("feverslop.composition.stage_runners.AppConfig.load", return_value=Mock(
                     resolve_video_workflow_profile=Mock(return_value=None),
                 )), \
-                patch("feverslop.composition.stage_runners.CanonicalPlanRegenerator", return_value=regenerator) as factory, \
-                patch("feverslop.composition.stage_runners.build_render_plan") as builder:
+                patch("feverslop.composition.stages.plan_stages.CanonicalPlanRegenerator", return_value=regenerator) as factory, \
+                patch("feverslop.composition.stages.plan_stages.build_render_plan") as builder:
                 _run_render_plan_stage(state)
 
         factory.assert_called_once()
@@ -121,8 +121,8 @@ class RunPipelinePathTests(unittest.TestCase):
                 patch("feverslop.composition.stage_runners.AppConfig.load", return_value=Mock(
                     resolve_video_workflow_profile=Mock(return_value=profile),
                 )), \
-                patch("feverslop.composition.stage_runners.CanonicalPlanRegenerator", return_value=regenerator), \
-                patch("feverslop.composition.stage_runners.build_render_plan") as builder:
+                patch("feverslop.composition.stages.plan_stages.CanonicalPlanRegenerator", return_value=regenerator), \
+                patch("feverslop.composition.stages.plan_stages.build_render_plan") as builder:
                 _run_render_plan_stage(state)
 
         self.assertIs(capability, builder.call_args.kwargs["duration_capability"])
@@ -958,7 +958,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             single_prompt_workflow=Path("single.json"),
         )
 
-        with patch("feverslop.composition.stage_runners.execute_generate_render_plan") as execute:
+        with patch("feverslop.composition.stages.plan_stages.execute_generate_render_plan") as execute:
             _run_main_pipeline_stage(state)
 
         request = execute.call_args.args[0]
@@ -991,7 +991,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
 
             fixer.fix_file.side_effect = fix_file
             with patch("feverslop.composition.stage_runners.run_unittest_suite") as tests, \
-                patch("feverslop.composition.stage_runners.LTXPromptAnchorFixer", return_value=fixer) as fixer_class, \
+                patch("feverslop.composition.stages.plan_stages.LTXPromptAnchorFixer", return_value=fixer) as fixer_class, \
                 patch("feverslop.composition.stage_runners.build_generate_render_plan_use_case") as main_builder, \
                 patch("feverslop.composition.stage_runners.build_render_storyboard_use_case") as storyboard_builder, \
                 patch("feverslop.composition.stage_runners.build_render_video_scenes_use_case") as video_builder, \
@@ -1044,9 +1044,9 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 plan_for_next_step=Path(temp_dir) / "plan.json",
             )
 
-            with patch("feverslop.composition.stage_runners.AppConfig"), \
-                    patch("feverslop.composition.stage_runners.OpenAICompatibleLLMClient"), \
-                    patch("feverslop.composition.stage_runners.RelayDirectionBuilder") as builder_class:
+            with patch("feverslop.composition.stages.plan_stages.AppConfig"), \
+                    patch("feverslop.composition.stages.plan_stages.OpenAICompatibleLLMClient"), \
+                    patch("feverslop.composition.stages.plan_stages.RelayDirectionBuilder") as builder_class:
                 builder_class.return_value.compact_render_plan_file.return_value = Path(temp_dir) / "compact.json"
                 _run_relay_compact_stage(state)
 
@@ -1095,7 +1095,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             with patch("feverslop.composition.stage_runners.run_unittest_suite") as tests, \
                 patch("feverslop.composition.stage_runners.build_generate_render_plan_use_case") as main_builder, \
                 patch("feverslop.composition.stage_runners.OpenAICompatibleLLMClient") as llm, \
-                patch("feverslop.composition.stage_runners.LTXPromptAnchorFixer") as fixer, \
+                patch("feverslop.composition.stages.plan_stages.LTXPromptAnchorFixer") as fixer, \
                 patch("feverslop.composition.stage_runners.build_render_storyboard_use_case") as storyboard_builder, \
                 patch("feverslop.composition.stage_runners.generate_storyboard_page") as storyboard_page, \
                 patch("feverslop.composition.stage_runners.build_render_video_scenes_use_case") as video_builder, \
