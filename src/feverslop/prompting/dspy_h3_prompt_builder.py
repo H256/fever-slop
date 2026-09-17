@@ -28,6 +28,7 @@ from feverslop.prompting.deterministic_h3_compiler import (
     DeterministicH3Compiler,
     creative_shots_from_plan,
 )
+from feverslop.prompting.dspy_h3_generator_core import H3ShotCountMismatchError
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.planning_payload import (
     compact_creative_context,
@@ -610,6 +611,26 @@ def _safe_error_message(error: BaseException) -> str:
     return message[:1000]
 
 
+def _shot_count_hint(expected: int, actual: int, relay_segments: list[dict[str, Any]]) -> str:
+    """Contract hint for a shot-count mismatch retry (#1242).
+
+    The planner must author exactly one creative shot per authoritative relay
+    segment. The hint restates that contract with the segment windows so the
+    hinted retry is not an identical resubmission.
+    """
+    windows = [
+        f"[{float(shot.get('start_seconds') or 0.0):.2f}-{float(shot.get('end_seconds') or 0.0):.2f}] shot {index}"
+        for index, shot in enumerate(relay_segments, start=1)
+    ]
+    window_text = ", ".join(windows) if windows else f"shots 1..{expected}"
+    return (
+        "The plan MUST contain exactly "
+        f"{expected} shots, one per relay segment: {window_text}. "
+        f"The previous plan returned {actual} shot(s), which is invalid; "
+        "do not merge, split, or drop relay segments."
+    )
+
+
 def _normalize_relay_segments(segment: dict[str, Any]) -> list[dict[str, Any]]:
     """Convert LTX frame relays into bounded, model-neutral timed shots."""
     relay = segment.get("performance_intervals") or (segment.get("ltx") or {}).get("prompt_relay") or segment.get("prompt_relay") or []
@@ -932,10 +953,18 @@ class DspyH3PromptBuilder:
         scene. Contract/compile failures are handled by their own repair loop
         and by the deterministic fallback, not by this budget. All reserved
         attempts share the single "generate" recovery reservation.
+
+        A shot-count mismatch (#1242) is the one retry that changes the
+        request: the next attempt carries a contract hint with the expected
+        shot count and relay windows in ``notes``. No extra LLM calls are
+        made beyond the existing budget.
         """
         attempts = 1 + self.planner_retries
         segment_id = str(segment.get("segment_id") or "")
         last_error: BaseException | None = None
+        # The hint is re-derived from the original request on each mismatch so
+        # notes carry only the latest hint, never a stack of stale ones.
+        attempt_request = request
         for attempt in range(1, attempts + 1):
             try:
                 with api_observability_context(
@@ -945,7 +974,36 @@ class DspyH3PromptBuilder:
                     attempt=attempt,
                     checkpoint="miss",
                 ):
-                    return self.generator(request)
+                    return self.generator(attempt_request)
+            except H3ShotCountMismatchError as exc:
+                # The plan exists but its shot count contradicts the
+                # authoritative relay structure; feed the expected count back
+                # as a contract hint so the next attempt is not an identical
+                # resubmission (#1242).
+                last_error = exc
+                retry_diagnostics.append({
+                    "attempt": attempt,
+                    "planned_attempts": attempts,
+                    "cause": _safe_error_message(exc),
+                    "llm": self._planner_diagnostic(),
+                })
+                suffix = (
+                    f" -> retrying with shot-count contract hint "
+                    f"(expected {exc.expected}, got {exc.actual})"
+                    if attempt < attempts else ""
+                )
+                if self.reporter is not None:
+                    cause = " ".join(_safe_error_message(exc).split())
+                    self.reporter.message(
+                        f"H3 planner attempt {attempt}/{attempts} failed for {segment_id}: {cause}{suffix}"
+                    )
+                if attempt < attempts:
+                    hint = _shot_count_hint(
+                        exc.expected, exc.actual, request.get("relay_segments") or [])
+                    attempt_request = {
+                        **request,
+                        "notes": f"{request.get('notes') or ''}\n\n{hint}".strip(),
+                    }
             except Exception as exc:
                 last_error = exc
                 retry_diagnostics.append({
