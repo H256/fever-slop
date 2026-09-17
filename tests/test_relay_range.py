@@ -74,5 +74,56 @@ class RelayRangeBoundaryDictTests(unittest.TestCase):
         self.assertEqual(len({RelayRange(0, 48), RelayRange(0, 48)}), 1)
 
 
+class RelayRangeClampToTimelineTests(unittest.TestCase):
+    # end_floor_offset=0 mirrors the MSV/LTX render sites: the caller applies
+    # max(1, end - start) afterwards, so a zero-length segment is allowed.
+    def test_within_bounds_is_unchanged(self):
+        self.assertEqual(RelayRange(10, 30), RelayRange(10, 30).clamp_to_timeline(160))
+
+    def test_start_floored_to_zero(self):
+        self.assertEqual(RelayRange(0, 30), RelayRange(-5, 30).clamp_to_timeline(160))
+
+    def test_start_capped_to_timeline(self):
+        self.assertEqual(RelayRange(160, 160), RelayRange(200, 300).clamp_to_timeline(160))
+
+    def test_end_capped_to_timeline(self):
+        self.assertEqual(RelayRange(10, 160), RelayRange(10, 400).clamp_to_timeline(160))
+
+    def test_end_pulled_below_start_yields_zero_length(self):
+        # offset 0: no minimum length; the caller supplies max(1, end - start).
+        self.assertEqual(RelayRange(50, 50), RelayRange(50, 10).clamp_to_timeline(160))
+
+    def test_end_floor_offset_one_keeps_minimal_segment(self):
+        # offset 1 mirrors the render-plan normalizer: end never below start + 1.
+        self.assertEqual(RelayRange(50, 51), RelayRange(50, 10).clamp_to_timeline(160, end_floor_offset=1))
+
+    def test_end_floor_offset_one_caps_at_timeline(self):
+        self.assertEqual(RelayRange(159, 160), RelayRange(159, 400).clamp_to_timeline(160, end_floor_offset=1))
+
+    def test_end_floor_offset_one_start_at_timeline(self):
+        # start at the timeline edge; end forced one past it (start + 1).
+        self.assertEqual(RelayRange(160, 161), RelayRange(200, 300).clamp_to_timeline(160, end_floor_offset=1))
+
+
+class RelayRangeWindowTests(unittest.TestCase):
+    def test_shift_and_clip_within_window(self):
+        self.assertEqual(RelayRange(5, 20), RelayRange(10, 25).window(5, 100))
+
+    def test_start_floored_to_zero(self):
+        # start = max(0, 3 - 5) = 0; end = min(100, 18 - 5) = 13.
+        self.assertEqual(RelayRange(0, 13), RelayRange(3, 18).window(5, 100))
+
+    def test_end_capped_to_length(self):
+        self.assertEqual(RelayRange(5, 40), RelayRange(10, 90).window(5, 40))
+
+    def test_empty_window_when_end_below_start(self):
+        result = RelayRange(10, 12).window(50, 20)
+        self.assertTrue(result.end_exclusive <= result.start)
+
+    def test_negative_offset_shifts_later(self):
+        # start = max(0, 0 - (-5)) = 5; end = min(100, 15 - (-5)) = 20.
+        self.assertEqual(RelayRange(5, 20), RelayRange(0, 15).window(-5, 100))
+
+
 if __name__ == "__main__":
     unittest.main()
