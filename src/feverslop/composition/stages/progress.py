@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from feverslop.composition.config_loader import PipelineRunState
 
 from rich.console import Console
 
@@ -63,3 +67,15 @@ class RenderProgressReporter:
         _report(f"Ingredients image analysis: scene {scene_id}; {len(references)} references [{summary}]")
         if self.task_id is not None:
             self.progress.update(self.task_id, description=f"Analyzing scene {scene_id}: {summary}")
+
+
+def _canonical_plan_path(state: "PipelineRunState") -> Path | None:
+    path = getattr(state.context, "render_plan", None)
+    return Path(path) if path is not None and Path(path).is_file() else None
+
+
+def _scene_progress_callback(progress: RenderProgressReporter):
+    def update(scene_number: int, completed: int, total: int) -> None:
+        progress.update(Path(f"scene_{scene_number:04}.json"), completed, total)
+
+    return update

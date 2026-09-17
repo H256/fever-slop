@@ -11,7 +11,6 @@ from tempfile import NamedTemporaryFile
 
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
-from feverslop.adapters.openai_compatible_llm import OpenAICompatibleLLMClient
 from feverslop.adapters.postprocessor_frame_extractor import (
     PostprocessorFrameExtractor,
 )
@@ -34,13 +33,7 @@ from feverslop.application.effective_render_plan import (
     project_effective_plan,
 )
 from feverslop.application.mlt_exporter import export_render_plan_to_mlt
-from feverslop.application.msr_prompt_enrichment import (
-    enrich_render_plan_with_msr_prompts,
-)
 from feverslop.application.openshot_exporter import export_render_plan_to_openshot
-from feverslop.application.reference_bible import (
-    enrich_render_plan_with_reference_sheets,
-)
 from feverslop.application.render_storyboard import RenderStoryboardRequest
 from feverslop.application.render_video import (
     RenderVideoScenesRequest,
@@ -57,7 +50,6 @@ from feverslop.application.visual_consistency_preflight import (
 from feverslop.composition.generate_render_plan import (
     build_generate_render_plan_use_case,  # noqa: F401
     )
-from feverslop.composition.resume_plan import reference_manifests_reusable
 from feverslop.composition.continuation_scheduler import (
     ContinuationScheduler,
     chains_from_predecessors,
@@ -79,7 +71,6 @@ from feverslop.domain.visual_consistency import (
     validate_scene_sequence,
 )
 from feverslop.ports.rendering import WorkflowAnchorConfig
-from feverslop.tools.reference_bible import run as render_reference_bible
 from feverslop.tools.storyboard_page import generate_storyboard_page, parse_scene_list
 from feverslop.utils.io import file_is_valid
 
@@ -118,13 +109,28 @@ from .stages.plan_stages import (  # noqa: F401
 from .stages.progress import (  # noqa: F401
     VIDEO_SCENE_PROGRESS_LABEL,
     RenderProgressReporter,
+    _canonical_plan_path,
     _report,
+    _scene_progress_callback,
     console,
     get_reporter,
     set_reporter,
 )
 
-_REFERENCE_BIBLE_PARSER = None
+# MSR/Ingredients stage runners now live in
+# feverslop.composition.stages.msr_stages (M-20, P3). Re-exported here so
+# existing imports and patch("...stage_runners.X") targets keep working.
+from .stages.msr_stages import (  # noqa: F401
+    OpenAICompatibleLLMClient,
+    _run_ingredients_sheets_stage,
+    _run_msr_prompt_enrich_stage,
+    _run_msr_reference_sheets_stage,
+    _run_msr_references_stage,
+    enrich_render_plan_with_msr_prompts,
+    enrich_render_plan_with_reference_sheets,
+    reference_manifests_reusable,
+    render_reference_bible,
+)
 
 
 def _run_set_resolution_stage(state: PipelineRunState) -> None:
@@ -222,153 +228,6 @@ def _run_storyboard_page_stage(state: PipelineRunState) -> None:
         storyboard_dir=state.context.storyboard_dir,
         output_html=state.context.storyboard_page,
     )
-
-
-def _run_msr_references_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-i2v"):
-        raise ValueError(
-            "msr_references requires --video-pipeline ltx_msr, ltx_ingredients, minimax-h3-r2v, or minimax-h3-i2v",
-        )
-    project_config_path = getattr(state.context, "project_config_path", None)
-    if project_config_path is not None:
-        config = ProjectConfig.load(project_config_path)
-        _report_reference_fallbacks(_seed_reference_bindings(
-            state.plan_for_next_step,
-            config,
-        ))
-        if reference_manifests_reusable(
-            state.context.references_dir,
-            actor_ids=(actor.id for actor in config.actors),
-            location_id=(location.id for location in config.structured_locations),
-        ):
-            _report("[yellow]Skipping MSR reference rendering; existing reference manifests are reusable.[/yellow]")
-            return
-    reference_args = _get_reference_bible_parser().parse_args([
-        "--project-config",
-        str(state.context.project_config_path),
-        "--app-config",
-        str(state.app_config_path),
-        "--hero-workflow",
-        str(state.reference_hero_workflow),
-        "--edit-workflow",
-        str(state.reference_edit_workflow),
-        "--output-dir",
-        str(state.context.references_dir),
-        "--view-set",
-        "msr",
-        "--reference-generation",
-        str(getattr(state.args, "reference_generation", "image_views")),
-        "--sequence-workflow",
-        str(getattr(state.args, "sequence_to_sheet_workflow", "workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json")),
-    ])
-    render_reference_bible(reference_args, reporter=get_reporter())
-
-
-def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-i2v"):
-        raise ValueError(
-            "msr_reference_sheets requires --video-pipeline ltx_msr, ltx_ingredients, minimax-h3-r2v, or minimax-h3-i2v",
-        )
-    if not state.plan_for_next_step.is_file():
-        _report(
-            "[dim]Render plan missing; creating the intermediate plan before enriching MSR references...[/dim]",
-        )
-        _run_render_plan_stage(state)
-    project_config_path = getattr(state.context, "project_config_path", None)
-    project_config = ProjectConfig.load(project_config_path) if project_config_path is not None else None
-    if project_config is not None:
-        _report_reference_fallbacks(_seed_reference_bindings(
-            state.plan_for_next_step,
-            project_config,
-        ))
-    state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
-    msr_reference_total = count_render_plan_items(state.plan_for_next_step)
-    with RenderProgressReporter("Enriching MSR references", msr_reference_total) as reference_progress:
-        enrichment_options = (
-            {"max_scene_actors": project_config.max_scene_actors}
-            if project_config is not None and project_config.max_scene_actors != 4
-            else {}
-        )
-        state.plan_for_next_step = enrich_render_plan_with_reference_sheets(
-            state.plan_for_next_step,
-            state.context.references_dir,
-            state.context.reference_plan,
-            on_scene_complete=_scene_progress_callback(reference_progress),
-            canonical_plan_path=_canonical_plan_path(state),
-            **enrichment_options,
-        )
-
-
-def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
-        raise ValueError("msr_prompt_enrich requires --video-pipeline ltx_msr or ltx_ingredients")
-    app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
-    llm = OpenAICompatibleLLMClient(
-        base_url=app_config.llm.base_url,
-        api_key=app_config.llm.api_key,
-        model=app_config.llm.model_for("structured"),
-        temperature=app_config.llm.temperature,
-        dspy_temperature=app_config.llm.dspy_temperature,
-        max_tokens=app_config.llm.max_tokens,
-        request_timeout_seconds=app_config.llm.request_timeout_seconds,
-        max_concurrent_requests=app_config.llm.max_concurrent_requests,
-        chat_template_kwargs=app_config.llm.chat_template_kwargs,
-    )
-    msr_prompt_total = count_render_plan_items(state.plan_for_next_step)
-    with RenderProgressReporter("Enriching MSR prompts", msr_prompt_total) as msr_prompt_progress:
-        state.plan_for_next_step = enrich_render_plan_with_msr_prompts(
-            state.plan_for_next_step,
-            state.context.reference_plan,
-            canonical_plan_path=_canonical_plan_path(state),
-            llm=llm,
-            on_analysis_status=msr_prompt_progress.analysis_attempt,
-            on_scene_complete=_scene_progress_callback(msr_prompt_progress),
-        )
-
-
-def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
-    from feverslop.application.render_plan_ingredients_sheets import (
-        enrich_render_plan_with_ingredients_sheets,
-    )
-    if state.args.video_pipeline != "ltx_ingredients":
-        raise ValueError("ingredients_sheets requires --video-pipeline ltx_ingredients")
-    from feverslop.config.project_config import ProjectConfig
-    project_config = ProjectConfig.load(state.context.project_config_path)
-    resolution = _get_resolution(state.args)
-    if resolution is not None:
-        project_config = project_config.apply_resolution_override(
-            width=resolution[0], height=resolution[1],
-        )
-    video_settings = project_config.to_video_settings()
-    app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
-    llm = OpenAICompatibleLLMClient(
-        base_url=app_config.llm.base_url,
-        api_key=app_config.llm.api_key,
-        model=app_config.llm.model_for("structured"),
-        temperature=app_config.llm.temperature,
-        dspy_temperature=app_config.llm.dspy_temperature,
-        max_tokens=app_config.llm.max_tokens,
-        request_timeout_seconds=app_config.llm.request_timeout_seconds,
-        max_concurrent_requests=app_config.llm.max_concurrent_requests,
-        chat_template_kwargs=app_config.llm.chat_template_kwargs,
-    )
-    state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
-    ingredients_total = count_render_plan_items(state.plan_for_next_step)
-    with RenderProgressReporter("Composing Ingredients scene sheets", ingredients_total) as progress:
-        state.plan_for_next_step = enrich_render_plan_with_ingredients_sheets(
-            state.plan_for_next_step,
-            state.context.references_dir,
-            state.context.ingredients_plan,
-            canonical_plan_path=_canonical_plan_path(state),
-            video_settings=video_settings,
-            llm=llm,
-            on_analysis_status=progress.analysis_attempt,
-            on_scene_complete=_scene_progress_callback(progress),
-            workflow_profile=str(
-                getattr(state.args, "video_workflow_profile", None)
-                or state.ingredients_workflow.stem,
-            ),
-        )
 
 
 def _specialized_video_use_case(state: PipelineRunState):
@@ -479,10 +338,6 @@ def _prepared_scene_is_fresh(
         and not manifest.verify(state.context.project_config_dir)
     )
 
-
-def _canonical_plan_path(state: PipelineRunState) -> Path | None:
-    path = getattr(state.context, "render_plan", None)
-    return Path(path) if path is not None and Path(path).is_file() else None
 
 
 def _select_render_scenes(state: PipelineRunState, scenes: tuple[RenderScene, ...]) -> tuple[RenderScene, ...]:
@@ -1825,13 +1680,6 @@ STAGE_LABELS = {
 
 def run_unittest_suite() -> None:
     subprocess.run(["uv", "run", "python", "-m", "unittest", "discover", "-s", "tests"], check=True, cwd=runner_root())
-
-
-def _scene_progress_callback(progress: RenderProgressReporter):
-    def update(scene_number: int, completed: int, total: int) -> None:
-        progress.update(Path(f"scene_{scene_number:04}.json"), completed, total)
-
-    return update
 
 
 def write_step(message: str) -> None:
