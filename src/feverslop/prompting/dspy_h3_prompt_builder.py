@@ -954,6 +954,14 @@ class DspyH3PromptBuilder:
                     "cause": _safe_error_message(exc),
                     "llm": self._planner_diagnostic(),
                 })
+                if self.reporter is not None:
+                    # Retries resend the same request; without the cause the
+                    # operator cannot tell whether a blocked scene is a model
+                    # output problem or a code failure.
+                    cause = " ".join(_safe_error_message(exc).split())
+                    self.reporter.message(
+                        f"H3 planner attempt {attempt}/{attempts} failed for {segment_id}: {cause}"
+                    )
         # All attempts failed; surface the final cause (the caller attaches it
         # as the root cause so a blocked scene is actionable, not opaque).
         if last_error is not None:
@@ -1733,6 +1741,19 @@ class DspyH3PromptBuilder:
                         reasons = ([issue.code for issue in exc.issues] if isinstance(exc, PromptContractError)
                                    else [str(getattr(exc, "code", "h3.preparation.failed"))])
                         result = dict(getattr(exc, "candidate_result", {}) or {})
+                        # Preserve the underlying failure so the block warning
+                        # below can surface it, not just the coarse stage code.
+                        if "dspy_error_root" not in result:
+                            root_cause = getattr(exc, "root_cause", None)
+                            if isinstance(root_cause, Mapping):
+                                result["dspy_error_root"] = str(root_cause.get("cause") or "")
+                                result["dspy_error_detail"] = dict(root_cause)
+                            else:
+                                result["dspy_error_root"] = _safe_error_message(exc)
+                                result.setdefault(
+                                    "dspy_error_detail",
+                                    {"attempts": [{"cause": result["dspy_error_root"]}]},
+                                )
                         result.update(prompt="", prompt_contract={"valid": False},
                             prompt_provenance={"compiler": H3_COMPILER_NAME, "compiler_version": H3_COMPILER_VERSION,
                                                "source": "blocked"})
@@ -1750,19 +1771,33 @@ class DspyH3PromptBuilder:
                     # Decode the root cause and suggested action for blocked scenes.
                     guidance = ""
                     truncation = False
+                    causes: list[str] = []
                     error_detail = result.get("dspy_error_detail") or {}
                     if isinstance(error_detail, Mapping):
                         # Collect per-attempt diagnostics.
                         for attempt_data in error_detail.get("attempts") or ():
-                            llm_diag = attempt_data.get("llm", {}) if isinstance(attempt_data, Mapping) else {}
-                            if isinstance(llm_diag, Mapping):
-                                if llm_diag.get("truncation_suspected"):
-                                    truncation = True
+                            if not isinstance(attempt_data, Mapping):
+                                continue
+                            llm_diag = attempt_data.get("llm", {})
+                            if isinstance(llm_diag, Mapping) and llm_diag.get("truncation_suspected"):
+                                truncation = True
+                            cause = str(attempt_data.get("cause") or "").strip()
+                            if cause and cause not in causes:
+                                causes.append(cause)
                     from feverslop.domain.h3_guidance import h3_block_guide
                     guidance = h3_block_guide(reason_codes, truncation_suspected=truncation)
+                    # Retries resend the same request, so distinct causes are rare;
+                    # list up to three so the warning stays on one readable line.
+                    cause_summary = ""
+                    if causes:
+                        summary = " ".join(
+                            f"({index}) {cause[:240]}"
+                            for index, cause in enumerate(causes[:3], start=1)
+                        )
+                        cause_summary = f" Planner failure: {summary}."
                     warning_callback(
                         f"Scene {checkpoint_input.scene_number} blocked: {reasons}; "
-                        f"reserved attempts: {attempts}. {guidance}",
+                        f"reserved attempts: {attempts}.{cause_summary} {guidance}",
                         title="H3 scene readiness",
                     )
                 results.append({"segment_id": segment_id, **result})

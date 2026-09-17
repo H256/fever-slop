@@ -539,6 +539,9 @@ class VideoPromptGenerator:
         # model's shot count.
         authoritative_count = len(request.relay_segments) or 1
         if len(authored_shots) != authoritative_count:
+            # H3CreativeShot carries no shot_number; the plan owns numbering.
+            # Format with the index or the diagnostic itself crashes and masks
+            # the real mismatch below.
             logger.error(
                 "H3 planner shot count mismatch: "
                 "expected=%d got=%d relay_segments=%d "
@@ -548,12 +551,14 @@ class VideoPromptGenerator:
                 len(request.relay_segments),
                 str(creative.creative_intent)[:200],
                 "; ".join(
-                    f"shot#{s.shot_number}: {str(s.description)[:120]}"
-                    for s in authored_shots
+                    f"shot#{index}: {str(shot.description)[:120]}"
+                    for index, shot in enumerate(authored_shots, start=1)
                 ),
             )
             raise ValueError(
-                "creative plan shot count does not match authoritative scene structure",
+                "creative plan shot count does not match authoritative scene "
+                f"structure: expected {authoritative_count} shot(s), "
+                f"got {len(authored_shots)}",
             )
         windows = _authoritative_shot_windows(request, len(authored_shots))
         shots = []
