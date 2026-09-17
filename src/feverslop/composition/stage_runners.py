@@ -9,8 +9,6 @@ import subprocess
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from rich.console import Console
-
 from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
 from feverslop.adapters.h3_prompt_checkpoints import H3PromptCheckpointStore
@@ -28,7 +26,6 @@ from feverslop.adapters.project_visual_consistency import (
     validate_project_scene_artifacts,
 )
 from feverslop.adapters.reporting import ConsoleReporter
-from feverslop.ports.reporting import Reporter
 from feverslop.adapters.video_postprocessor import VideoPostProcessor, final_video_postprocessor
 from feverslop.adapters.cutless_assembly import CutlessAssemblyService
 from feverslop.application.continuity_handoff import ContinuityHandoffUseCase
@@ -109,7 +106,6 @@ from feverslop.tools.reference_bible import (
 from feverslop.tools.reference_bible import run as render_reference_bible
 from feverslop.tools.storyboard_page import generate_storyboard_page, parse_scene_list
 from feverslop.utils.io import file_is_valid
-from feverslop.utils.rich_progress import build_progress
 from feverslop.utils.stems import discover_stem_files
 
 from .arg_parser import PipelineStage
@@ -119,8 +115,17 @@ from .config_loader import (
     count_render_plan_items,
     runner_root,
 )
-
-VIDEO_SCENE_PROGRESS_LABEL = "Rendering video scenes"
+# Progress-reporting state and helpers now live in
+# feverslop.composition.stages.progress (M-20). Re-exported here so existing
+# ``import`` and ``patch("...stage_runners.X")`` targets keep working.
+from .stages.progress import (  # noqa: F401
+    VIDEO_SCENE_PROGRESS_LABEL,
+    RenderProgressReporter,
+    _report,
+    console,
+    get_reporter,
+    set_reporter,
+)
 
 _REFERENCE_BIBLE_PARSER = None
 
@@ -138,55 +143,6 @@ def _get_resolution(args: argparse.Namespace) -> tuple[int, int] | None:
     if res is None:
         return None
     return (res.width, res.height)
-
-
-console = Console()
-_active_reporter: Reporter | None = None
-
-
-def set_reporter(reporter: Reporter | None) -> None:
-    global _active_reporter
-    _active_reporter = reporter
-
-
-def _report(text: str = "") -> None:
-    (_active_reporter or ConsoleReporter(console)).message(text)
-
-
-class RenderProgressReporter:
-    def __init__(
-        self,
-        description: str,
-        total: int,
-        *,
-        console: Console = console,
-        emit_scene_progress: bool = False,
-    ):
-        self.description = description
-        self.total = total
-        self.emit_scene_progress = emit_scene_progress
-        self.progress = build_progress(console=console)
-        self.task_id = None
-
-    def __enter__(self) -> RenderProgressReporter:
-        self.progress.__enter__()
-        self.task_id = self.progress.add_task(self.description, total=self.total)
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
-        self.progress.__exit__(exc_type, exc_value, traceback)
-
-    def update(self, _output_path: Path, completed: int, total: int) -> None:
-        if self.task_id is not None:
-            self.progress.update(self.task_id, completed=completed)
-        if self.emit_scene_progress:
-            _report(f"Rendered scene {completed}/{total}")
-
-    def analysis_attempt(self, scene_id: int, references: list[dict[str, str]]) -> None:
-        summary = ", ".join(f"{item['type']}:{item['id']}" for item in references)
-        _report(f"Ingredients image analysis: scene {scene_id}; {len(references)} references [{summary}]")
-        if self.task_id is not None:
-            self.progress.update(self.task_id, description=f"Analyzing scene {scene_id}: {summary}")
 
 
 def _run_tests_stage(_state: PipelineRunState) -> None:
@@ -800,7 +756,7 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
         "--sequence-workflow",
         str(getattr(state.args, "sequence_to_sheet_workflow", "workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json")),
     ])
-    render_reference_bible(reference_args, reporter=_active_reporter)
+    render_reference_bible(reference_args, reporter=get_reporter())
 
 
 def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:

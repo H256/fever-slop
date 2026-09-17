@@ -21,12 +21,12 @@ def set_reporter(reporter: Reporter | None) -> None:
     _active_reporter = reporter
 
 
+def get_reporter() -> Reporter | None:
+    return _active_reporter
+
+
 def _report(text: str = "") -> None:
     (_active_reporter or ConsoleReporter(console)).message(text)
-
-
-def report(text: str = "") -> None:
-    _report(text)
 
 
 class RenderProgressReporter:
