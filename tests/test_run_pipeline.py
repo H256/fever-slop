@@ -993,7 +993,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             with patch("feverslop.composition.stage_runners.run_unittest_suite") as tests, \
                 patch("feverslop.composition.stages.plan_stages.LTXPromptAnchorFixer", return_value=fixer) as fixer_class, \
                 patch("feverslop.composition.stage_runners.build_generate_render_plan_use_case") as main_builder, \
-                patch("feverslop.composition.stage_runners.build_render_storyboard_use_case") as storyboard_builder, \
+                patch("feverslop.composition.stages.scenes.build_render_storyboard_use_case") as storyboard_builder, \
                 patch("feverslop.composition.stages.render_stages.build_render_video_scenes_use_case") as video_builder, \
                 patch("feverslop.composition.stages.final_stages.VideoPostProcessor") as postprocessor:
                 result = run_pipeline.run(args)
@@ -1096,8 +1096,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 patch("feverslop.composition.stage_runners.build_generate_render_plan_use_case") as main_builder, \
                 patch("feverslop.composition.stages.msr_stages.OpenAICompatibleLLMClient") as llm, \
                 patch("feverslop.composition.stages.plan_stages.LTXPromptAnchorFixer") as fixer, \
-                patch("feverslop.composition.stage_runners.build_render_storyboard_use_case") as storyboard_builder, \
-                patch("feverslop.composition.stage_runners.generate_storyboard_page") as storyboard_page, \
+                patch("feverslop.composition.stages.scenes.build_render_storyboard_use_case") as storyboard_builder, \
+                patch("feverslop.composition.stages.scenes.generate_storyboard_page") as storyboard_page, \
                 patch("feverslop.composition.stages.render_stages.build_render_video_scenes_use_case") as video_builder, \
                 patch("feverslop.composition.stages.final_stages.VideoPostProcessor") as postprocessor:
                 result = run_pipeline.run(args)
@@ -1195,7 +1195,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
 
             use_case = Mock()
             use_case.execute.return_value = []
-            with patch("feverslop.composition.stage_runners.build_render_storyboard_use_case", return_value=use_case):
+            with patch("feverslop.composition.stages.scenes.build_render_storyboard_use_case", return_value=use_case):
                 run_pipeline.run(args)
 
         request = use_case.execute.call_args.args[0]
@@ -1352,8 +1352,8 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 on_scene_complete(1, 1, 1)
                 return Path(output_plan)
 
-            with patch.dict("os.environ", {"LLM_API_KEY": "test-key"}), patch("feverslop.composition.stage_runners.build_render_storyboard_use_case") as storyboard_builder, \
-                patch("feverslop.composition.stage_runners.generate_storyboard_page") as storyboard_page, \
+            with patch.dict("os.environ", {"LLM_API_KEY": "test-key"}), patch("feverslop.composition.stages.scenes.build_render_storyboard_use_case") as storyboard_builder, \
+                patch("feverslop.composition.stages.scenes.generate_storyboard_page") as storyboard_page, \
                 patch("feverslop.composition.stages.msr_stages.render_reference_bible") as reference_bible, \
                 patch("feverslop.composition.stages.msr_stages.enrich_render_plan_with_reference_sheets", side_effect=enrich) as enrich_refs, \
                 patch("feverslop.composition.stages.msr_stages.enrich_render_plan_with_msr_prompts", side_effect=enrich_msr) as enrich_msr_prompts, \

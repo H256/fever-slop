@@ -194,7 +194,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 "feverslop.composition.stages.render_stages.AppConfig.load",
                 return_value=Mock(),
             ), patch(
-                "feverslop.composition.stage_runners.build_render_storyboard_use_case",
+                "feverslop.composition.stages.scenes.build_render_storyboard_use_case",
                 return_value=use_case,
             ):
                 _run_storyboard_frames_stage(state)
