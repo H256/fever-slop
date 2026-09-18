@@ -15,8 +15,10 @@ from feverslop.application.movie_ingredients_sheets import (
     enrich_movie_render_plan_with_ingredients_sheets,
 )
 from feverslop.application.reference_bible import (
+    INGREDIENTS_SHEET_VALIDATION_VERSION,
     _fit_contain_image,
     _panel_position_label,
+    _sheet_validation_record_path,
     _type_label,
     compose_cached_ingredients_sheet,
     compose_scene_reference_sheet,
@@ -839,6 +841,123 @@ class IngredientsSheetBuilderTests(unittest.TestCase):
             with Image.open(tmp / result["sheet_path"]) as _sheet:
                 cols = math.ceil(math.sqrt(3))
                 self.assertEqual(2, cols)
+
+    def _build_signature_and_cache(self, tmp: Path, color: str = "red"):
+        source = tmp / "actor.png"
+        Image.new("RGB", (16, 16), color).save(source)
+        references = [{
+            "id": "actor",
+            "type": "actor",
+            "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+        }]
+        signature = ingredients_sheet_signature(references, size=(1280, 704))
+        cache = tmp / "by_signature"
+        cache.mkdir()
+        return source, references, signature, cache
+
+    def test_composed_sheet_writes_validation_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            source, references, signature, cache = self._build_signature_and_cache(tmp)
+            with patch(
+                "feverslop.application.reference_bible.compose_scene_reference_sheet",
+                wraps=compose_scene_reference_sheet,
+            ) as compose:
+                output, _ = compose_cached_ingredients_sheet(
+                    [source],
+                    cache_dir=cache,
+                    references=references,
+                    size=(1280, 704),
+                )
+            self.assertEqual(1, compose.call_count)
+            record_path = _sheet_validation_record_path(output)
+            self.assertTrue(record_path.is_file())
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+            self.assertEqual("valid", record["status"])
+            self.assertEqual(
+                INGREDIENTS_SHEET_VALIDATION_VERSION,
+                record["validation_version"],
+            )
+            self.assertEqual(signature, record["signature"])
+            self.assertEqual([1280, 704], record["size"])
+            self.assertEqual([references[0]["sha256"]], record["source_sha256s"])
+            self.assertEqual("none", record["repair"])
+
+    def test_certified_cached_sheet_is_reused_without_recompose(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            source, references, signature, cache = self._build_signature_and_cache(tmp)
+            with patch(
+                "feverslop.application.reference_bible.compose_scene_reference_sheet",
+                wraps=compose_scene_reference_sheet,
+            ) as compose:
+                compose_cached_ingredients_sheet(
+                    [source],
+                    cache_dir=cache,
+                    references=references,
+                    size=(1280, 704),
+                )
+                output, _ = compose_cached_ingredients_sheet(
+                    [source],
+                    cache_dir=cache,
+                    references=references,
+                    size=(1280, 704),
+                )
+            self.assertEqual(1, compose.call_count)
+            self.assertTrue(_sheet_validation_record_path(output).is_file())
+
+    def test_legacy_sheet_without_sidecar_is_recomposed_and_certified(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            source, references, signature, cache = self._build_signature_and_cache(tmp)
+            cached = cache / f"{signature}.png"
+            Image.new("RGB", (1280, 704), "blue").save(cached)
+            with patch(
+                "feverslop.application.reference_bible.compose_scene_reference_sheet",
+                wraps=compose_scene_reference_sheet,
+            ) as compose:
+                output, _ = compose_cached_ingredients_sheet(
+                    [source],
+                    cache_dir=cache,
+                    references=references,
+                    size=(1280, 704),
+                )
+            self.assertEqual(1, compose.call_count)
+            self.assertTrue(_sheet_validation_record_path(output).is_file())
+            with Image.open(output) as image:
+                self.assertEqual((1280, 704), image.size)
+                image.verify()
+            record = json.loads(
+                _sheet_validation_record_path(output).read_text(encoding="utf-8"),
+            )
+            self.assertEqual("recomposed", record["repair"])
+
+    def test_corrupt_validation_sidecar_forces_recompose(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            source, references, signature, cache = self._build_signature_and_cache(tmp)
+            cached = cache / f"{signature}.png"
+            Image.new("RGB", (1280, 704), "blue").save(cached)
+            _sheet_validation_record_path(cached).write_text(
+                "not-json",
+                encoding="utf-8",
+            )
+            with patch(
+                "feverslop.application.reference_bible.compose_scene_reference_sheet",
+                wraps=compose_scene_reference_sheet,
+            ) as compose:
+                output, _ = compose_cached_ingredients_sheet(
+                    [source],
+                    cache_dir=cache,
+                    references=references,
+                    size=(1280, 704),
+                )
+            self.assertEqual(1, compose.call_count)
+            record = json.loads(
+                _sheet_validation_record_path(output).read_text(encoding="utf-8"),
+            )
+            self.assertEqual("valid", record["status"])
+            self.assertEqual("recomposed", record["repair"])
 
 
 class IngredientsEnrichmentWiringTests(unittest.TestCase):
