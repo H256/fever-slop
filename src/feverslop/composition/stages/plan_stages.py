@@ -427,6 +427,7 @@ def _run_render_plan_stage(state: PipelineRunState) -> None:
         else None
     )
     app_config = AppConfig.load(state.app_config_path)
+    app_config.attach_import_store(state.context.project_config_dir)
     profile = app_config.resolve_video_workflow_profile(
         pipeline=config.video_pipeline,
         purpose="final",

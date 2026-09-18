@@ -12,6 +12,7 @@ from feverslop.adapters.comfyui_render_queue import ComfyUIRenderQueue
 from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
+from feverslop.domain.h3_two_pass import default_h3_two_pass_spec
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.ports.rendering import VideoRenderRequest
 from feverslop.ports.reporting import Reporter
@@ -54,6 +55,7 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         workflow_label: str | Path | None = None,
         latent_upscaler_device: str | None = None,
         reporter: Reporter | None = None,
+        render_quality: str = "draft",
     ):
         super().__init__(
             client=client,
@@ -79,6 +81,7 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             workflow_label=workflow_label,
             latent_upscaler_device=latent_upscaler_device,
             reporter=reporter,
+            render_quality=render_quality,
         )
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
 
@@ -115,6 +118,9 @@ class ComfyUIMiniMaxH3T2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         scene_number = int(scene.get("scene", 0))
 
         patcher = WorkflowPatcher(self.load_workflow())
+
+        # -- quality-calibrated two-pass sampling budget ---------------------
+        self._patch_two_pass_budget(patcher, default_h3_two_pass_spec(self.render_quality))
 
         # -- core patching
         patcher.set_input_by_title("#PROMPT", "prompt", str(prompt).strip())

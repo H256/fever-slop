@@ -1,4 +1,6 @@
+import json
 import unittest
+from pathlib import Path
 
 from feverslop.domain.h3_two_pass import (
     H3TwoPassSchemaError,
@@ -70,6 +72,100 @@ class H3TwoPassTests(unittest.TestCase):
             "5": {"class_type": "SamplerCustomAdvanced", "inputs": {}, "_meta": {"title": "#PASS2"}},
         }
         validate_h3_two_pass_topology(workflow, spec)
+
+
+class H3QualityRegistryTests(unittest.TestCase):
+    def test_registry_covers_three_profiles_with_monotone_budgets(self):
+        from feverslop.domain.h3_two_pass import h3_quality_budgets
+
+        budgets = h3_quality_budgets()
+        self.assertEqual({"draft", "standard", "final"}, set(budgets))
+        tiers = ["draft", "standard", "final"]
+        for field in ("pass1_steps", "pass2_steps"):
+            values = [budgets[t][field] for t in tiers]
+            self.assertEqual(sorted(values), values)
+        for tier in tiers:
+            self.assertEqual(1.0, budgets[tier]["pass1_denoise"])
+            self.assertGreater(budgets[tier]["pass2_max_megapixels"], budgets[tier]["pass1_megapixels"])
+
+    def test_registry_matches_calibrated_default_spec(self):
+        from feverslop.domain.h3_two_pass import default_h3_two_pass_spec, h3_quality_budgets
+
+        for quality, budget in h3_quality_budgets().items():
+            spec = default_h3_two_pass_spec(quality)
+            self.assertEqual(int(budget["pass1_steps"]), spec.pass1_steps)
+            self.assertEqual(float(budget["pass1_denoise"]), spec.pass1_denoise)
+            self.assertEqual(int(budget["pass2_steps"]), spec.pass2_steps)
+            self.assertEqual(float(budget["pass2_denoise"]), spec.pass2_denoise)
+
+    def test_quality_extraction_from_render_profile(self):
+        from feverslop.domain.h3_two_pass import quality_from_render_profile
+
+        self.assertEqual("draft", quality_from_render_profile("ltx25-r2v-draft"))
+        self.assertEqual("standard", quality_from_render_profile("ltx25-r2v-standard"))
+        self.assertEqual("final", quality_from_render_profile("ltx25-r2v-final"))
+        self.assertEqual("draft", quality_from_render_profile("ltx25-r2v-unknown"))
+        self.assertEqual("draft", quality_from_render_profile(""))
+        self.assertEqual("draft", quality_from_render_profile(None))
+
+
+class H3TwoPassBudgetWiringTests(unittest.TestCase):
+    """The selected quality must actually change the two-pass sampling budget.
+
+    Exercises the production helper against the real two-pass template so the
+    profile name has a real effect (the root cause: the template carried one
+    static budget matching no single profile).
+    """
+
+    TEMPLATE = Path(__file__).resolve().parents[1] / "workflows" / "video" / "minimax_h3" / "t2v_two_pass.json"
+
+    def _budget(self, patcher) -> tuple:
+        _, n1 = patcher.find_node_by_meta_title("#PASS1_SCHEDULER")
+        _, n2 = patcher.find_node_by_meta_title("#PASS2_SCHEDULER")
+        return (
+            n1["inputs"]["steps"], n1["inputs"]["denoise"],
+            n2["inputs"]["steps"], n2["inputs"]["denoise"],
+        )
+
+    def _patched_budget(self, quality: str) -> tuple:
+        from feverslop.adapters.comfyui_minimax_h3_video_backend import ComfyUIMiniMaxH3VideoRenderBackend
+        from feverslop.adapters.workflow_patcher import WorkflowPatcher
+        from feverslop.domain.h3_two_pass import default_h3_two_pass_spec
+
+        patcher = WorkflowPatcher(json.loads(self.TEMPLATE.read_text()))
+        backend = ComfyUIMiniMaxH3VideoRenderBackend.__new__(ComfyUIMiniMaxH3VideoRenderBackend)
+        backend._patch_two_pass_budget(patcher, default_h3_two_pass_spec(quality))
+        return self._budget(patcher)
+
+    def test_final_quality_patches_real_template_to_final_budget(self):
+        # final = pass1 28 steps / denoise 1.0, pass2 12 steps / denoise 0.30
+        self.assertEqual((28, 1.0, 12, 0.30), self._patched_budget("final"))
+
+    def test_draft_quality_patches_real_template_to_draft_budget(self):
+        # draft = pass1 12 steps / denoise 1.0, pass2 4 steps / denoise 0.55
+        self.assertEqual((12, 1.0, 4, 0.55), self._patched_budget("draft"))
+
+    def test_three_qualities_produce_distinct_budgets(self):
+        self.assertNotEqual(self._patched_budget("draft"), self._patched_budget("standard"))
+        self.assertNotEqual(self._patched_budget("standard"), self._patched_budget("final"))
+        self.assertNotEqual(self._patched_budget("draft"), self._patched_budget("final"))
+
+    def test_single_pass_template_is_no_op(self):
+        from feverslop.adapters.comfyui_minimax_h3_video_backend import ComfyUIMiniMaxH3VideoRenderBackend
+        from feverslop.adapters.workflow_patcher import WorkflowPatcher
+        from feverslop.domain.h3_two_pass import default_h3_two_pass_spec
+
+        # a single-pass template lacks the #PASS1_SCHEDULER anchor
+        single_pass = {
+            "1": {"class_type": "KSampler", "inputs": {"steps": 20, "denoise": 1.0}},
+        }
+        patcher = WorkflowPatcher(single_pass)
+        # grab a real backend instance just for the helper (no client needed)
+        backend = ComfyUIMiniMaxH3VideoRenderBackend.__new__(ComfyUIMiniMaxH3VideoRenderBackend)
+        backend._patch_two_pass_budget(patcher, default_h3_two_pass_spec("final"))
+        # unchanged
+        self.assertEqual(20, single_pass["1"]["inputs"]["steps"])
+        self.assertEqual(1.0, single_pass["1"]["inputs"]["denoise"])
 
 
 if __name__ == "__main__":

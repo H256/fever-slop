@@ -10,6 +10,50 @@ class H3TwoPassSchemaError(ValueError):
     """Raised when an H3 two-pass contract is invalid."""
 
 
+# Calibrated two-pass budgets for each quality profile. This is the single
+# source of truth consumed by workflow preparation (see _patch_two_pass_budget)
+# and by the machine-readable snapshot in tests/fixtures/h3_quality_profiles.json.
+# Resolution budgets are targets recorded for each profile; the concrete
+# resolution is user-driven via --resolution, while the sampling budget
+# (steps/denoise) and the latent-upscale scale are applied per selected quality.
+H3_QUALITY_BUDGETS: Mapping[str, Mapping[str, float]] = {
+    "draft": {
+        "pass1_steps": 12, "pass1_denoise": 1.0,
+        "pass2_steps": 4, "pass2_denoise": 0.55,
+        "pass1_megapixels": 0.4, "pass2_max_megapixels": 1.6,
+    },
+    "standard": {
+        "pass1_steps": 20, "pass1_denoise": 1.0,
+        "pass2_steps": 8, "pass2_denoise": 0.40,
+        "pass1_megapixels": 0.6, "pass2_max_megapixels": 2.4,
+    },
+    "final": {
+        "pass1_steps": 28, "pass1_denoise": 1.0,
+        "pass2_steps": 12, "pass2_denoise": 0.30,
+        "pass1_megapixels": 0.8, "pass2_max_megapixels": 3.2,
+    },
+}
+
+
+def h3_quality_budgets() -> dict[str, dict[str, float]]:
+    """Return a copy of the calibrated per-quality two-pass budgets."""
+    return {name: dict(budget) for name, budget in H3_QUALITY_BUDGETS.items()}
+
+
+def quality_from_render_profile(render_profile: Any) -> str:
+    """Extract the quality tier from a render profile string.
+
+    Render profiles are shaped like ``ltx25-r2v-draft``; the final hyphen
+    segment is the quality tier. Unknown or missing tiers fall back to
+    ``draft`` so a malformed profile never breaks workflow preparation.
+    """
+    value = str(render_profile or "").strip().lower()
+    if not value:
+        return "draft"
+    tier = value.rsplit("-", 1)[-1]
+    return tier if tier in H3_QUALITY_BUDGETS else "draft"
+
+
 def _positive_int(value: Any, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise H3TwoPassSchemaError(f"{field} must be a positive integer")
@@ -118,15 +162,9 @@ class H3TwoPassSpec:
 def default_h3_two_pass_spec(quality: str, *, audio: bool = False) -> H3TwoPassSpec:
     """Return the calibrated two-pass budget for draft, standard, or final."""
     level = str(quality).strip().lower()
-    budgets = {
-        "draft": (12, 4, 0.55),
-        "standard": (20, 8, 0.40),
-        "final": (28, 12, 0.30),
-    }
-    try:
-        pass1_steps, pass2_steps, pass2_denoise = budgets[level]
-    except KeyError as exc:
-        raise H3TwoPassSchemaError("quality must be draft, standard, or final") from exc
+    budget = H3_QUALITY_BUDGETS.get(level)
+    if budget is None:
+        raise H3TwoPassSchemaError("quality must be draft, standard, or final")
     anchors = ["#PROMPT", "#FRAMECOUNT", "#PASS1", "#PASS2"]
     if audio:
         anchors.append("#AUDIO_LATENT")
@@ -134,12 +172,12 @@ def default_h3_two_pass_spec(quality: str, *, audio: bool = False) -> H3TwoPassS
         model_assets=["minimax_h3", "minimax_h3_video_vae"],
         pass1_sampler="res_multistep",
         pass1_scheduler="simple",
-        pass1_steps=pass1_steps,
-        pass1_denoise=1.0,
+        pass1_steps=int(budget["pass1_steps"]),
+        pass1_denoise=float(budget["pass1_denoise"]),
         pass2_sampler="res_multistep",
         pass2_scheduler="simple",
-        pass2_steps=pass2_steps,
-        pass2_denoise=pass2_denoise,
+        pass2_steps=int(budget["pass2_steps"]),
+        pass2_denoise=float(budget["pass2_denoise"]),
         preserve_audio_latent=bool(audio),
         required_anchors=anchors,
     )
