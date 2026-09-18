@@ -120,6 +120,7 @@ def _run_main_pipeline_stage(state: PipelineRunState) -> None:
             skip_stem_separation=getattr(state.args, "skip_stem_separation", False),
             skip_whisper=getattr(state.args, "skip_whisper", False),
             skip_beat_analysis=getattr(state.args, "skip_beat_analysis", False),
+            resume=bool(getattr(state.args, "resume", False)),
         ),
         console=console,
         resolution=resolution,

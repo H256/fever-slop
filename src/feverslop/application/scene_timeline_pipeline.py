@@ -55,6 +55,8 @@ class SceneTimelinePipeline:
         log_step = context["log_step"]
         log_file = context["log_file"]
         reporter = context["reporter"]
+        request = context["request"]
+        resume = bool(getattr(request, "resume", False))
 
         log_step("4. Beat-Aligned Scene SRT")
         scene_cfg = config.scene_generation
@@ -68,20 +70,24 @@ class SceneTimelinePipeline:
             if policy is not None
             else scene_cfg
         )
-        scene_generator = self.scene_generator_factory(effective_scene_cfg)
-        scene_generator.generate_from_json_file(
-            beat_json_path=beat_json,
-            output_srt_path=scene_srt_raw,
-        )
-        log_file("Raw Scene SRT", scene_srt_raw)
-        self.enforce_scene_srt_file(
-            input_srt=scene_srt_raw,
-            output_srt=scene_srt,
-            min_duration=effective_scene_cfg.min_duration,
-            max_duration=effective_scene_cfg.max_duration,
-            artifact_store=artifact_store,
-        )
-        log_file("Repaired Scene SRT", scene_srt)
+        if resume and scene_srt.is_file():
+            reporter.message("[yellow]Resuming scene SRT; using existing scene SRT.[/yellow]")
+            log_file("Repaired Scene SRT", scene_srt)
+        else:
+            scene_generator = self.scene_generator_factory(effective_scene_cfg)
+            scene_generator.generate_from_json_file(
+                beat_json_path=beat_json,
+                output_srt_path=scene_srt_raw,
+            )
+            log_file("Raw Scene SRT", scene_srt_raw)
+            self.enforce_scene_srt_file(
+                input_srt=scene_srt_raw,
+                output_srt=scene_srt,
+                min_duration=effective_scene_cfg.min_duration,
+                max_duration=effective_scene_cfg.max_duration,
+                artifact_store=artifact_store,
+            )
+            log_file("Repaired Scene SRT", scene_srt)
         repaired_scenes = self.parse_scene_srt(scene_srt)
         duration_errors = self.validate_scene_durations(
             repaired_scenes,
@@ -103,13 +109,16 @@ class SceneTimelinePipeline:
         )
 
         log_step("5. Stage 1 Segment Mapping")
-        self.build_stage1_segment_json(
-            scene_srt_file=scene_srt,
-            vocal_timeline_json=timeline_json,
-            output_json_file=stage1_segments_json,
-            artifact_store=artifact_store,
-            reporter=context["reporter"],
-        )
+        if resume and stage1_segments_json.is_file():
+            reporter.message("[yellow]Resuming stage 1; using existing stage 1 segments.[/yellow]")
+        else:
+            self.build_stage1_segment_json(
+                scene_srt_file=scene_srt,
+                vocal_timeline_json=timeline_json,
+                output_json_file=stage1_segments_json,
+                artifact_store=artifact_store,
+                reporter=context["reporter"],
+            )
         log_file("Stage 1 Segments JSON", stage1_segments_json)
         stage1_segments = artifact_store.read_json(stage1_segments_json)
         type_counts: dict[str, int] = {}
@@ -121,14 +130,17 @@ class SceneTimelinePipeline:
         )
 
         log_step("6. LTX Prompt Relay Skeleton")
-        self.build_scene_prompt_relay(
-            scene_srt_file=scene_srt,
-            vocal_timeline_json=timeline_json,
-            output_json_file=ltx_prompt_relay_json,
-            video_settings=video_settings,
-            artifact_store=artifact_store,
-            reporter=context["reporter"],
-        )
+        if resume and ltx_prompt_relay_json.is_file():
+            reporter.message("[yellow]Resuming relay; using existing relay skeleton.[/yellow]")
+        else:
+            self.build_scene_prompt_relay(
+                scene_srt_file=scene_srt,
+                vocal_timeline_json=timeline_json,
+                output_json_file=ltx_prompt_relay_json,
+                video_settings=video_settings,
+                artifact_store=artifact_store,
+                reporter=context["reporter"],
+            )
         log_file("LTX Prompt Relay JSON", ltx_prompt_relay_json)
 
         context.update(

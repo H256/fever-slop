@@ -89,6 +89,13 @@ class AudioTimelinePipeline:
         skip_stems = bool(getattr(request, "skip_stem_separation", False))
         skip_whisper = bool(getattr(request, "skip_whisper", False))
         skip_beats = bool(getattr(request, "skip_beat_analysis", False))
+        if bool(getattr(request, "resume", False)):
+            if not skip_stems and self._stems_present(paths.stems_dir, config.input_audio):
+                skip_stems = True
+            if not skip_whisper and timeline_json.is_file():
+                skip_whisper = True
+            if not skip_beats and beat_json.is_file():
+                skip_beats = True
 
         log_step("1. Demucs Stem Separation")
         files = self._run_stem_stage(config, paths, run_spinner, reporter, skip_stems)
@@ -247,6 +254,11 @@ class AudioTimelinePipeline:
             f"source: [yellow]{beat_data.get('source_used_for_beats')}[/yellow]",
         )
         return beat_data
+
+    @staticmethod
+    def _stems_present(stems_dir, input_audio) -> bool:
+        files = discover_stem_files(stems_dir, input_audio) or {}
+        return {"vocals", "drums", "bass", "other"}.issubset(files.keys())
 
     @staticmethod
     def _load_existing_stems(stems_dir, input_audio):
