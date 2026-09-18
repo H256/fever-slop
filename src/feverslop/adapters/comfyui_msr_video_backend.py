@@ -24,6 +24,7 @@ from feverslop.domain.ltx_rendering import (
     build_audio_window_spec,
     resolve_workflow_frame_parameters,
 )
+from feverslop.domain.relay_range import RelayRange
 from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS
 from feverslop.domain.scene_duration_limits import validate_render_frame_budget
 from feverslop.domain.visual_consistency_runtime import bind_continuity_anchors
@@ -478,8 +479,11 @@ def _build_msr_prompt_relay_payload(
     else:
         cursor = 0
         for relay in sorted(relays, key=lambda item: int(item["frame_start"])):
-            start = max(0, min(int(relay["frame_start"]), scene_timeline_frames))
-            end = max(start, min(int(relay["frame_end"]), scene_timeline_frames))
+            clamped = RelayRange(
+                int(relay["frame_start"]), int(relay["frame_end"])
+            ).clamp_to_timeline(scene_timeline_frames)
+            start = clamped.start
+            end = clamped.end_exclusive
             if start > cursor:
                 relay_segments.append({
                     "prompt": _msr_gap_prompt(scene),
