@@ -134,13 +134,13 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             materializer = Mock()
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(),
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                 return_value=materializer,
             ), patch(
-                "feverslop.composition.stage_runners._run_visual_consistency_preflight",
+                "feverslop.composition.stages.render_stages._run_visual_consistency_preflight",
             ):
                 _run_ltx_prepare_workflows_stage(state)
 
@@ -167,7 +167,7 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
         state.context.artifact_layout.scene_manifest.return_value.is_file.return_value = True
 
         with patch(
-            "feverslop.composition.stage_runners.SceneWorkflowManifest.read",
+            "feverslop.composition.stages.render_stages.SceneWorkflowManifest.read",
             side_effect=(matching_manifest, stale_manifest),
         ):
             self.assertTrue(_prepared_scene_is_fresh(state, 1, dependencies))
@@ -191,10 +191,10 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             use_case = Mock()
 
             with patch(
-                "feverslop.composition.stage_runners.AppConfig.load",
+                "feverslop.composition.stages.render_stages.AppConfig.load",
                 return_value=Mock(),
             ), patch(
-                "feverslop.composition.stage_runners.build_render_storyboard_use_case",
+                "feverslop.composition.stages.scenes.build_render_storyboard_use_case",
                 return_value=use_case,
             ):
                 _run_storyboard_frames_stage(state)
@@ -260,19 +260,19 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 "visual_consistency": {"workflow_profile": "custom-msr"},
             }
             with patch(
-                "feverslop.composition.stage_runners.ProjectReferenceManifestAdapter.load",
+                "feverslop.composition.stages.render_stages.ProjectReferenceManifestAdapter.load",
                 return_value=Mock(spec=ReferenceManifestSnapshot),
             ), patch(
-                "feverslop.composition.stage_runners._resolved_startframe_profile",
+                "feverslop.composition.stages.render_stages._resolved_startframe_profile",
                 return_value=SimpleNamespace(
                     name="custom-msr",
                     supports_start_frame=True,
                 ),
             ), patch(
-                "feverslop.composition.stage_runners.preflight_visual_consistency",
+                "feverslop.composition.stages.render_stages.preflight_visual_consistency",
                 return_value=VisualConsistencyPreflightResult((), ()),
             ) as preflight, patch(
-                "feverslop.composition.stage_runners.validate_project_scene_artifacts",
+                "feverslop.composition.stages.render_stages.validate_project_scene_artifacts",
                 return_value=(),
             ):
                 _run_visual_consistency_preflight(state, [scene])
@@ -377,9 +377,9 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             use_case = Mock()
             backend = use_case.backend
             materializer = Mock()
-            with patch("feverslop.composition.stage_runners.build_render_video_scenes_use_case", return_value=use_case), \
-                 patch("feverslop.composition.stage_runners.WorkflowMaterializer", return_value=materializer), \
-                 patch("feverslop.composition.stage_runners._run_visual_consistency_preflight") as preflight:
+            with patch("feverslop.composition.stages.render_stages.build_render_video_scenes_use_case", return_value=use_case), \
+                 patch("feverslop.composition.stages.render_stages.WorkflowMaterializer", return_value=materializer), \
+                 patch("feverslop.composition.stages.render_stages._run_visual_consistency_preflight") as preflight:
                 _run_ltx_prepare_workflows_stage(state)
 
         self.assertEqual([1, 3], [call.args[0].scene["scene"] for call in materializer.prepare.call_args_list])
@@ -414,13 +414,13 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             materializer = Mock()
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(),
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                 return_value=materializer,
             ), patch(
-                "feverslop.composition.stage_runners._run_visual_consistency_preflight",
+                "feverslop.composition.stages.render_stages._run_visual_consistency_preflight",
             ) as preflight:
                 _run_ltx_prepare_workflows_stage(state)
 
@@ -486,16 +486,16 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             materializer = Mock()
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(),
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                 return_value=materializer,
             ), patch(
-                "feverslop.composition.stage_runners.PostprocessorFrameExtractor",
+                "feverslop.composition.stages.render_stages.PostprocessorFrameExtractor",
                 return_value=extractor,
             ), patch(
-                "feverslop.composition.stage_runners._run_visual_consistency_preflight",
+                "feverslop.composition.stages.render_stages._run_visual_consistency_preflight",
             ):
                 _run_ltx_prepare_workflows_stage(state)
 
@@ -526,13 +526,13 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             materializer = Mock()
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(),
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                 return_value=materializer,
             ), patch(
-                "feverslop.composition.stage_runners._run_visual_consistency_preflight",
+                "feverslop.composition.stages.render_stages._run_visual_consistency_preflight",
                 return_value=VisualConsistencyPreflightResult(contracts, ()),
             ):
                 _run_ltx_prepare_workflows_stage(state)
@@ -587,15 +587,15 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             preflight = VisualConsistencyPreflightResult(contracts, ())
             common_patches = (
                 patch(
-                    "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                    "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                     return_value=Mock(backend=backend),
                 ),
                 patch(
-                    "feverslop.composition.stage_runners.WorkflowMaterializer",
+                    "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                     return_value=materializer,
                 ),
                 patch(
-                    "feverslop.composition.stage_runners._run_visual_consistency_preflight",
+                    "feverslop.composition.stages.render_stages._run_visual_consistency_preflight",
                     return_value=preflight,
                 ),
             )
@@ -618,16 +618,16 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             )
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(backend=backend),
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                 return_value=materializer,
             ), patch(
-                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                "feverslop.composition.stages.render_stages.PreparedWorkflowRenderer",
                 return_value=renderer,
             ), patch(
-                "feverslop.composition.stage_runners._run_visual_consistency_preflight",
+                "feverslop.composition.stages.render_stages._run_visual_consistency_preflight",
                 return_value=preflight,
             ):
                 _run_ltx_render_scenes_stage(state)
@@ -691,13 +691,13 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                 materializer = Mock()
 
                 with patch(
-                    "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                    "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                     return_value=Mock(backend=backend),
                 ), patch(
-                    "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                    "feverslop.composition.stages.render_stages.PreparedWorkflowRenderer",
                     return_value=renderer,
                 ), patch(
-                    "feverslop.composition.stage_runners.WorkflowMaterializer",
+                    "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                     return_value=materializer,
                 ):
                     _run_ltx_render_scenes_stage(state)
@@ -729,15 +729,15 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             backend = _prepared_backend(_RecordingFramePostprocessor())
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(backend=backend),
             ), patch(
-                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                "feverslop.composition.stages.render_stages.PreparedWorkflowRenderer",
                 return_value=_SequentialPreparedRenderer(
                     state.context.artifact_layout,
                 ),
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
             ), self.assertRaisesRegex(
                 ValueError,
                 "missing previous movie scene clip",
@@ -783,13 +783,13 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             materializer = Mock()
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(backend=backend),
             ), patch(
-                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                "feverslop.composition.stages.render_stages.PreparedWorkflowRenderer",
                 return_value=renderer,
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                 return_value=materializer,
             ):
                 _run_ltx_render_scenes_stage(state)
@@ -819,13 +819,13 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             )
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(backend=backend),
             ), patch(
-                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                "feverslop.composition.stages.render_stages.PreparedWorkflowRenderer",
                 return_value=failing,
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                 return_value=Mock(),
             ), self.assertRaisesRegex(RuntimeError, "scene 2 failed"):
                 _run_ltx_render_scenes_stage(state)
@@ -843,16 +843,16 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             manifest = Mock(pipeline="ltx_msr")
             manifest.verify.return_value = []
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(backend=backend),
             ), patch(
-                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                "feverslop.composition.stages.render_stages.PreparedWorkflowRenderer",
                 return_value=resumed,
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                 return_value=Mock(),
             ), patch(
-                "feverslop.composition.stage_runners.SceneWorkflowManifest.read",
+                "feverslop.composition.stages.render_stages.SceneWorkflowManifest.read",
                 return_value=manifest,
             ):
                 _run_ltx_render_scenes_stage(state)
@@ -892,16 +892,16 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             )
             common = (
                 patch(
-                    "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                    "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                     return_value=Mock(backend=backend),
                 ),
                 patch(
-                    "feverslop.composition.stage_runners.WorkflowMaterializer",
+                    "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                     return_value=Mock(),
                 ),
             )
             with common[0], common[1], patch(
-                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                "feverslop.composition.stages.render_stages.PreparedWorkflowRenderer",
                 return_value=failing,
             ), self.assertRaisesRegex(RuntimeError, "scene 3 failed"):
                 _run_ltx_render_scenes_stage(state)
@@ -919,16 +919,16 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             manifest = Mock(pipeline="ltx_msr")
             manifest.verify.return_value = []
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(backend=backend),
             ), patch(
-                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                "feverslop.composition.stages.render_stages.PreparedWorkflowRenderer",
                 return_value=resumed,
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                 return_value=Mock(),
             ), patch(
-                "feverslop.composition.stage_runners.SceneWorkflowManifest.read",
+                "feverslop.composition.stages.render_stages.SceneWorkflowManifest.read",
                 return_value=manifest,
             ):
                 _run_ltx_render_scenes_stage(state)
@@ -946,11 +946,11 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             state.msr_workflow = mismatched
 
             with patch(
-                "feverslop.composition.stage_runners._run_visual_consistency_preflight",
+                "feverslop.composition.stages.render_stages._run_visual_consistency_preflight",
             ), patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
             ) as builder, patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
             ) as materializer, self.assertRaisesRegex(
                 ValueError,
                 "start-frame profile workflow",
@@ -982,9 +982,9 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             (project / "sheet.png").write_bytes(b"sheet")
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
             ) as use_case, patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
             ) as materializer, self.assertRaisesRegex(
                 ValueError, "missing_actor_reference",
             ):
@@ -1016,10 +1016,10 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             materializer = Mock()
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=use_case,
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                 return_value=materializer,
             ), patch(
                 "feverslop.composition.stage_runners.console.print",
@@ -1052,17 +1052,17 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             materializer = Mock()
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(),
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                 return_value=materializer,
             ), patch(
-                "feverslop.composition.stage_runners.ProjectConfig.load",
+                "feverslop.composition.stages.render_stages.ProjectConfig.load",
             ) as config_load, patch(
-                "feverslop.composition.stage_runners.ProjectReferenceManifestAdapter",
+                "feverslop.composition.stages.render_stages.ProjectReferenceManifestAdapter",
             ) as manifest_adapter, patch(
-                "feverslop.composition.stage_runners.preflight_visual_consistency",
+                "feverslop.composition.stages.render_stages.preflight_visual_consistency",
             ) as contract_preflight:
                 _run_ltx_prepare_workflows_stage(state)
 
@@ -1107,9 +1107,9 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             }]), encoding="utf-8")
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
             ) as use_case, patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
             ) as materializer, self.assertRaisesRegex(
                 ValueError, "invalid_ingredients_sheet_path",
             ):
@@ -1148,13 +1148,13 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             materializer = Mock()
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(),
             ), patch(
-                "feverslop.composition.stage_runners.WorkflowMaterializer",
+                "feverslop.composition.stages.render_stages.WorkflowMaterializer",
                 return_value=materializer,
             ), patch(
-                "feverslop.composition.stage_runners.ProjectReferenceManifestAdapter",
+                "feverslop.composition.stages.render_stages.ProjectReferenceManifestAdapter",
                 return_value=adapter,
             ), patch(
                 "feverslop.composition.stage_runners.console.print",
@@ -1209,10 +1209,10 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             use_case = Mock(backend=backend)
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=use_case,
             ), patch(
-                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                "feverslop.composition.stages.render_stages.PreparedWorkflowRenderer",
                 return_value=renderer,
             ) as renderer_class:
                 _run_ltx_render_scenes_stage(state)
@@ -1262,13 +1262,13 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
             renderer = Mock()
 
             with patch(
-                "feverslop.composition.stage_runners.build_render_video_scenes_use_case",
+                "feverslop.composition.stages.render_stages.build_render_video_scenes_use_case",
                 return_value=Mock(backend=backend),
             ), patch(
-                "feverslop.composition.stage_runners.PreparedWorkflowRenderer",
+                "feverslop.composition.stages.render_stages.PreparedWorkflowRenderer",
                 return_value=renderer,
             ), patch(
-                "feverslop.composition.stage_runners.SceneWorkflowManifest.read",
+                "feverslop.composition.stages.render_stages.SceneWorkflowManifest.read",
                 return_value=Mock(pipeline="ltx_ingredients", verify=Mock(return_value=[])),
             ):
                 _run_ltx_render_scenes_stage(state)
@@ -1313,8 +1313,8 @@ class MusicPreparedWorkflowStageTests(unittest.TestCase):
                     raise RuntimeError("failed")
 
             materializer.prepare.side_effect = prepare
-            with patch("feverslop.composition.stage_runners.build_render_video_scenes_use_case", return_value=use_case), \
-                 patch("feverslop.composition.stage_runners.WorkflowMaterializer", return_value=materializer), \
+            with patch("feverslop.composition.stages.render_stages.build_render_video_scenes_use_case", return_value=use_case), \
+                 patch("feverslop.composition.stages.render_stages.WorkflowMaterializer", return_value=materializer), \
                  self.assertRaisesRegex(RuntimeError, "failed"):
                 _run_ltx_prepare_workflows_stage(state)
 

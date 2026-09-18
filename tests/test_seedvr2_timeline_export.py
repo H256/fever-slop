@@ -42,7 +42,7 @@ class SeedVR2TimelineExportTests(unittest.TestCase):
                 written.append((Path(kwargs["output_path"]).name, Path(kwargs["clip_paths"][0]).name))
                 return Path(kwargs["output_path"])
 
-            with patch("feverslop.composition.stage_runners.export_render_plan_to_mlt", side_effect=fake_export):
+            with patch("feverslop.composition.stages.final_stages.export_render_plan_to_mlt", side_effect=fake_export):
                 _run_timeline_export_stage(state)
 
         self.assertEqual(
@@ -82,8 +82,8 @@ class SeedVR2TimelineExportTests(unittest.TestCase):
                 written.append(Path(kwargs["output_path"]).suffix)
                 return Path(kwargs["output_path"])
 
-            with patch("feverslop.composition.stage_runners.export_render_plan_to_mlt", side_effect=fake_export), patch(
-                "feverslop.composition.stage_runners.export_render_plan_to_openshot", side_effect=fake_export,
+            with patch("feverslop.composition.stages.final_stages.export_render_plan_to_mlt", side_effect=fake_export), patch(
+                "feverslop.composition.stages.final_stages.export_render_plan_to_openshot", side_effect=fake_export,
             ):
                 _run_timeline_export_stage(state)
 

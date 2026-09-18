@@ -43,15 +43,16 @@ class RichProgressTests(unittest.TestCase):
 
     def test_classic_reporter_uses_shared_progress_factory(self):
         from feverslop.composition import stage_runners
+        from feverslop.composition.stages import progress
 
-        progress = Mock()
-        with patch.object(stage_runners, "build_progress", create=True, return_value=progress) as factory:
+        progress_obj = Mock()
+        with patch.object(progress, "build_progress", return_value=progress_obj) as factory:
             reporter = stage_runners.RenderProgressReporter("Rendering", 1)
             reporter.task_id = object()
             reporter.update(None, completed=1, total=1)
 
         factory.assert_called_once()
-        progress.update.assert_called_once_with(reporter.task_id, completed=1)
+        progress_obj.update.assert_called_once_with(reporter.task_id, completed=1)
 
     def test_movie_reporter_uses_shared_progress_factory(self):
         from feverslop.composition import movie_pipeline
