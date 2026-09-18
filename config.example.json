@@ -41,6 +41,7 @@
   "vocal_detection": {"merge_gap": 0.5, "min_vocal_duration": 0.4, "min_silence_duration": 0.8, "rms_low_percentile": 20, "rms_high_percentile": 85, "rms_ratio": 0.35, "smooth_frames": 10},
   "story_idea": "",
   "style": "",
+  "environment_style": "",
   "music_style": "",
   "subject": "",
   "locations": [{"id": "forest", "name": "Forest clearing", "visual_description": "", "image_prompt": "", "reference_mode": "empty_environment"}],

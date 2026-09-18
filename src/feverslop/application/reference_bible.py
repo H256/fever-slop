@@ -143,6 +143,7 @@ class ReferenceBibleGenerator:
         sequence_backend: Any | None = None,
         sequence_planner: Any | None = None,
         visual_style: str = "",
+        environment_visual_style: str = "",
         on_sequence_phase: Callable[[dict[str, Any]], None] | None = None,
     ):
         self.backend = backend
@@ -165,6 +166,7 @@ class ReferenceBibleGenerator:
         self.sequence_backend = sequence_backend
         self.sequence_planner = sequence_planner
         self.visual_style = str(visual_style or "").strip()
+        self.environment_visual_style = str(environment_visual_style or "").strip()
         self.on_sequence_phase = on_sequence_phase
         if self.sequence_planner is not None and hasattr(self.sequence_planner, "on_event"):
             self.sequence_planner.on_event = self._report_planner_event
@@ -213,6 +215,7 @@ class ReferenceBibleGenerator:
                 description=asset.visual_description or asset.name,
                 image_prompt=asset.image_prompt,
                 visual_style=self.visual_style,
+                environment_visual_style=self.environment_visual_style,
                 asset_context=asdict(asset),
                 output_dir=self.output_dir,
                 reference_image_size=reference_image_size,

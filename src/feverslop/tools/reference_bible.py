@@ -248,6 +248,7 @@ def run(args: argparse.Namespace, reporter: Reporter | None = None) -> list[Path
             sequence_backend=sequence_backend,
             sequence_planner=sequence_planner,
             visual_style=project_config.style,
+            environment_visual_style=project_config.environment_style,
             on_sequence_phase=on_sequence_phase,
         )
 

@@ -18,7 +18,7 @@ class ConfigExampleTests(unittest.TestCase):
                 "project_name", "input_audio", "silent_mode", "lyrics", "video_pipeline",
                 "render_profile", "reference_generation", "subject_mode", "max_scene_actors",
                 "video", "workflows", "upscale", "reference_images", "audio",
-                "scene_generation", "vocal_detection", "story_idea", "style", "music_style",
+                "scene_generation", "vocal_detection", "story_idea", "style", "environment_style", "music_style",
                 "subject", "locations", "actors", "global_assets", "global_cast",
                 "global_locations", "global_styles", "global_props", "steering",
                 "prompt_guidance", "lora_1", "loras", "lora_split_enabled",

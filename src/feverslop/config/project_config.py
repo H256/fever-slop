@@ -415,6 +415,7 @@ class ProjectConfig:
 
     story_idea: str = ""
     style: str = ""
+    environment_style: str = ""
     music_style: str = ""
     subject: str = ""
     locations: list[str] = field(default_factory=list)
@@ -661,6 +662,7 @@ class ProjectConfig:
 
             story_idea=raw.get("story_idea", ""),
             style=raw.get("style", ""),
+            environment_style=raw.get("environment_style", ""),
             music_style=raw.get("music_style", ""),
             subject=raw.get("subject", ""),
             locations=[
