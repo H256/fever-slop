@@ -179,6 +179,7 @@ UNIT_MODULES = (
     "seedvr2_pipeline",
     "seedvr2_planner",
     "seedvr2_timeline_export",
+    "semantic_intent",
     "sequence_reference_pipeline",
     "sequence_to_sheet_backend",
     "sequence_to_sheet_workflow",
