@@ -47,6 +47,48 @@ class FramePipelineState:
             self.filtered_detections = []
 
 
+def _build_debug_overlay(
+    state: FramePipelineState,
+) -> tuple[str, dict[str, str]]:
+    """Build the decision reason and per-detection extra info for debug output.
+
+    Pure function of ``state`` (no I/O); the caller writes the artifacts.
+    """
+    reason = (
+        "ACCEPTED" if state.decision and state.decision.should_process
+        else f"REJECTED: {state.decision.reject_reason}" if state.decision
+        else "NO_DETECTION"
+    )
+
+    extra: dict[str, str] = {}
+    # Detection details
+    for i, det in enumerate(state.detections):
+        extra[f"det[{i}]"] = f"score={det.score:.3f} box=({det.box.x1:.0f},{det.box.y1:.0f},{det.box.x2:.0f},{det.box.y2:.0f})"
+        if det.landmarks:
+            extra[f"det[{i}]_lm"] = f"points={len(det.landmarks.points)}"
+        if det.embedding is not None:
+            extra[f"det[{i}]_emb"] = f"dim={det.embedding.shape}"
+        else:
+            extra[f"det[{i}]_emb"] = "None"
+    # Filter results
+    extra["filtered"] = f"{len(state.filtered_detections)}/{len(state.detections)} passed"
+    # Track state
+    if state.track:
+        extra["track"] = f"id={state.track.track_id} state={state.track.state} confirmed={state.track.confirmed_frames} missing={state.track.missing_frames}"
+    else:
+        extra["track"] = "None"
+    # Identity
+    if state.identity_score is not None:
+        extra["identity"] = f"score={state.identity_score:.4f} actor={state.identity_actor_id}"
+    else:
+        extra["identity"] = "None"
+    # Decision details
+    if state.decision:
+        extra["decision"] = f"process={state.decision.should_process} reason={state.decision.reject_reason}"
+
+    return reason, extra
+
+
 class FacePipeline:
     """Application-level orchestrator for face detection, tracking, and processing.
 
@@ -427,37 +469,7 @@ class FacePipeline:
 
         # Write detection overlay
         if state.detections:
-            reason = (
-                "ACCEPTED" if state.decision and state.decision.should_process
-                else f"REJECTED: {state.decision.reject_reason}" if state.decision
-                else "NO_DETECTION"
-            )
-            # Build extra debug info
-            extra = {}
-            # Detection details
-            for i, det in enumerate(state.detections):
-                extra[f"det[{i}]"] = f"score={det.score:.3f} box=({det.box.x1:.0f},{det.box.y1:.0f},{det.box.x2:.0f},{det.box.y2:.0f})"
-                if det.landmarks:
-                    extra[f"det[{i}]_lm"] = f"points={len(det.landmarks.points)}"
-                if det.embedding is not None:
-                    extra[f"det[{i}]_emb"] = f"dim={det.embedding.shape}"
-                else:
-                    extra[f"det[{i}]_emb"] = "None"
-            # Filter results
-            extra["filtered"] = f"{len(state.filtered_detections)}/{len(state.detections)} passed"
-            # Track state
-            if state.track:
-                extra["track"] = f"id={state.track.track_id} state={state.track.state} confirmed={state.track.confirmed_frames} missing={state.track.missing_frames}"
-            else:
-                extra["track"] = "None"
-            # Identity
-            if state.identity_score is not None:
-                extra["identity"] = f"score={state.identity_score:.4f} actor={state.identity_actor_id}"
-            else:
-                extra["identity"] = "None"
-            # Decision details
-            if state.decision:
-                extra["decision"] = f"process={state.decision.should_process} reason={state.decision.reject_reason}"
+            reason, extra = _build_debug_overlay(state)
 
             self.debug_port.write_detection_overlay(
                 frame_index=state.frame_index,
