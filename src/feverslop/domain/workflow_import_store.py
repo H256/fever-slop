@@ -75,8 +75,9 @@ def _analysis_from_dict(data: dict[str, Any]) -> WorkflowAnalysis:
 class WorkflowImportStore:
     """Persists imported workflow snapshots and their lifecycle state."""
 
-    def __init__(self, *, projects_root: Path):
+    def __init__(self, *, projects_root: Path, project_id: str | None = None):
         self.projects_root = projects_root
+        self.project_id = project_id
 
     def _profile_dir(self, project_id: str, profile_id: str) -> Path:
         return self.projects_root / project_id / "workflows" / profile_id
@@ -172,6 +173,13 @@ class WorkflowImportStore:
             if (child / "profile.json").exists()
         ]
 
+    def find_active(self, project_id: str, *, pipeline: str, purpose: str) -> ImportedProfile | None:
+        """Return the first active profile matching pipeline/purpose, or None."""
+        for profile in self.list_profiles(project_id):
+            if profile.status == "active" and profile.pipeline == pipeline and profile.purpose == purpose:
+                return profile
+        return None
+
     def set_state(self, project_id: str, profile_id: str, status: str) -> None:
         record = self._read_profile(project_id, profile_id)
         current = record["status"]
@@ -262,3 +270,29 @@ class WorkflowImportStore:
         record = self._read_profile(project_id, profile_id)
         payload = self._read_snapshot(project_id, profile_id, record["workflow_sha256"])
         return _sha256(payload) == record["workflow_sha256"]
+
+    def snapshot_path(self, project_id: str, profile_id: str) -> Path:
+        """Absolute path of the stored snapshot file for a profile."""
+        record = self._read_profile(project_id, profile_id)
+        return self._profile_dir(project_id, profile_id) / _snapshot_name(record["workflow_sha256"])
+
+    def for_project(self, project_id: str) -> "ProjectWorkflowImportStore":
+        """Return a project-scoped view for ergonomic per-project access."""
+        return ProjectWorkflowImportStore(self, project_id)
+
+
+class ProjectWorkflowImportStore:
+    """Project-scoped view over :class:`WorkflowImportStore`."""
+
+    def __init__(self, store: WorkflowImportStore, project_id: str):
+        self._store = store
+        self.project_id = project_id
+
+    def find_active(self, *, pipeline: str, purpose: str) -> ImportedProfile | None:
+        return self._store.find_active(self.project_id, pipeline=pipeline, purpose=purpose)
+
+    def snapshot_path(self, profile_id: str) -> Path:
+        return self._store.snapshot_path(self.project_id, profile_id)
+
+    def is_snapshot_pinned(self, profile_id: str) -> bool:
+        return self._store.is_snapshot_pinned(self.project_id, profile_id)

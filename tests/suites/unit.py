@@ -209,6 +209,7 @@ UNIT_MODULES = (
     "workflow_import_families",
     "workflow_import_inspector",
     "workflow_import_store",
+    "workflow_import_precedence",
     "workflow_materializer",
     "workflow_patch_spec",
 )

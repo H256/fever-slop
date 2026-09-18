@@ -4,7 +4,7 @@ import json
 import logging
 import math
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -168,6 +168,7 @@ class AppConfig:
         repr=False,
     )
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    import_store: Any = field(default=None, repr=False)
 
     def resolve_video_workflow_profile(
         self,
@@ -198,11 +199,25 @@ class AppConfig:
         )
         if default_name is None:
             return None
-        return next(
+        default_profile = next(
             profile
             for profile in self.video_workflow_profiles
             if profile.name == default_name
         )
+        override_path = self._imported_workflow_path(pipeline, purpose)
+        if override_path is None:
+            return default_profile
+        return replace(default_profile, workflow_path=override_path)
+
+    def _imported_workflow_path(self, pipeline: str, purpose: str) -> str | None:
+        """Return the active import's snapshot path for pipeline/purpose, if any."""
+        store = self.import_store
+        if store is None:
+            return None
+        active = store.find_active(pipeline=pipeline, purpose=purpose)
+        if active is None:
+            return None
+        return str(store.snapshot_path(active.profile_id))
 
     @classmethod
     def load(cls, path: str | Path, *, required_keys: list[str] | None = None) -> AppConfig:
