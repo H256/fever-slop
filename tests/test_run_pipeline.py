@@ -310,7 +310,7 @@ class RunPipelinePathTests(unittest.TestCase):
         self.assertEqual([{"scene": 3}], _select_pipeline_scenes(scenes, "3"))
         self.assertEqual(scenes, _select_pipeline_scenes(scenes, None))
 
-    @patch("feverslop.composition.stages.final_stages.VideoPostProcessor")
+    @patch("feverslop.composition.stages.final_stages.final_video_postprocessor")
     def test_original_audio_mux_still_uses_video_only_concat(self, postprocessor_class):
         with TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -322,6 +322,7 @@ class RunPipelinePathTests(unittest.TestCase):
             video_audio.touch()
 
             state = Namespace(
+                app_config_path=temp / "app-config.json",
                 video_only_path=video_only,
                 context=Namespace(
                     final_concat_video=video_only,
@@ -339,7 +340,7 @@ class RunPipelinePathTests(unittest.TestCase):
             output_file=final,
         )
 
-    @patch("feverslop.composition.stages.final_stages.VideoPostProcessor")
+    @patch("feverslop.composition.stages.final_stages.final_video_postprocessor")
     def test_concat_and_mux_build_each_complete_scene_variant(self, postprocessor_class):
         with TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -367,6 +368,7 @@ class RunPipelinePathTests(unittest.TestCase):
                 input_audio=input_audio,
             )
             state = Namespace(
+                app_config_path=project / "app-config.json",
                 plan_for_next_step=layout.base_plan,
                 context=context,
                 video_only_path=None,
@@ -403,7 +405,7 @@ class RunPipelinePathTests(unittest.TestCase):
             )
             self.assertEqual(layout.movie, state.final_video_path)
 
-    @patch("feverslop.composition.stages.final_stages.VideoPostProcessor")
+    @patch("feverslop.composition.stages.final_stages.final_video_postprocessor")
     def test_concat_skips_partial_upscaled_variant_instead_of_mixing_clips(self, postprocessor_class):
         with TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -425,6 +427,7 @@ class RunPipelinePathTests(unittest.TestCase):
                 concat_raw=layout.concat_raw,
             )
             state = Namespace(
+                app_config_path=project / "app-config.json",
                 plan_for_next_step=layout.base_plan,
                 context=context,
                 video_only_path=None,
@@ -441,7 +444,7 @@ class RunPipelinePathTests(unittest.TestCase):
             ]
             self.assertEqual([layout.video_only], video_only_outputs)
 
-    @patch("feverslop.composition.stages.final_stages.VideoPostProcessor")
+    @patch("feverslop.composition.stages.final_stages.final_video_postprocessor")
     def test_concat_uses_only_selected_scene(self, postprocessor_class):
         with TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -460,6 +463,7 @@ class RunPipelinePathTests(unittest.TestCase):
                 concat_raw=layout.concat_raw,
             )
             state = Namespace(
+                app_config_path=project / "app-config.json",
                 args=Namespace(scenes="2"),
                 plan_for_next_step=layout.base_plan,
                 context=context,
@@ -480,7 +484,7 @@ class RunPipelinePathTests(unittest.TestCase):
                  for line in video_only_call.kwargs["concat_list"].read_text().splitlines()],
             )
 
-    @patch("feverslop.composition.stages.final_stages.VideoPostProcessor")
+    @patch("feverslop.composition.stages.final_stages.final_video_postprocessor")
     def test_concat_semantic_selection_uses_technical_scene_artifacts(self, postprocessor_class):
         with TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -499,6 +503,7 @@ class RunPipelinePathTests(unittest.TestCase):
                 concat_raw=layout.concat_raw,
             )
             state = Namespace(
+                app_config_path=project / "app-config.json",
                 args=Namespace(scenes="2"),
                 plan_for_next_step=layout.base_plan,
                 context=context,
@@ -519,7 +524,7 @@ class RunPipelinePathTests(unittest.TestCase):
                  for line in video_only_call.kwargs["concat_list"].read_text().splitlines()],
             )
 
-    @patch("feverslop.composition.stages.final_stages.VideoPostProcessor")
+    @patch("feverslop.composition.stages.final_stages.final_video_postprocessor")
     def test_concat_does_not_mix_canonical_and_legacy_base_clips(self, postprocessor_class):
         with TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -564,7 +569,7 @@ class RunPipelinePathTests(unittest.TestCase):
             stages.index(PipelineStage.MUX_ORIGINAL_AUDIO),
         )
 
-    @patch("feverslop.composition.stages.final_stages.VideoPostProcessor")
+    @patch("feverslop.composition.stages.final_stages.final_video_postprocessor")
     def test_standalone_mux_ignores_stale_incomplete_optional_aggregate(self, postprocessor_class):
         with TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -582,6 +587,7 @@ class RunPipelinePathTests(unittest.TestCase):
             input_audio = project / "song.mp3"
             input_audio.touch()
             state = Namespace(
+                app_config_path=project / "app-config.json",
                 plan_for_next_step=layout.base_plan,
                 context=Namespace(
                     artifact_layout=layout,
@@ -995,7 +1001,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 patch("feverslop.composition.stage_runners.build_generate_render_plan_use_case") as main_builder, \
                 patch("feverslop.composition.stages.scenes.build_render_storyboard_use_case") as storyboard_builder, \
                 patch("feverslop.composition.stages.render_stages.build_render_video_scenes_use_case") as video_builder, \
-                patch("feverslop.composition.stages.final_stages.VideoPostProcessor") as postprocessor:
+                patch("feverslop.composition.stages.final_stages.final_video_postprocessor") as postprocessor:
                 result = run_pipeline.run(args)
 
         tests.assert_not_called()
@@ -1099,7 +1105,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
                 patch("feverslop.composition.stages.scenes.build_render_storyboard_use_case") as storyboard_builder, \
                 patch("feverslop.composition.stages.scenes.generate_storyboard_page") as storyboard_page, \
                 patch("feverslop.composition.stages.render_stages.build_render_video_scenes_use_case") as video_builder, \
-                patch("feverslop.composition.stages.final_stages.VideoPostProcessor") as postprocessor:
+                patch("feverslop.composition.stages.final_stages.final_video_postprocessor") as postprocessor:
                 result = run_pipeline.run(args)
 
         self.assertEqual(config_path.parent / "output" / "render" / "plans" / "base.json", result.render_plan_path)
@@ -1480,7 +1486,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             postprocessor.concat_clips.return_value = render_dir / "ltx_single_prompt" / "Song_video_only.mp4"
             postprocessor.mux_original_audio.return_value = render_dir / "ltx_single_prompt" / "Song.mp4"
             with patch("feverslop.composition.stages.render_stages.build_render_video_scenes_use_case", return_value=use_case), \
-                patch("feverslop.composition.stages.final_stages.VideoPostProcessor", return_value=postprocessor):
+                patch("feverslop.composition.stages.final_stages.final_video_postprocessor", return_value=postprocessor):
                 run_pipeline.run(args)
 
             concat_list = render_dir / "final" / "concat_list.txt"
@@ -1567,7 +1573,7 @@ class RunPipelineOrchestrationTests(unittest.TestCase):
             postprocessor.concat_clips.return_value = render_dir / "ltx_msr" / "Song_video_only.mp4"
             postprocessor.mux_original_audio.return_value = render_dir / "ltx_msr" / "Song.mp4"
             with patch.dict("os.environ", {"LLM_API_KEY": "test-key"}), patch("feverslop.composition.stages.msr_stages.enrich_render_plan_with_reference_sheets", side_effect=enrich), \
-                patch("feverslop.composition.stages.final_stages.VideoPostProcessor", return_value=postprocessor):
+                patch("feverslop.composition.stages.final_stages.final_video_postprocessor", return_value=postprocessor):
                 run_pipeline.run(args)
 
             concat_list = render_dir / "final" / "concat_list.txt"
