@@ -16,6 +16,8 @@ class FakeConfig:
         model = "config-model"
         api_key = "config-secret"
         temperature = 0.25
+        dspy_temperature = 0.4
+        task_temperatures = {"planner": 0.6, "renderer": 0.6, "judge": 0.2, "analyzer": 0.2}
         max_tokens = 123
         request_timeout_seconds = 45.0
 

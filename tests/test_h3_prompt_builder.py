@@ -554,6 +554,7 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
 
         active_stack: list = []
         judge_active: list = []
+        renderer_active: list = []
 
         @contextmanager
         def lm_context(*, lm):
@@ -582,6 +583,8 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
             ))
 
         def base_renderer(**kwargs):
+            # Record which LM is active while the renderer model is invoked.
+            renderer_active.append(active_stack[-1] if active_stack else None)
             return SimpleNamespace(result=BaseVideoPrompt(
                 integrated_multimodal_description="A performer waits.",
                 overall_soundscape="Quiet room tone.",
@@ -617,6 +620,9 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         self.assertEqual(1, len(judge_active))
         self.assertIs(judge_lm, judge_active[0])
         self.assertIsNotNone(result.judge)
+        # The renderer must run under its own LM, not the planner context.
+        self.assertEqual(1, len(renderer_active))
+        self.assertIs(renderer_lm, renderer_active[0])
 
     def test_typed_plan_is_compiled_then_judged_with_exact_final_prompt(self):
         from types import SimpleNamespace
