@@ -16,6 +16,8 @@ from feverslop.path_utils import coerce_local_path
 from feverslop.ports.reporting import parse_log_level
 from feverslop.prompting.dspy_runtime import DEFAULT_TASK_TEMPERATURES
 
+_logger = logging.getLogger(__name__)
+
 
 @dataclass
 class LLMConfig:
@@ -405,6 +407,15 @@ class AppConfig:
             if value < 0:
                 raise ValueError(f"llm.task_temperatures.{task} must be >= 0, got {value}")
             llm_task_temperatures[task] = value
+            if task not in DEFAULT_TASK_TEMPERATURES:
+                # Unknown task names are stored but never looked up by make_lm;
+                # warn so a typo (e.g. "planer") does not silently no-op.
+                _logger.warning(
+                    "llm.task_temperatures.%s is not a recognized H3 task "
+                    "(expected one of %s); the override will be ignored",
+                    task,
+                    ", ".join(sorted(DEFAULT_TASK_TEMPERATURES)),
+                )
         if llm_temperature < 0:
             raise ValueError(f"llm.temperature must be >= 0, got {llm_temperature}")
         if llm_max_tokens <= 0:

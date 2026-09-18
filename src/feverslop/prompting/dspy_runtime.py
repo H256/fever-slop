@@ -141,11 +141,14 @@ class DspyRuntime:
             # dspy's request cache pickles request kwargs; the injected
             # hardened client is not picklable.
             cache = False
-        # Per-task temperature: resolve the configured (or feasible default)
-        # value for the named task, falling back to the global dspy_temperature.
+        # Per-task temperature: resolve the configured value for the named
+        # task, overlaying the operator's dict on the feasible defaults so a
+        # partial dict still resolves every task to a per-task value (the
+        # global dspy_temperature is only the last resort for unknown names).
         temperature = getattr(llm, "dspy_temperature", 0.4)
         if task is not None:
-            task_temps = getattr(llm, "task_temperatures", None) or DEFAULT_TASK_TEMPERATURES
+            provided = getattr(llm, "task_temperatures", None) or {}
+            task_temps = {**DEFAULT_TASK_TEMPERATURES, **provided}
             temperature = task_temps.get(task, temperature)
         kwargs = {
             "api_base": api_base,

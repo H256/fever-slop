@@ -1579,12 +1579,14 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 llm=LLM(),
             )
 
-        # Configured task values win; tasks missing from the provided dict fall
-        # back to the global dspy_temperature (0.25). AppConfig merges feasible
-        # defaults so this only happens when a partial dict is passed directly.
+        # Configured task values win; tasks missing from the provided dict
+        # resolve to the feasible defaults (analyzer 0.2, renderer 0.6) rather
+        # than the global dspy_temperature, so empty and partial dicts behave
+        # the same. AppConfig merges the defaults so the main path is always
+        # complete; this only diverges when a partial dict is passed directly.
         self.assertEqual(0.1, lm_factory.call_args_list[0].kwargs["temperature"])
-        self.assertEqual(0.25, lm_factory.call_args_list[1].kwargs["temperature"])
-        self.assertEqual(0.25, lm_factory.call_args_list[2].kwargs["temperature"])
+        self.assertEqual(0.2, lm_factory.call_args_list[1].kwargs["temperature"])
+        self.assertEqual(0.6, lm_factory.call_args_list[2].kwargs["temperature"])
         self.assertEqual(0.3, lm_factory.call_args_list[3].kwargs["temperature"])
 
     def test_generator_budgets_the_structured_planner_and_judge_output_tokens(self):

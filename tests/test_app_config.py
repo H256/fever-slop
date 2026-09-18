@@ -258,6 +258,23 @@ class AppConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "llm.task_temperatures.judge must be >= 0"):
                 AppConfig.load(config_path)
 
+    def test_warns_on_unrecognized_task_temperatures_names(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"task_temperatures": {"planer": 0.9}}}',
+                encoding="utf-8",
+            )
+            with self.assertLogs("feverslop.config.app_config", level="WARNING") as logs:
+                config = AppConfig.load(config_path)
+
+        # The unknown override is stored but warned about; known defaults remain.
+        self.assertIn("planer", config.llm.task_temperatures)
+        self.assertEqual(0.6, config.llm.task_temperatures["planner"])
+        self.assertTrue(any("planer" in message for message in logs.output))
+
     def test_dspy_cache_defaults_to_false(self):
         from feverslop.config.app_config import AppConfig
 
