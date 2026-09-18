@@ -281,6 +281,13 @@ def _resolve_video_workflow_path(
 ) -> str | Path:
     if options.workflow_path or options.video_pipeline != "ltx_ingredients":
         return options.workflow_path
+    project_config_path = (
+        options.project_config_path or discover_project_config_path(options.render_plan_path or "")
+    )
+    if project_config_path:
+        app_config.attach_import_store(
+            ProjectConfig.load(project_config_path).project_dir
+        )
     profile = app_config.resolve_video_workflow_profile(
         pipeline=options.video_pipeline,
         purpose="final",

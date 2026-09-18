@@ -467,6 +467,7 @@ def _resolved_startframe_profile(
     if state.args.video_pipeline != "ltx_msr":
         return None
     app_config = AppConfig.load(state.app_config_path)
+    app_config.attach_import_store(state.context.project_config_dir)
     selected_name = (
         profile_name
         if profile_name is not _PROFILE_UNSET
