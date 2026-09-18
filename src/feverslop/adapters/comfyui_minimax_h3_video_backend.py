@@ -22,7 +22,6 @@ from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.h3_two_pass import (
     H3TwoPassSpec,
-    default_h3_two_pass_spec,
     quality_from_render_profile,
 )
 from feverslop.domain.minimax_h3_frames import (

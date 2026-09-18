@@ -16,6 +16,7 @@ from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.audio_timing_contract import AudioTimingWindow
+from feverslop.domain.h3_two_pass import default_h3_two_pass_spec
 from feverslop.domain.h3_audio_delivery import (
     H3AudioContractError, apply_h3_audio_sources, h3_audio_timing_window,
     load_h3_audio_delivery, resolve_h3_audio_sources, validate_h3_audio_sources,
@@ -73,6 +74,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         input_audio: str | Path | None = None,
         latent_upscaler_device: str | None = None,
         reporter: Reporter | None = None,
+        render_quality: str = "draft",
     ):
         super().__init__(
             client=client,
@@ -98,6 +100,7 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
             workflow_label=workflow_label,
             latent_upscaler_device=latent_upscaler_device,
             reporter=reporter,
+            render_quality=render_quality,
         )
         self.model_resolver = model_resolver or NoOpComfyUIModelResolver()
         self.audio_ref_stems = audio_ref_stems
@@ -163,6 +166,9 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
                 + ", ".join(missing_titles)
                 + ". Select a MiniMax H3 R2V workflow with the native anchor contract.",
             )
+
+        # -- quality-calibrated two-pass sampling budget ---------------------
+        self._patch_two_pass_budget(patcher, default_h3_two_pass_spec(self.render_quality))
 
         # MiniMax R2V uses the explicitly numbered reference-audio anchors.
         # The legacy main-audio chain would otherwise occupy ref_audio_0 with

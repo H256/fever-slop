@@ -12,6 +12,7 @@ from feverslop.adapters.comfyui_ingredients_video_backend import (
 from feverslop.adapters.comfyui_minimax_h3_i2v_backend import ComfyUIMiniMaxH3I2VBackend
 from feverslop.adapters.comfyui_minimax_h3_r2v_backend import ComfyUIMiniMaxH3R2VBackend
 from feverslop.adapters.comfyui_minimax_h3_t2v_backend import ComfyUIMiniMaxH3T2VBackend
+from feverslop.domain.h3_two_pass import quality_from_render_profile
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.comfyui_msr_video_backend import ComfyUIMSRVideoRenderBackend
 from feverslop.adapters.comfyui_video_backend import ComfyUIVideoRenderBackend
@@ -76,6 +77,11 @@ def build_render_video_scenes_use_case(
     preroll_frames, tail_loss_frames, round_render_frames_to_8n1 = resolve_rolling_frames(options)
     project_config = resolved["project_config"]
     video_settings = project_config.to_video_settings() if project_config else None
+    render_quality = (
+        quality_from_render_profile(project_config.render_profile)
+        if project_config is not None
+        else "draft"
+    )
     max_render_frames, max_render_duration_seconds, render_budget_workflow_path = _resolve_render_frame_budget(
         app_config=app_config,
         project_config=project_config,
@@ -179,6 +185,7 @@ def build_render_video_scenes_use_case(
             input_audio=project_config.input_audio if project_config is not None else None,
             latent_upscaler_device=app_config.comfyui.latent_upscaler_device,
             reporter=ConsoleReporter(console) if console is not None else None,
+            render_quality=render_quality,
         )
     elif options.video_pipeline in {"minimax-h3-t2v", "minimax-h3-i2v"}:
         project_config_path = options.project_config_path or discover_project_config_path(options.render_plan_path or "")
@@ -207,6 +214,7 @@ def build_render_video_scenes_use_case(
             video_settings=video_settings,
             latent_upscaler_device=app_config.comfyui.latent_upscaler_device,
             reporter=ConsoleReporter(console) if console is not None else None,
+            render_quality=render_quality,
         )
     else:
         backend = ComfyUIVideoRenderBackend(
