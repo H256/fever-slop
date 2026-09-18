@@ -28,6 +28,7 @@ class GenerateRenderPlanRequest:
     skip_stem_separation: bool = False
     skip_whisper: bool = False
     skip_beat_analysis: bool = False
+    resume: bool = False
 
 
 @dataclass(frozen=True)

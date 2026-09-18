@@ -313,6 +313,7 @@ class PromptGenerationPipeline:
         config = context["config"]
         app_config = context["app_config"]
         request = context["request"]
+        resume = bool(getattr(request, "resume", False))
         stage1_segments = context["stage1_segments"]
         resolved_context_json: Path = context["resolved_context_json"]
         concept_prompts_json: Path = context["concept_prompts_json"]
@@ -327,36 +328,46 @@ class PromptGenerationPipeline:
         log_step("7. LLM Prompt Pipeline")
         llm = self.llm_factory(app_config)
         prompt_pipeline = self.prompt_pipeline_factory(llm)
-        global_context = self._prepare_global_context(
-            config=config,
-            app_config=app_config,
-            prompt_pipeline=prompt_pipeline,
-            stage1_segments=stage1_segments,
-            run_spinner=run_spinner,
-            reporter=reporter,
-            resolved_context_json=resolved_context_json,
-            artifact_store=artifact_store,
-            log_file=log_file,
-        )
+        if resume and resolved_context_json.is_file():
+            reporter.message("[yellow]Resuming resolved context; using existing resolved context.[/yellow]")
+            global_context = artifact_store.read_json(resolved_context_json)
+            log_file("Resolved Context JSON", resolved_context_json)
+            self._report_global_context(reporter, global_context)
+        else:
+            global_context = self._prepare_global_context(
+                config=config,
+                app_config=app_config,
+                prompt_pipeline=prompt_pipeline,
+                stage1_segments=stage1_segments,
+                run_spinner=run_spinner,
+                reporter=reporter,
+                resolved_context_json=resolved_context_json,
+                artifact_store=artifact_store,
+                log_file=log_file,
+            )
 
         concept_story_input = join_notes(
             global_context["story_idea"],
             "STEERING:",
             get_steering_value(config, "concepts"),
         )
-        concept_prompts = self._generate_concept_prompts(
-            config=config,
-            llm=llm,
-            app_config=app_config,
-            prompt_pipeline=prompt_pipeline,
-            request=request,
-            stage1_segments=stage1_segments,
-            concept_story_input=concept_story_input,
-            global_context=global_context,
-            concept_prompts_json=concept_prompts_json,
-            artifact_store=artifact_store,
-            reporter=reporter,
-        )
+        if resume and concept_prompts_json.is_file():
+            reporter.message("[yellow]Resuming concept prompts; using existing concept prompts.[/yellow]")
+            concept_prompts = artifact_store.read_json(concept_prompts_json)
+        else:
+            concept_prompts = self._generate_concept_prompts(
+                config=config,
+                llm=llm,
+                app_config=app_config,
+                prompt_pipeline=prompt_pipeline,
+                request=request,
+                stage1_segments=stage1_segments,
+                concept_story_input=concept_story_input,
+                global_context=global_context,
+                concept_prompts_json=concept_prompts_json,
+                artifact_store=artifact_store,
+                reporter=reporter,
+            )
         concept_prompts = self._finalize_concept_prompts(
             prompt_pipeline=prompt_pipeline,
             reporter=reporter,
@@ -367,53 +378,60 @@ class PromptGenerationPipeline:
             artifact_store=artifact_store,
             log_file=log_file,
         )
-        reporter.message(
-            f"[cyan]Scene details started: {len(stage1_segments)} scenes; "
-            "camera and character motion per scene[/cyan]",
-        )
-        scene_details = self._generate_scene_details(
-            config=config,
-            prompt_pipeline=prompt_pipeline,
-            concept_prompts=concept_prompts,
-            stage1_segments=stage1_segments,
-            global_context=global_context,
-            reporter=reporter,
-        )
-        prompt_pipeline.save_json(
-            scene_details_json,
-            scene_details,
-            artifact_store=artifact_store,
-        )
+        if resume and scene_details_json.is_file():
+            reporter.message("[yellow]Resuming scene details; using existing scene details.[/yellow]")
+            scene_details = artifact_store.read_json(scene_details_json)
+        else:
+            reporter.message(
+                f"[cyan]Scene details started: {len(stage1_segments)} scenes; "
+                "camera and character motion per scene[/cyan]",
+            )
+            scene_details = self._generate_scene_details(
+                config=config,
+                prompt_pipeline=prompt_pipeline,
+                concept_prompts=concept_prompts,
+                stage1_segments=stage1_segments,
+                global_context=global_context,
+                reporter=reporter,
+            )
+            prompt_pipeline.save_json(
+                scene_details_json,
+                scene_details,
+                artifact_store=artifact_store,
+            )
         log_file("Scene Details JSON", scene_details_json)
 
         log_step("8. Scene Prompt Pack (Startframe + Base Motion Prompts)")
-        self._build_scene_prompt_pack(
-            config=config,
-            llm=llm,
-            stage1_segments=stage1_segments,
-            concept_prompts=concept_prompts,
-            scene_details=scene_details,
-            global_context=global_context,
-            scene_prompts_json=scene_prompts_json,
-            artifact_store=artifact_store,
-            reporter=reporter,
-        )
-        self._attach_subject_directives(
-            stage1_segments=stage1_segments,
-            scene_prompts_json=scene_prompts_json,
-            artifact_store=artifact_store,
-            reporter=reporter,
-        )
-        self._generate_subject_directives(
-            llm=llm,
-            stage1_segments=stage1_segments,
-            concept_prompts=concept_prompts,
-            scene_details=scene_details,
-            global_context=global_context,
-            scene_prompts_json=scene_prompts_json,
-            artifact_store=artifact_store,
-            reporter=reporter,
-        )
+        if resume and scene_prompts_json.is_file():
+            reporter.message("[yellow]Resuming scene prompt pack; using existing scene prompts.[/yellow]")
+        else:
+            self._build_scene_prompt_pack(
+                config=config,
+                llm=llm,
+                stage1_segments=stage1_segments,
+                concept_prompts=concept_prompts,
+                scene_details=scene_details,
+                global_context=global_context,
+                scene_prompts_json=scene_prompts_json,
+                artifact_store=artifact_store,
+                reporter=reporter,
+            )
+            self._attach_subject_directives(
+                stage1_segments=stage1_segments,
+                scene_prompts_json=scene_prompts_json,
+                artifact_store=artifact_store,
+                reporter=reporter,
+            )
+            self._generate_subject_directives(
+                llm=llm,
+                stage1_segments=stage1_segments,
+                concept_prompts=concept_prompts,
+                scene_details=scene_details,
+                global_context=global_context,
+                scene_prompts_json=scene_prompts_json,
+                artifact_store=artifact_store,
+                reporter=reporter,
+            )
         log_file("Scene Prompts JSON", scene_prompts_json)
 
         context.update(

@@ -167,6 +167,7 @@ UNIT_MODULES = (
     "render_video_composition_msr",
     "render_video_composition_profiles",
     "resolution_override",
+    "resume_main_pipeline",
     "rich_progress",
     "scene_artifact_layout",
     "scene_cast",
