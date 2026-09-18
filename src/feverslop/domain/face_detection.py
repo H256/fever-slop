@@ -227,6 +227,7 @@ class FrameResult:
     processed: bool
     detection_score: float | None = None
     identity_score: float | None = None
+    identity_actor_id: str | None = None
     track_id: int | None = None
     box: BoundingBox | None = None
     expanded_box: BoundingBox | None = None
@@ -254,12 +255,14 @@ class FrameResult:
         track_id: int,
         box: BoundingBox,
         expanded_box: BoundingBox,
+        identity_actor_id: str | None = None,
     ) -> FrameResult:
         return cls(
             frame=frame,
             processed=True,
             detection_score=detection_score,
             identity_score=identity_score,
+            identity_actor_id=identity_actor_id,
             track_id=track_id,
             box=box,
             expanded_box=expanded_box,
