@@ -1,14 +1,37 @@
 ﻿from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.errors import FeverSlopRenderError
 
 
+@dataclass(frozen=True)
+class ReplayPolicy:
+    """Explicit declaration of whether an interrupted render may be re-attempted.
+
+    Local ComfyUI renders are replayable after a restart (no billing, no
+    external side effects). The policy is declared, not assumed, so a future
+    execution target must state its own replay behavior.
+    """
+
+    replayable: bool
+    reason: str
+
+
+# Local ComfyUI is the only execution target in scope; it is replayable.
+COMFYUI_REPLAY_POLICY = ReplayPolicy(replayable=True, reason="local ComfyUI, no billing")
+
+
 class ComfyUIRenderQueue:
     def __init__(self, client: ComfyUIClient):
         self.client = client
+
+    @property
+    def replay_policy(self) -> ReplayPolicy:
+        """The declared replay policy for this ComfyUI execution target."""
+        return COMFYUI_REPLAY_POLICY
 
     def queue_workflow_and_download_first_video(
         self,

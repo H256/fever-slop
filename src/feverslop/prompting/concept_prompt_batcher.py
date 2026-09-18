@@ -26,6 +26,126 @@ def chunked(items: list[Any], size: int):
 # batch repair.
 _KEYS_PER_REPAIR_CALL = 2
 
+# Concept-batch request budget. Front-loading BOUNDARY_CONTEXT and a
+# closed-vocabulary block onto every initial batch (issue #1247) adds tokens on
+# top of the existing PREVIOUS_CONCEPTS + ACCEPTED_STATE_LEDGER + summary. This
+# ceiling is deliberately well below the ~100k-token model limit so a regression
+# that grows the request unbounded fails fast instead of silently truncating.
+_REQUEST_TOKEN_CEILING = 80_000
+
+# The closed-vocabulary block must stay bounded so it cannot grow the request
+# unbounded as a project accumulates more cast/locations/props.
+_VOCAB_MAX_PER_FIELD = 40
+_VOCAB_MAX_TOTAL = 200
+
+
+def _estimate_request_tokens(payload: dict[str, Any]) -> int:
+    """Deterministic lower-bound estimate of a request's input token count.
+
+    Uses the standard chars//4 heuristic on the compacted, evidence-stripped
+    payload. It is a lower bound for prose but conservative enough for a budget
+    ceiling: if the estimate is under the ceiling, the real count is too.
+    """
+    material = json.dumps(
+        compact_planning_payload(payload),
+        ensure_ascii=True,
+        sort_keys=True,
+        default=str,
+    )
+    return len(material) // 4
+
+
+def _closed_vocabulary(
+    global_context: dict[str, Any],
+    contract: dict[str, Any],
+) -> dict[str, list[str]]:
+    """Allowed values for narrative state fields, derived from the contract and
+    structured ids, so the model picks from a fixed set instead of inventing
+    identifiers. Only fields with actual values are included, and the block is
+    capped so it cannot grow the request unbounded.
+    """
+    vocab: dict[str, list[str]] = {}
+
+    def add(field: str, values: list[str]) -> None:
+        unique = list(dict.fromkeys(str(v) for v in values if str(v)))
+        if unique:
+            vocab[field] = unique[:_VOCAB_MAX_PER_FIELD]
+
+    # Structured ids from the project (the canonical identifiers the model must
+    # reuse verbatim in references and narrative state fields).
+    add("location_ids", [
+        str(item.get("id")) for item in (global_context.get("structured_locations") or [])
+        if isinstance(item, dict) and item.get("id")
+    ])
+    add("actor_ids", [
+        str(item.get("id")) for item in (global_context.get("actors") or [])
+        if isinstance(item, dict) and item.get("id")
+    ])
+    add("prop_ids", [
+        str(item.get("id")) for item in (global_context.get("props") or [])
+        if isinstance(item, dict) and item.get("id")
+    ])
+    # Ordered/allowed state vocabularies from the narrative contract.
+    add("milestones", _ordered_contract_ids(contract, "milestone_order"))
+    add("locations", _ordered_contract_ids(contract, "location_order"))
+    for field in ("allowed_actions", "allowed_action_phases", "allowed_cast_states"):
+        raw = contract.get(field)
+        if isinstance(raw, (list, tuple)):
+            add(field, [str(_normalize_semantic_value(v)) for v in raw])
+    # Enforce the total cap, dropping whole fields past the budget in a stable
+    # order (structured ids first, then contract vocabularies).
+    total = sum(len(v) for v in vocab.values())
+    if total > _VOCAB_MAX_TOTAL:
+        for field in list(vocab):
+            if total <= _VOCAB_MAX_TOTAL:
+                break
+            keep = max(0, _VOCAB_MAX_TOTAL - total)
+            vocab[field] = vocab[field][:keep]
+            total -= len(vocab[field])
+            if not vocab[field]:
+                del vocab[field]
+    return vocab
+
+
+def _ordered_contract_ids(contract: dict[str, Any], key: str) -> list[str]:
+    return [item_id for item_id, _source in _ordered_contract_entries(contract, key)]
+
+
+def _batch_boundary_anchor(
+    first_segment_id: str,
+    *,
+    known: dict[str, Any],
+    order_ids: list[str],
+) -> dict[str, Any]:
+    """Exact accepted `outgoing` boundary state the batch's first scene must
+    anchor on.
+
+    The initial batch otherwise only sees a compact ledger and the last few
+    concepts verbatim, so it must *infer* the exact boundary tokens. Handing it
+    the predecessor's accepted outgoing snapshot (the same canonical vocabulary
+    the repair path already receives) lets the first scene restate boundary
+    states verbatim instead of paraphrasing them.
+    """
+    positions = {segment_id: index for index, segment_id in enumerate(order_ids)}
+    position = positions.get(first_segment_id)
+    if position is None:
+        return {}
+    for step in range(1, len(order_ids)):
+        neighbor_position = position - step
+        if not 0 <= neighbor_position < len(order_ids):
+            break
+        neighbor_id = order_ids[neighbor_position]
+        if neighbor_id not in known:
+            continue
+        state = _continuity_boundary_state(known[neighbor_id], "outgoing")
+        if not state:
+            continue
+        anchor = {"scene_id": neighbor_id, "outgoing": state}
+        if step > 1:
+            anchor["neighbor_distance"] = step
+        return anchor
+    return {}
+
 
 class ConceptPromptBatcher:
     """Robust concept-prompt generation for many music-video scenes.
@@ -143,6 +263,8 @@ class ConceptPromptBatcher:
                 previous_concepts=self._last_concepts(all_results),
                 previous_summary=previous_summary,
                 accepted_ledger=_accepted_state_ledger(all_results),
+                accepted=all_results,
+                order_ids=[seg["segment_id"] for seg in stage1_segments],
             )
             self._report(f"{batch_label}: response received, validating keys", report)
 
@@ -259,7 +381,11 @@ class ConceptPromptBatcher:
         previous_concepts: dict,
         previous_summary: str,
         accepted_ledger: list[dict[str, str]] | None = None,
+        accepted: dict | None = None,
+        order_ids: list[str] | None = None,
     ) -> dict:
+        accepted = accepted or {}
+        order_ids = order_ids or []
         payload = {
             "BATCH_INDEX": batch_index,
             "STORY_IDEA": story_idea,
@@ -273,6 +399,30 @@ class ConceptPromptBatcher:
             "ACCEPTED_STATE_LEDGER": accepted_ledger or [],
             "CURRENT_BATCH_SEGMENTS": compact_planning_payload(batch),
         }
+        # Front-load the exact boundary vocabulary so the batch's first scene
+        # anchors on verbatim tokens instead of inferred ones (issue #1247).
+        # Only present when there is an accepted predecessor to anchor on.
+        first_segment_id = batch[0].get("segment_id") if batch else None
+        if first_segment_id:
+            anchor = _batch_boundary_anchor(
+                first_segment_id, known=accepted, order_ids=order_ids,
+            )
+            if anchor:
+                payload["BOUNDARY_CONTEXT"] = {first_segment_id: anchor}
+        # Constrain the output to a closed vocabulary derived from the narrative
+        # contract and structured ids so the model picks instead of inventing.
+        vocabulary = _closed_vocabulary(global_context, _narrative_contract(global_context))
+        if vocabulary:
+            payload["CLOSED_VOCABULARY"] = vocabulary
+        # Guard the request budget: front-loaded context must not push the
+        # request toward the ~100k-token model limit.
+        estimated = _estimate_request_tokens(payload)
+        if estimated > _REQUEST_TOKEN_CEILING:
+            raise ValueError(
+                f"Concept batch request exceeds token budget "
+                f"({estimated} > {_REQUEST_TOKEN_CEILING} estimated tokens); "
+                "bound the added context before generating"
+            )
 
         response = self.prompt_modules.concepts(
             payload, batch=True,

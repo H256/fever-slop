@@ -144,8 +144,8 @@ class TestSelectedVideoWorkflows(unittest.TestCase):
 class TestRunUnitTestSuite(unittest.TestCase):
     """COMP-108: subprocess cwd."""
 
-    @patch("feverslop.composition.stage_runners.subprocess.run")
-    @patch("feverslop.composition.stage_runners.runner_root", return_value=Path("/repo/root"))
+    @patch("feverslop.composition.stages.selection.subprocess.run")
+    @patch("feverslop.composition.stages.selection.runner_root", return_value=Path("/repo/root"))
     def test_uses_runner_root_cwd(self, mock_root, mock_run):
         from feverslop.composition.stage_runners import run_unittest_suite
         mock_run.return_value = MagicMock(returncode=0)
