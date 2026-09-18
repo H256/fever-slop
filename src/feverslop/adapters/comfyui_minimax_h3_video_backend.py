@@ -20,6 +20,10 @@ from feverslop.adapters.comfyui_video_assets import ComfyUIVideoAssetUploader
 from feverslop.adapters.video_postprocessor import VideoPostProcessor
 from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.config.video_settings import VideoSettings
+from feverslop.domain.h3_two_pass import (
+    H3TwoPassSpec,
+    quality_from_render_profile,
+)
 from feverslop.domain.minimax_h3_frames import (
     _frames_from_duration as _frames_from_duration_,
 )
@@ -67,6 +71,7 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         latent_upscaler_device: str | None = None,
         progress_callback: Callable[[str], None] | None = None,
         reporter: Reporter | None = None,
+        render_quality: str = "draft",
     ):
         self.client = client
         self.workflow_path = Path(workflow_path)
@@ -95,6 +100,7 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         )
         self.model_resolver = model_resolver
         self.video_settings = video_settings
+        self.render_quality = quality_from_render_profile(render_quality)
         self.progress_callback = progress_callback
         self.reporter = reporter
         self._upscaler_device_resolved = False
@@ -226,6 +232,24 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
     def _report_warning(self, text: str) -> None:
         if self.reporter is not None:
             self.reporter.warning(text)
+
+    def _patch_two_pass_budget(self, patcher: WorkflowPatcher, spec: H3TwoPassSpec) -> None:
+        """Apply the calibrated two-pass sampling budget for the selected quality.
+
+        The two-pass templates carry a single static budget; this overrides the
+        pass 1 / pass 2 scheduler steps and denoise with the calibrated budget
+        for the requested quality tier so the profile name has a real effect.
+        Single-pass templates lack the ``#PASS1_SCHEDULER`` anchor and are
+        left unchanged. The latent-upscale scale is constant across profiles,
+        and the concrete resolution stays user-driven via --resolution.
+        """
+        if not patcher.has_title("#PASS1_SCHEDULER"):
+            return
+        patcher.set_input_by_title("#PASS1_SCHEDULER", "steps", spec.pass1_steps)
+        patcher.set_input_by_title("#PASS1_SCHEDULER", "denoise", spec.pass1_denoise)
+        if patcher.has_title("#PASS2_SCHEDULER"):
+            patcher.set_input_by_title("#PASS2_SCHEDULER", "steps", spec.pass2_steps)
+            patcher.set_input_by_title("#PASS2_SCHEDULER", "denoise", spec.pass2_denoise)
 
     @staticmethod
     def _has_latent_upscale_node(patcher: WorkflowPatcher) -> bool:
