@@ -14,6 +14,7 @@ from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS
 from feverslop.domain.video_workflow_profile import VideoWorkflowProfile
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.reporting import parse_log_level
+from feverslop.prompting.dspy_runtime import DEFAULT_TASK_TEMPERATURES
 
 
 @dataclass
@@ -36,6 +37,10 @@ class LLMConfig:
     prompt_planner_max_tokens: int = 0
     chat_template_kwargs: dict[str, Any] = field(default_factory=dict)
     models: dict[str, str] = field(default_factory=dict)
+    # Per-task DSPy temperatures (planner, renderer, judge, analyzer). Always
+    # resolved against DEFAULT_TASK_TEMPERATURES at parse time, so feasible
+    # defaults apply when the operator leaves a task unset.
+    task_temperatures: dict[str, float] = field(default_factory=dict)
     _local_api_key: str | None = field(default=None, repr=False)
 
     def model_for(self, task_type: str | None = None) -> str:
@@ -336,6 +341,23 @@ class AppConfig:
             if profile in llm_models:
                 raise ValueError(f"Duplicate llm.models profile: {profile}")
             llm_models[profile] = model
+        llm_task_temperatures_raw = llm_raw.get("task_temperatures", {})
+        if not isinstance(llm_task_temperatures_raw, dict):
+            raise ValueError("llm.task_temperatures must be an object")
+        # Start from the feasible defaults so an unset task still resolves;
+        # operator overrides win per task.
+        llm_task_temperatures: dict[str, float] = dict(DEFAULT_TASK_TEMPERATURES)
+        for raw_task, raw_value in llm_task_temperatures_raw.items():
+            task = str(raw_task).strip().lower()
+            if not task:
+                raise ValueError("llm.task_temperatures requires non-empty task names")
+            try:
+                value = float(raw_value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"llm.task_temperatures.{task} must be a number") from exc
+            if value < 0:
+                raise ValueError(f"llm.task_temperatures.{task} must be >= 0, got {value}")
+            llm_task_temperatures[task] = value
         if llm_temperature < 0:
             raise ValueError(f"llm.temperature must be >= 0, got {llm_temperature}")
         if llm_max_tokens <= 0:
@@ -369,6 +391,7 @@ class AppConfig:
                 prompt_planner_max_tokens=llm_prompt_planner_max_tokens,
                 chat_template_kwargs=llm_chat_template_kwargs,
                 models=llm_models,
+                task_temperatures=llm_task_temperatures,
                 _local_api_key=_optional_secret(llm_raw.get("api_key")) or dotenv_api_key,
             ),
             comfyui=ComfyUIConfig(

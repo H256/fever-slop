@@ -71,6 +71,7 @@ class ConfigExampleTests(unittest.TestCase):
         self.assertEqual(
             {
                 "api_key", "base_url", "model", "models", "temperature", "dspy_temperature",
+                "task_temperatures",
                 "max_tokens", "request_timeout_seconds", "dspy_cache", "max_concurrent_requests",
                 "prompt_judge_attempts", "prompt_judge_max_tokens",
                 "prompt_judge_blocking",
@@ -85,7 +86,7 @@ class ConfigExampleTests(unittest.TestCase):
             },
             set(raw["comfyui"]),
         )
-        self.assertEqual({"vram_handoff"}, set(raw["execution"]))
+        self.assertEqual({"vram_handoff", "log_level"}, set(raw["execution"]))
         self.assertEqual(
             {"workflow", "kind", "template", "positive_prompt_input", "debug_dir", "max_words"},
             set(raw["storyboard_prompt_transforms"][0]),

@@ -76,6 +76,7 @@ the operator's responsibility.
 | `models` | object | `{}` | Optional task-profile model overrides, for example `{ "creative": "story-model", "structured": "fast-model" }`. Missing profiles fall back to `model`. |
 | `temperature` | number | `0.7` | Sampling temperature for LLM requests. |
 | `dspy_temperature` | number | `0.4` | Sampling temperature for DSPy H3 planner, analyzer, and renderer calls. |
+| `task_temperatures` | object | `{ "planner": 0.6, "renderer": 0.6, "judge": 0.2, "analyzer": 0.2 }` | Per-task DSPy sampling temperatures. Defaults are always present; set a task to override it. Non-H3 DSPy calls keep using `dspy_temperature`. |
 | `max_tokens` | integer | `4096` | Maximum completion token count. |
 | `request_timeout_seconds` | number | `180.0` | Timeout for an LLM request. |
 | `dspy_cache` | boolean | `false` | Whether DSPy may reuse cached LM responses. Set to `true` only when that behavior is wanted. |

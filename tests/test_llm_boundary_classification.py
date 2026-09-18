@@ -54,6 +54,23 @@ class LLMBoundaryClassificationTests(unittest.TestCase):
                     missing.append(f"{path}:{node.lineno}")
         self.assertEqual([], missing)
 
+    def test_all_openai_compatible_client_construction_passes_task_temperatures(self):
+        missing = []
+        for path in PRODUCTION_ROOT.rglob("*.py"):
+            if path.as_posix() in DSPY_TEMPERATURE_EXEMPT_FILES:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                    continue
+                if node.func.id != "OpenAICompatibleLLMClient":
+                    continue
+                keywords = {keyword.arg: keyword.value for keyword in node.keywords}
+                value = keywords.get("task_temperatures")
+                if not isinstance(value, ast.Attribute) or value.attr != "task_temperatures":
+                    missing.append(f"{path}:{node.lineno}")
+        self.assertEqual([], missing)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -460,6 +460,9 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         generator.judge_attempts = 1
         generator.warning_callback = None
         generator.lm = object()
+        generator.analyzer_lm = object()
+        generator.renderer_lm = object()
+        generator.judge_lm = object()
         generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
         generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
 
