@@ -471,6 +471,37 @@ class ScenePromptBuilder:
                         performer for performer in vocal_performers
                         if performer["subject_id"] in allowed_actor_ids
                     ]
+                # The owner of the vocal stem is the visible performer of the
+                # singing window; a creative performer choice that contradicts
+                # the audio binding (same speaker ID, different subject, or
+                # same subject, different speaker) would fail the speaker binding
+                # bijection check downstream. Non-conflicting performers (e.g. a
+                # duet partner with a distinct speaker ID) are preserved.
+                vocal_binding = (references.get("audio_subject_bindings") or {}).get("vocals")
+                if isinstance(vocal_binding, dict) and str(vocal_binding.get("subject_id") or "").strip():
+                    binding_subject = str(vocal_binding.get("subject_id") or "").strip()
+                    binding_speaker = str(vocal_binding.get("speaker_id") or "S1").strip()
+                    non_conflicting = [
+                        performer for performer in vocal_performers
+                        if not (
+                            (str(performer.get("speaker_id") or "").strip() == binding_speaker
+                             and str(performer.get("subject_id") or "").strip() != binding_subject)
+                            or (str(performer.get("subject_id") or "").strip() == binding_subject
+                             and str(performer.get("speaker_id") or "").strip() != binding_speaker)
+                        )
+                    ]
+                    binding_performer = {"subject_id": binding_subject, "speaker_id": binding_speaker}
+                    # The binding's subject is the primary vocal owner, so it is
+                    # stamped onto the singing window first; non-conflicting
+                    # performers (e.g. a duet partner with a distinct speaker
+                    # ID) are preserved after it.
+                    vocal_performers = [binding_performer] + [
+                        performer for performer in non_conflicting
+                        if not (
+                            str(performer.get("subject_id") or "").strip() == binding_subject
+                            and str(performer.get("speaker_id") or "").strip() == binding_speaker
+                        )
+                    ]
                 if vocal_performers:
                     scene_output["vocal_performers"] = vocal_performers
             if references:

@@ -570,6 +570,71 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertIn("expected 2 shot(s)", str(ctx.exception))
         self.assertIn("got 1", str(ctx.exception))
 
+    def test_performance_relay_accepts_single_continuous_shot(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        generator.lm = None
+        generator.last_planner_history = []
+
+        class FakePrediction:
+            plan = H3CreativePlan(
+                creative_intent="A single continuous shot of the stage.",
+                overall_soundscape="Quiet room tone.",
+                music_intent=MusicIntent.NONE,
+                shots=[H3CreativeShot(description="One continuous shot of the stage.")],
+            )
+
+        generator.planner = lambda **kwargs: FakePrediction()
+
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="A performer on stage.",
+            duration_seconds=5.0,
+            relay_segments=[
+                {"performance_phase": True, "start_seconds": 0, "end_seconds": 2.5},
+                {"performance_phase": True, "start_seconds": 2.5, "end_seconds": 5.0},
+            ],
+        )
+
+        # Performance-phase relays are vocal timing windows within one
+        # continuous camera shot; a single shot is valid and must not
+        # trigger a shot-count mismatch.
+        result = generator._plan(request, [])
+        self.assertEqual(1, len(result.shots))
+
+    def test_performance_relay_accepts_one_shot_per_segment(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        generator.lm = None
+        generator.last_planner_history = []
+
+        class FakePrediction:
+            plan = H3CreativePlan(
+                creative_intent="Two shots of the stage.",
+                overall_soundscape="Quiet room tone.",
+                music_intent=MusicIntent.NONE,
+                shots=[
+                    H3CreativeShot(description="First shot of the stage."),
+                    H3CreativeShot(description="Second shot of the stage."),
+                ],
+            )
+
+        generator.planner = lambda **kwargs: FakePrediction()
+
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="A performer on stage.",
+            duration_seconds=5.0,
+            relay_segments=[
+                {"performance_phase": True, "start_seconds": 0, "end_seconds": 2.5},
+                {"performance_phase": True, "start_seconds": 2.5, "end_seconds": 5.0},
+            ],
+        )
+
+        # A model that returns one shot per relay segment is also valid for
+        # performance relay; the compiler renders the phases as time-stamped
+        # events within the shot(s).
+        result = generator._plan(request, [])
+        self.assertEqual(2, len(result.shots))
+
     def test_shot_count_hint_lists_windows_and_counts(self):
         hint = _shot_count_hint(2, 1, [
             {"start_seconds": 0, "end_seconds": 2.5},
