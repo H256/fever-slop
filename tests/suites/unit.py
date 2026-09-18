@@ -162,6 +162,7 @@ UNIT_MODULES = (
     "render_plan_ingredients_sheets",
     "render_plan_normalizer",
     "render_plan_references",
+    "render_promotion",
     "render_storyboard_composition",
     "render_video_composition_msr",
     "render_video_composition_profiles",
