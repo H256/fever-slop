@@ -219,6 +219,26 @@ class AppConfig:
             return None
         return str(store.snapshot_path(active.profile_id))
 
+    def _attach_import_store(self, base_dir: Path | None) -> None:
+        """Attach the per-project import store for precedence, if present.
+
+        Layout mirrors the CLI: ``projects_root/<project>/workflows/``. The
+        store is a no-op (returns None) when no active import exists, so this
+        is safe to run on every load.
+        """
+        if self.import_store is not None or base_dir is None:
+            return
+        project_dir = base_dir.resolve()
+        workflows = project_dir / "workflows"
+        if not workflows.is_dir():
+            return
+        from feverslop.domain.workflow_import_store import WorkflowImportStore
+
+        self.import_store = WorkflowImportStore(
+            projects_root=project_dir.parent,
+            project_id=project_dir.name,
+        ).for_project(project_dir.name)
+
     @classmethod
     def load(cls, path: str | Path, *, required_keys: list[str] | None = None) -> AppConfig:
         path = coerce_local_path(path)
@@ -238,7 +258,9 @@ class AppConfig:
         if required_keys:
             _check_required_keys(raw, required_keys)
 
-        return cls._build_config(raw, dotenv_api_key=dotenv_api_key, base_dir=path.parent)
+        config = cls._build_config(raw, dotenv_api_key=dotenv_api_key, base_dir=path.parent)
+        config._attach_import_store(path.parent)
+        return config
 
     @classmethod
     def _build_config(

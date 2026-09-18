@@ -16,6 +16,7 @@ from feverslop.cli.revision_commands import run_rebuild_preview, run_revisions
 from feverslop.cli.revisions import build_rebuild_preview_parser, build_revisions_parser
 from feverslop.cli.shared_args import add_render_args
 from feverslop.cli.video_workflow_cli import build_profiles_parser, run_profiles_command
+from feverslop.cli.workflow_import_cli import build_workflow_import_parser, run_workflow_import_command
 from feverslop.composition.generate_render_plan import execute_generate_render_plan
 
 console = Console()
@@ -69,6 +70,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     build_canonical_plan_parsers(subparsers)
     build_run_parser(subparsers)
     build_profiles_parser(subparsers)
+    build_workflow_import_parser(subparsers)
     add_render_args(parser, project_required=False)
     return parser
 
@@ -99,6 +101,10 @@ def main() -> None:
             raise SystemExit(exit_code)
     elif args.command == "profiles":
         exit_code = run_profiles_command(args, console=console)
+        if exit_code:
+            raise SystemExit(exit_code)
+    elif args.command == "workflow-import":
+        exit_code = run_workflow_import_command(args, console=console)
         if exit_code:
             raise SystemExit(exit_code)
     elif args.project:

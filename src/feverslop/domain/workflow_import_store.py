@@ -276,6 +276,11 @@ class WorkflowImportStore:
         record = self._read_profile(project_id, profile_id)
         return self._profile_dir(project_id, profile_id) / _snapshot_name(record["workflow_sha256"])
 
+    def snapshot_bytes(self, project_id: str, profile_id: str) -> bytes:
+        """Read back the stored snapshot payload for a profile."""
+        record = self._read_profile(project_id, profile_id)
+        return self._read_snapshot(project_id, profile_id, record["workflow_sha256"])
+
     def for_project(self, project_id: str) -> "ProjectWorkflowImportStore":
         """Return a project-scoped view for ergonomic per-project access."""
         return ProjectWorkflowImportStore(self, project_id)
