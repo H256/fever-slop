@@ -862,7 +862,10 @@ class VideoPromptGenerator:
                         prompt = output.result
                 if plan.music_intent == MusicIntent.NONE:
                     prompt.non_diegetic_music = None
-                judge = self._judge_final_prompt(effective_request, plan, refs, prompt)
+                # The judge is a separate structured task with its own
+                # temperature; it must not run under the planner context.
+                with self.dspy_runtime.context(lm=getattr(self, "judge_lm", self.lm)):
+                    judge = self._judge_final_prompt(effective_request, plan, refs, prompt)
                 if judge is not None:
                     judge_attempts.append(judge)
                 # The judgement is returned with the prompt as a user-facing
