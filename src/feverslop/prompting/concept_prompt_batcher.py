@@ -365,10 +365,32 @@ class ConceptPromptBatcher:
             return
         self._checkpoint_path.unlink(missing_ok=True)
 
-    def _report(self, message: str, callback: Callable[[str], None] | None = None) -> None:
+    def _report(self, message: str, callback: Callable[[str], None] = None) -> None:
         callback = callback or self.progress_callback
         if callback is not None:
             callback(message)
+
+    @staticmethod
+    def _repair_source_message(
+        total: int,
+        missing: list[str],
+        invalid: list[dict[str, Any]],
+        repair_ids: list[str],
+    ) -> str:
+        # Missing keys (truncation/omitted output) and invalid keys (failed
+        # semantic validation) are separate failure sources; log them apart so
+        # a truncated response is distinguishable from a tuning problem.
+        invalid_parts = [
+            f"{item['segment_id']} ({item['reason']})" for item in invalid
+        ]
+        return (
+            f"Concept batch: repairing {total} scene "
+            f"{'key' if total == 1 else 'keys'} "
+            f"({len(missing)} missing, {len(invalid)} invalid): "
+            f"{', '.join(repair_ids)}"
+            + (f" [missing: {', '.join(missing)}]" if missing else "")
+            + (f" [invalid: {'; '.join(invalid_parts)}]" if invalid_parts else "")
+        )
 
     def _generate_batch(
         self,
@@ -475,8 +497,12 @@ class ConceptPromptBatcher:
             )
 
         self._report(
-            f"Concept batch: repairing {len(repair_ids)} missing or invalid scene "
-            f"{'key' if len(repair_ids) == 1 else 'keys'}: {', '.join(repair_ids)}",
+            self._repair_source_message(
+                len(repair_ids),
+                missing,
+                invalid,
+                repair_ids,
+            ),
             progress_callback,
         )
 
