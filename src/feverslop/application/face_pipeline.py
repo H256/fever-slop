@@ -364,6 +364,7 @@ class FacePipeline:
                 frame=processed_frame,
                 detection_score=state.candidate.score,
                 identity_score=state.identity_score,
+                identity_actor_id=state.identity_actor_id,
                 track_id=state.track.track_id if state.track is not None else -1,
                 box=box,
                 expanded_box=expanded_box,

@@ -283,24 +283,23 @@ def _run_crop_facefix(
         for frame_idx in range(total_frames):
             result = pipeline.process_frame(original_frames[frame_idx], frame_idx)
             if result.processed:
-                # FrameResult doesn't carry actor_id directly yet (the pipeline's
-                # identity_port returns (actor_id, score) but only the score is
-                # stored on FrameResult). For single-actor scenes this works
-                # because every processed frame belongs to the same actor.
-                # Multi-actor support requires adding actor_id to FrameResult.
-                matched_actor: str | None = None
+                matched_actor: str | None
                 if len(actor_embeddings) == 1:
+                    # Single-actor scene: every processed frame belongs to it.
                     matched_actor = next(iter(actor_embeddings))
-                elif result.identity_score is not None:
-                    # Identity check passed — pick first registered actor.
-                    # TODO: add actor_id to FrameResult for multi-actor scenes.
-                    matched_actor = next(iter(actor_embeddings))
+                elif result.identity_actor_id in actor_embeddings:
+                    # Multi-actor: use the identity port's best match instead of
+                    # silently assigning the frame to the first registered actor.
+                    matched_actor = result.identity_actor_id
                 else:
+                    # No confident identity match — diagnosed decision, never a
+                    # silent first-actor assignment.
                     matched_actor = "unknown"
                     logger.warning(
-                        "Frame %d: no identity match found for scene %d, "
-                        "marking as %s",
-                        frame_idx, scene_number, matched_actor,
+                        "Frame %d: no confident identity match for scene %d "
+                        "(identity_actor_id=%r), marking as %s",
+                        frame_idx, scene_number,
+                        result.identity_actor_id, matched_actor,
                     )
 
                 actor_frames.setdefault(matched_actor, []).append(
