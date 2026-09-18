@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from feverslop.domain.relay_range import RelayRange
 from feverslop.errors import FeverSlopValidationError
 
 ROLLING_FRAME_PROFILES = {
@@ -203,8 +204,11 @@ class PromptRelayPayloadBuilder:
             cursor = 0
 
             for relay in relays:
-                start = max(0, min(int(relay["frame_start"]), scene_timeline_frames))
-                end = max(start, min(int(relay["frame_end"]), scene_timeline_frames))
+                clamped = RelayRange(
+                    int(relay["frame_start"]), int(relay["frame_end"])
+                ).clamp_to_timeline(scene_timeline_frames)
+                start = clamped.start
+                end = clamped.end_exclusive
 
                 if start > cursor:
                     relay_segments.append({

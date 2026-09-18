@@ -1783,5 +1783,115 @@ class ConceptCheckpointTests(unittest.TestCase):
             )
 
 
+class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
+    """#1247: the initial batch must front-load the exact boundary vocabulary
+    (Fix 1) and a closed-vocabulary block (Fix 2), and guard the request
+    token budget so the added context cannot grow the request unbounded."""
+
+    def test_initial_batch_front_loads_predecessor_boundary_anchor(self):
+        # Batch 1 is accepted; batch 2's first scene (s2) must anchor on s1's
+        # exact accepted outgoing state, not infer it.
+        first = semantic_concept(
+            "Ravena raises the silver cup at the fountain.",
+            story_beat="raise_the_cup",
+            action="raise_silver_cup",
+            action_phase="ongoing",
+            milestone="cup_raised",
+            prop_state="unseen",
+        )
+        modules = FakeConceptModules([
+            {"s1": first},
+            "summary",
+            {"s2": semantic_concept(
+                "Ravena kneels before the fountain.",
+                story_beat="kneel_before_fountain",
+                action="kneel",
+                action_phase="ongoing",
+                milestone="kneeled",
+                prop_state="unseen",
+            )},
+            "summary",
+        ])
+        ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=1).create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": "s1"}, {"segment_id": "s2"}],
+            story_idea="Ravena completes the fountain rite.",
+            global_context={},
+        )
+        generations = [call[1] for call in modules.calls if call[0] == "concepts"]
+        # First batch has no predecessor: no BOUNDARY_CONTEXT anchor.
+        self.assertNotIn("BOUNDARY_CONTEXT", generations[0])
+        # Second batch front-loads the accepted predecessor's outgoing snapshot.
+        anchor = generations[1]["BOUNDARY_CONTEXT"]["s2"]
+        self.assertEqual("s1", anchor["scene_id"])
+        self.assertEqual("raise_silver_cup", anchor["outgoing"]["action"])
+        self.assertEqual("fountain_grotto", anchor["outgoing"]["location"])
+        self.assertEqual({"ravena": "corporeal"}, anchor["outgoing"]["cast_states"])
+
+    def test_closed_vocabulary_block_is_derived_and_capped(self):
+        from feverslop.prompting.concept_prompt_batcher import _closed_vocabulary
+        global_context = {
+            "actors": [{"id": "a1"}, {"id": "a2"}, {"id": "a1"}],
+            "structured_locations": [{"id": "loc1"}, {"id": "loc2"}],
+            "props": [{"id": "prop1"}],
+            "narrative_contract": {
+                "milestone_order": ["m1", "m2"],
+                "location_order": ["loc1", "loc2"],
+                "allowed_actions": ["act1", "act2"],
+                "allowed_cast_states": ["state1"],
+            },
+        }
+        vocab = _closed_vocabulary(
+            global_context, global_context["narrative_contract"],
+        )
+        self.assertEqual(["a1", "a2"], vocab["actor_ids"])
+        self.assertEqual(["loc1", "loc2"], vocab["location_ids"])
+        self.assertEqual(["prop1"], vocab["prop_ids"])
+        self.assertEqual(["m1", "m2"], vocab["milestones"])
+        self.assertEqual(["loc1", "loc2"], vocab["locations"])
+        self.assertEqual(["act1", "act2"], vocab["allowed_actions"])
+        self.assertEqual(["state1"], vocab["allowed_cast_states"])
+
+    def test_closed_vocabulary_total_cap_bounds_the_block(self):
+        from feverslop.prompting.concept_prompt_batcher import _closed_vocabulary
+        # Far more structured ids than the total cap allows.
+        global_context = {
+            "actors": [{"id": f"a{i}"} for i in range(150)],
+            "structured_locations": [{"id": f"loc{i}"} for i in range(150)],
+            "props": [{"id": f"p{i}"} for i in range(150)],
+        }
+        vocab = _closed_vocabulary(global_context, {})
+        self.assertLessEqual(sum(len(v) for v in vocab.values()), 200)
+
+    def test_request_token_budget_guard_raises_when_exceeded(self):
+        from feverslop.prompting import concept_prompt_batcher as cpb
+        original = cpb._REQUEST_TOKEN_CEILING
+        try:
+            # Shrink the ceiling so a normal-sized request trips the guard.
+            cpb._REQUEST_TOKEN_CEILING = 1
+            modules = FakeConceptModules([{"s1": "concept"}, "summary"])
+            with self.assertRaisesRegex(ValueError, "exceeds token budget"):
+                ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=1).create_concept_prompts_batched(
+                    stage1_segments=[{"segment_id": "s1"}],
+                    story_idea="A story idea.",
+                    global_context={},
+                )
+        finally:
+            cpb._REQUEST_TOKEN_CEILING = original
+
+    def test_closed_vocabulary_present_in_batch_payload(self):
+        modules = FakeConceptModules([{"s1": "concept"}, "summary"])
+        ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=1).create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": "s1"}],
+            story_idea="A story idea.",
+            global_context={
+                "actors": [{"id": "a1"}],
+                "narrative_contract": {"milestone_order": ["m1"]},
+            },
+        )
+        payload = next(call[1] for call in modules.calls if call[0] == "concepts")
+        self.assertEqual(["a1"], payload["CLOSED_VOCABULARY"]["actor_ids"])
+        self.assertEqual(["m1"], payload["CLOSED_VOCABULARY"]["milestones"])
+
+
 if __name__ == "__main__":
     unittest.main()

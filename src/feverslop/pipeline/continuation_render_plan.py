@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any
 
 from feverslop.domain.canonical_render_plan import PromptRole, stable_scene_id
+from feverslop.domain.relay_range import RelayRange
 
 
 def materialize_continuation_entries(scene: dict[str, Any], *, group: dict[str, Any]) -> list[dict[str, Any]]:
@@ -103,8 +104,11 @@ def _project_prompt_relay(entry: dict[str, Any], source: dict[str, Any], segment
     for relay in ltx["prompt_relay"]:
         if not isinstance(relay, dict):
             continue
-        start = max(0, int(relay.get("frame_start", 0)) - offset)
-        end = min(length, int(relay.get("frame_end", 0)) - offset)
+        projected_range = RelayRange(
+            int(relay.get("frame_start", 0)), int(relay.get("frame_end", 0))
+        ).window(offset, length)
+        start = projected_range.start
+        end = projected_range.end_exclusive
         if end > start:
             item = deepcopy(relay)
             item["frame_start"] = start

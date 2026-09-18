@@ -4,6 +4,7 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
+from feverslop.domain.relay_range import RelayRange
 from feverslop.path_utils import coerce_local_path
 
 
@@ -121,11 +122,11 @@ def _merge_group(group: list[dict], fps: int) -> dict:
             new_relay = deepcopy(relay)
             new_relay["frame_start"] = cursor_frames + int(relay["frame_start"])
             new_relay["frame_end"] = cursor_frames + int(relay["frame_end"])
-            new_relay["frame_start"] = max(0, min(new_relay["frame_start"], frame_count - 1))
-            new_relay["frame_end"] = max(
-                new_relay["frame_start"] + 1,
-                min(new_relay["frame_end"], frame_count - 1),
-            )
+            clamped = RelayRange(
+                new_relay["frame_start"], new_relay["frame_end"]
+            ).clamp_to_timeline(frame_count - 1, end_floor_offset=1)
+            new_relay["frame_start"] = clamped.start
+            new_relay["frame_end"] = clamped.end_exclusive
             merged_relays.append(new_relay)
 
         cursor_frames += scene_timeline_frames
