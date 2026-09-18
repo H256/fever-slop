@@ -239,8 +239,10 @@ class ReferenceBibleGenerator:
             "workflow_profile": result.workflow_profile,
             "seed": result.seed,
             "frames": result.frames,
+            "selected_frames": result.selected_frames,
             "anchor_prompt": result.anchor_prompt,
         }
+        manifest["representation"] = reference_representation(manifest)
         if manifest_kind == "actor":
             manifest["msr_input_path"] = self._artifact_path(result.sheet_path)
         else:
@@ -314,6 +316,7 @@ class ReferenceBibleGenerator:
             "msr_input_path": self._artifact_path(msr_sheet_path if len(views) > 1 else hero_path),
             "sheet_path": self._artifact_path(sheet_path),
         }
+        manifest["representation"] = reference_representation(manifest)
         manifest_path = subject_dir / "manifest.json"
         atomic_write_json(manifest_path, manifest)
         return manifest_path
@@ -356,6 +359,7 @@ class ReferenceBibleGenerator:
             "msr_input_path": self._artifact_path(target),
             "sheet_path": self._artifact_path(target),
         }
+        manifest["representation"] = reference_representation(manifest)
         manifest_path = subject_dir / "manifest.json"
         atomic_write_json(manifest_path, manifest)
         return manifest_path
@@ -430,6 +434,7 @@ class ReferenceBibleGenerator:
             "msr_background_path": self._artifact_path(hero_path),
             "sheet_path": self._artifact_path(sheet_path),
         }
+        manifest["representation"] = reference_representation(manifest)
         manifest_path = location_dir / "manifest.json"
         atomic_write_json(manifest_path, manifest)
         return manifest_path
@@ -1241,9 +1246,35 @@ def _portable_manifest_path(
     return normalized
 
 
-def _reference_description(manifest: dict) -> dict:
+def reference_representation(manifest: dict) -> dict:
+    """Derive a reference sheet's representation metadata from its manifest.
+
+    A reference sheet -- whether a single image or a composite of multiple
+    panels/views -- always represents exactly one physical subject. This
+    metadata carries that invariant so downstream H3 prompts preserve the
+    subject's identity rather than its panel layout.
+    """
+    views = manifest.get("views") or []
+    panel_count = len(views)
+    if panel_count == 0:
+        selected = manifest.get("selected_frames")
+        panel_count = selected if isinstance(selected, int) and selected > 0 else 1
     return {
+        "sheet_kind": "single_view" if panel_count == 1 else "multiview_sheet",
+        "panel_count": panel_count,
+        "owner_identity": str(manifest.get("id") or manifest.get("name") or "").strip(),
+        "panel_semantics": "one physical subject",
+    }
+
+
+def _reference_description(manifest: dict) -> dict:
+    result: dict[str, Any] = {
         key: str(manifest.get(key, "") or "").strip()
         for key in ("id", "name", "role", "visual_description", "image_prompt")
         if str(manifest.get(key, "") or "").strip()
     }
+    representation = manifest.get("representation")
+    if not isinstance(representation, dict):
+        representation = reference_representation(manifest)
+    result["representation"] = representation
+    return result
