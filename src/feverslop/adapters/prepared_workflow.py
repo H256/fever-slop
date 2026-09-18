@@ -21,6 +21,7 @@ from feverslop.domain.scene_duration_limits import validate_render_frame_budget
 from feverslop.domain.visual_consistency import SceneConsistencyContract
 from feverslop.ports.workflow import WorkflowMaterializationRequest
 from feverslop.scene_artifacts import SceneArtifactLayout
+from feverslop.adapters.render_promotion import RenderPromotion, scene_fingerprint
 
 
 def _write_json_temp(path: Path, value: object) -> Path:
@@ -456,20 +457,24 @@ class PreparedWorkflowRenderer:
         manifest = SceneWorkflowManifest.read(manifest_path)
         first_frame_path = layout.scene_dir(manifest.scene) / "firstframe.png"
         last_frame_path = layout.scene_dir(manifest.scene) / "lastframe.png"
-        if not first_frame_path.is_file() or not last_frame_path.is_file():
-            return final_path
-        manifest = replace(
-            manifest,
-            first_frame_path=StoredArtifact.from_path(
-                first_frame_path,
-                project_dir=self.project_dir,
-            ),
-            last_frame_path=StoredArtifact.from_path(
-                last_frame_path,
-                project_dir=self.project_dir,
-            ),
+        if first_frame_path.is_file() and last_frame_path.is_file():
+            manifest = replace(
+                manifest,
+                first_frame_path=StoredArtifact.from_path(
+                    first_frame_path,
+                    project_dir=self.project_dir,
+                ),
+                last_frame_path=StoredArtifact.from_path(
+                    last_frame_path,
+                    project_dir=self.project_dir,
+                ),
+            )
+            manifest.write(manifest_path)
+        # Terminal render result: promote idempotently with a stale-run guard.
+        RenderPromotion(self.project_dir).apply(
+            manifest_path,
+            current_fingerprint=scene_fingerprint(manifest),
         )
-        manifest.write(manifest_path)
         return final_path
 
     def _prepare_for_current_server(
