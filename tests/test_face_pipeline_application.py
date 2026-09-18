@@ -12,6 +12,7 @@ from feverslop.domain.face_detection import (
     FaceDetection,
     FaceLandmarks,
     FaceProcessingPolicy,
+    FrameResult,
     RejectReason,
 )
 
@@ -221,6 +222,43 @@ class TestFacePipeline(unittest.TestCase):
         pipeline.reset()
         self.assertEqual(pipeline._next_track_id, 0)
         self.assertEqual(len(pipeline._tracks), 0)
+
+    def test_processed_frame_carries_identity_actor_id(self):
+        """The identity port's best-match actor id is exposed on FrameResult."""
+        det_with_emb = FaceDetection(
+            box=BoundingBox(x1=50.0, y1=50.0, x2=150.0, y2=150.0),
+            score=0.9,
+            landmarks=FaceLandmarks(points=[
+                (60.0, 60.0), (140.0, 60.0), (100.0, 100.0),
+                (70.0, 140.0), (130.0, 140.0),
+            ]),
+            embedding=np.random.rand(512),
+        )
+        detector = FakeDetectorPort(detections=[det_with_emb])
+        identity = FakeIdentityPort(actor_id="guitarist_01", similarity=0.9)
+        pipeline = FacePipeline(
+            detector=detector,
+            identity_port=identity,
+            mask_port=FakeMaskPort(),
+            debug_port=None,
+            policy=FaceProcessingPolicy(
+                enable_identity_check=True,
+                min_identity_score=0.70,
+                track_confirmation_frames=2,
+                debug_output=False,
+            ),
+        )
+        frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
+        pipeline.process_frame(frame, 0)  # confirm track
+        result = pipeline.process_frame(frame, 1)
+
+        self.assertTrue(result.processed)
+        self.assertEqual(result.identity_actor_id, "guitarist_01")
+
+    def test_frame_result_unchanged_defaults_actor_id_none(self):
+        frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
+        result = FrameResult.unchanged(frame, RejectReason.NO_DETECTION)
+        self.assertIsNone(result.identity_actor_id)
 
 
 if __name__ == "__main__":
