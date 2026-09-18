@@ -14,6 +14,7 @@ from feverslop.domain.h3_audio_delivery import H3AudioDelivery
 from feverslop.prompting.dspy_h3_analyzer import LocalImageAnalyzer
 from feverslop.prompting.dspy_h3_generator import VideoPromptGenerator
 from feverslop.prompting.dspy_h3_generator_core import (
+    H3ShotCountMismatchError,
     VideoPromptGenerator as CoreVideoPromptGenerator,
 )
 from feverslop.prompting.dspy_h3_models import (
@@ -44,6 +45,7 @@ from feverslop.prompting.dspy_h3_prompt_builder import (
     _normalize_relay_segments,
     _relay_vocal_binding,
     _scene_references,
+    _shot_count_hint,
     _speaker_bindings_for_compile,
     _stamp_relay_speaker_binding,
 )
@@ -531,6 +533,179 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
         self.assertEqual("blocked", result[0]["readiness"]["status"])
         self.assertFalse(result[0]["prompt_contract"]["valid"])
         self.assertNotIn("prompt_judge", result[0])
+
+    def test_shot_count_mismatch_raises_actionable_value_error(self):
+        generator = object.__new__(CoreVideoPromptGenerator)
+        generator.lm = None
+        generator.last_planner_history = []
+
+        class FakePrediction:
+            plan = H3CreativePlan(
+                creative_intent="A single wide shot of the stage.",
+                overall_soundscape="Quiet room tone.",
+                music_intent=MusicIntent.NONE,
+                shots=[H3CreativeShot(description="One wide shot of the stage.")],
+            )
+
+        generator.planner = lambda **kwargs: FakePrediction()
+
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="A performer on stage.",
+            duration_seconds=5.0,
+            relay_segments=[
+                {"start_seconds": 0, "end_seconds": 2.5},
+                {"start_seconds": 2.5, "end_seconds": 5.0},
+            ],
+        )
+
+        with self.assertRaises(H3ShotCountMismatchError) as ctx:
+            generator._plan(request, [])
+
+        # The diagnostic used to crash with AttributeError (H3CreativeShot has
+        # no shot_number), masking this ValueError from every consumer.
+        self.assertNotIsInstance(ctx.exception, AttributeError)
+        self.assertEqual(2, ctx.exception.expected)
+        self.assertEqual(1, ctx.exception.actual)
+        self.assertIn("expected 2 shot(s)", str(ctx.exception))
+        self.assertIn("got 1", str(ctx.exception))
+
+    def test_shot_count_hint_lists_windows_and_counts(self):
+        hint = _shot_count_hint(2, 1, [
+            {"start_seconds": 0, "end_seconds": 2.5},
+            {"start_seconds": 2.5, "end_seconds": 5.0},
+        ])
+        self.assertIn("exactly 2 shots, one per relay segment", hint)
+        self.assertIn("[0.00-2.50] shot 1", hint)
+        self.assertIn("[2.50-5.00] shot 2", hint)
+        self.assertIn("returned 1 shot(s)", hint)
+
+        self.assertIn("shots 1..1", _shot_count_hint(1, 0, []))
+
+    def test_shot_count_mismatch_retries_with_contract_hint(self):
+        class MismatchThenOkGenerator:
+            def __init__(self):
+                self.requests = []
+
+            def __call__(self, request):
+                self.requests.append(request)
+                if len(self.requests) == 1:
+                    raise H3ShotCountMismatchError(expected=2, actual=1)
+                return FakeGeneratedPrompt()
+
+        generator = MismatchThenOkGenerator()
+        builder = DspyH3PromptBuilder(generator, planner_retries=2)
+        request = {
+            "notes": "base notes",
+            "relay_segments": [
+                {"start_seconds": 0, "end_seconds": 2.5},
+                {"start_seconds": 2.5, "end_seconds": 5.0},
+            ],
+        }
+
+        result = builder._generate_with_retries(
+            request, segment={"segment_id": "seg-9"}, retry_diagnostics=[])
+
+        self.assertIsInstance(result, FakeGeneratedPrompt)
+        self.assertEqual(2, len(generator.requests))
+        # First attempt is an unmodified resubmission of the original request.
+        self.assertNotIn("MUST contain exactly 2 shots", generator.requests[0]["notes"])
+        self.assertEqual("base notes", generator.requests[0]["notes"])
+        # The hinted retry keeps the base notes, adds the contract, and leaves
+        # the relay structure untouched.
+        hinted_notes = generator.requests[1]["notes"]
+        self.assertTrue(hinted_notes.startswith("base notes"))
+        self.assertIn("MUST contain exactly 2 shots", hinted_notes)
+        self.assertIn("[0.00-2.50] shot 1", hinted_notes)
+        self.assertIn("[2.50-5.00] shot 2", hinted_notes)
+        self.assertIn("returned 1 shot(s)", hinted_notes)
+        self.assertEqual(request["relay_segments"], generator.requests[1]["relay_segments"])
+        # The caller's request dict is never mutated.
+        self.assertEqual("base notes", request["notes"])
+
+    def test_shot_count_mismatch_hint_is_reported(self):
+        messages = []
+
+        class Reporter:
+            def message(self, text):
+                messages.append(text)
+
+        class AlwaysMismatchGenerator:
+            def __call__(self, _request):
+                raise H3ShotCountMismatchError(expected=2, actual=3)
+
+        builder = DspyH3PromptBuilder(AlwaysMismatchGenerator(), planner_retries=1)
+        builder.set_reporter(Reporter())
+
+        with self.assertRaises(H3ShotCountMismatchError):
+            builder._generate_with_retries(
+                {
+                    "notes": "",
+                    "relay_segments": [
+                        {"start_seconds": 0, "end_seconds": 2.5},
+                        {"start_seconds": 2.5, "end_seconds": 5.0},
+                    ],
+                },
+                segment={"segment_id": "seg-9"}, retry_diagnostics=[])
+
+        self.assertEqual(2, len(messages))
+        self.assertIn("failed for seg-9", messages[0])
+        self.assertIn("retrying with shot-count contract hint (expected 2, got 3)", messages[0])
+        self.assertIn("failed for seg-9", messages[1])
+        # The final attempt has nothing to retry into.
+        self.assertNotIn("retrying", messages[1])
+
+    def test_planner_retries_report_each_attempt_failure_cause(self):
+        messages = []
+
+        class FailingGenerator:
+            def __call__(self, _request):
+                raise ValueError("planner returned malformed plan: expected 2 shots, got 1")
+
+        class Reporter:
+            def message(self, text):
+                messages.append(text)
+
+        builder = DspyH3PromptBuilder(FailingGenerator(), planner_retries=1)
+        builder.set_reporter(Reporter())
+
+        with self.assertRaises(ValueError):
+            builder._generate_with_retries(
+                {"user_prompt": "x"},
+                segment={"segment_id": "seg-9"},
+                retry_diagnostics=[],
+            )
+
+        self.assertEqual(2, len(messages))
+        self.assertIn("attempt 1/2 failed for seg-9", messages[0])
+        self.assertIn("planner returned malformed plan: expected 2 shots, got 1", messages[0])
+        self.assertIn("attempt 2/2 failed for seg-9", messages[1])
+
+    def test_blocked_scene_warning_includes_planner_failure_cause(self):
+        class FailingGenerator:
+            def __call__(self, _request):
+                raise ValueError("planner returned malformed plan: expected 2 shots, got 1")
+
+        class Store:
+            def write_json(self, _path, payload):
+                return payload
+
+        warnings = []
+        result = DspyH3PromptBuilder(FailingGenerator(), allow_fallback=False, planner_retries=1).build_all_h3_prompts(
+            stage1_segments=[{
+                "segment_id": "seg-1",
+                "h3_prompt_override": "free-form MiniMax debugging prompt",
+            }],
+            concept_prompts={}, scene_details={}, global_context={},
+            output_json_path="prompts.json", artifact_store=Store(),
+            warning_callback=lambda text, title=None: warnings.append(text),
+        )
+
+        self.assertEqual("blocked", result[0]["readiness"]["status"])
+        self.assertTrue(result[0].get("dspy_error_root"))
+        self.assertEqual(1, len(warnings))
+        self.assertIn("Planner failure", warnings[0])
+        self.assertIn("planner returned malformed plan: expected 2 shots, got 1", warnings[0])
 
     def test_preserves_valid_prompt_when_judge_marks_it_bad(self):
         from types import SimpleNamespace

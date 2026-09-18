@@ -49,6 +49,23 @@ logger = logging.getLogger(__name__)
 _H3_JUDGE_MAX_TOKENS = H3_JUDGE_MAX_TOKENS
 
 
+class H3ShotCountMismatchError(ValueError):
+    """The planner's shot count contradicts the authoritative relay structure.
+
+    Carries the expected and actual counts so the retry loop can feed the
+    contract back to the planner as a hint instead of resending an identical
+    request (#1242).
+    """
+
+    def __init__(self, expected: int, actual: int):
+        self.expected = int(expected)
+        self.actual = int(actual)
+        super().__init__(
+            "creative plan shot count does not match authoritative scene "
+            f"structure: expected {self.expected} shot(s), got {self.actual}",
+        )
+
+
 def _subjects_from_references(refs: list[ResolvedReference]) -> list[SubjectDefinition]:
     subjects = []
     used_names: set[str] = set()
@@ -539,6 +556,9 @@ class VideoPromptGenerator:
         # model's shot count.
         authoritative_count = len(request.relay_segments) or 1
         if len(authored_shots) != authoritative_count:
+            # H3CreativeShot carries no shot_number; the plan owns numbering.
+            # Format with the index or the diagnostic itself crashes and masks
+            # the real mismatch below.
             logger.error(
                 "H3 planner shot count mismatch: "
                 "expected=%d got=%d relay_segments=%d "
@@ -548,13 +568,11 @@ class VideoPromptGenerator:
                 len(request.relay_segments),
                 str(creative.creative_intent)[:200],
                 "; ".join(
-                    f"shot#{s.shot_number}: {str(s.description)[:120]}"
-                    for s in authored_shots
+                    f"shot#{index}: {str(shot.description)[:120]}"
+                    for index, shot in enumerate(authored_shots, start=1)
                 ),
             )
-            raise ValueError(
-                "creative plan shot count does not match authoritative scene structure",
-            )
+            raise H3ShotCountMismatchError(authoritative_count, len(authored_shots))
         windows = _authoritative_shot_windows(request, len(authored_shots))
         shots = []
         for index, authored in enumerate(authored_shots):
