@@ -39,6 +39,7 @@ from feverslop.ports.rendering import (
 from feverslop.utils.io import atomic_write_json, file_lock
 
 INGREDIENTS_SHEET_LAYOUT_VERSION = "scene-reference-grid/v1"
+INGREDIENTS_SHEET_VALIDATION_VERSION = "sheet-validation/v1"
 _INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS = 30.0
 _MAX_INGREDIENTS_SOURCE_BYTES = 64 * 1024 * 1024
 
@@ -143,6 +144,7 @@ class ReferenceBibleGenerator:
         sequence_backend: Any | None = None,
         sequence_planner: Any | None = None,
         visual_style: str = "",
+        environment_visual_style: str = "",
         on_sequence_phase: Callable[[dict[str, Any]], None] | None = None,
     ):
         self.backend = backend
@@ -165,6 +167,7 @@ class ReferenceBibleGenerator:
         self.sequence_backend = sequence_backend
         self.sequence_planner = sequence_planner
         self.visual_style = str(visual_style or "").strip()
+        self.environment_visual_style = str(environment_visual_style or "").strip()
         self.on_sequence_phase = on_sequence_phase
         if self.sequence_planner is not None and hasattr(self.sequence_planner, "on_event"):
             self.sequence_planner.on_event = self._report_planner_event
@@ -213,6 +216,7 @@ class ReferenceBibleGenerator:
                 description=asset.visual_description or asset.name,
                 image_prompt=asset.image_prompt,
                 visual_style=self.visual_style,
+                environment_visual_style=self.environment_visual_style,
                 asset_context=asdict(asset),
                 output_dir=self.output_dir,
                 reference_image_size=reference_image_size,
@@ -236,8 +240,10 @@ class ReferenceBibleGenerator:
             "workflow_profile": result.workflow_profile,
             "seed": result.seed,
             "frames": result.frames,
+            "selected_frames": result.selected_frames,
             "anchor_prompt": result.anchor_prompt,
         }
+        manifest["representation"] = reference_representation(manifest)
         if manifest_kind == "actor":
             manifest["msr_input_path"] = self._artifact_path(result.sheet_path)
         else:
@@ -311,6 +317,7 @@ class ReferenceBibleGenerator:
             "msr_input_path": self._artifact_path(msr_sheet_path if len(views) > 1 else hero_path),
             "sheet_path": self._artifact_path(sheet_path),
         }
+        manifest["representation"] = reference_representation(manifest)
         manifest_path = subject_dir / "manifest.json"
         atomic_write_json(manifest_path, manifest)
         return manifest_path
@@ -353,6 +360,7 @@ class ReferenceBibleGenerator:
             "msr_input_path": self._artifact_path(target),
             "sheet_path": self._artifact_path(target),
         }
+        manifest["representation"] = reference_representation(manifest)
         manifest_path = subject_dir / "manifest.json"
         atomic_write_json(manifest_path, manifest)
         return manifest_path
@@ -427,6 +435,7 @@ class ReferenceBibleGenerator:
             "msr_background_path": self._artifact_path(hero_path),
             "sheet_path": self._artifact_path(sheet_path),
         }
+        manifest["representation"] = reference_representation(manifest)
         manifest_path = location_dir / "manifest.json"
         atomic_write_json(manifest_path, manifest)
         return manifest_path
@@ -822,6 +831,7 @@ def compose_cached_ingredients_sheet(
         with file_lock(lock_path, timeout=_INGREDIENTS_CACHE_LOCK_TIMEOUT_SECONDS, retry_on_error="all"):
             if _valid_cached_ingredients_sheet(output_path, size=size):
                 return output_path, signature
+            repaired = output_path.is_file()
             with NamedTemporaryFile(
                 suffix=".png",
                 dir=output_path.parent,
@@ -838,6 +848,16 @@ def compose_cached_ingredients_sheet(
                         size=size,
                     )
                 os.replace(temporary, output_path)
+                _write_sheet_validation_record(
+                    output_path,
+                    signature=signature,
+                    size=size,
+                    source_sha256s=[
+                        str(reference["sha256"]) for reference in references
+                    ],
+                    layout_version=layout_version,
+                    repaired=repaired,
+                )
             finally:
                 temporary.unlink(missing_ok=True)
     except TimeoutError as exc:
@@ -860,6 +880,51 @@ def _valid_cached_ingredients_sheet(
                 return False
             image.verify()
     except (OSError, SyntaxError, ValueError):
+        return False
+    return _valid_sheet_validation_record(output_path)
+
+
+def _sheet_validation_record_path(output_path: Path) -> Path:
+    return output_path.with_name(output_path.name + ".validation.json")
+
+
+def _write_sheet_validation_record(
+    output_path: Path,
+    *,
+    signature: str,
+    size: tuple[int, int],
+    source_sha256s: list[str],
+    layout_version: str,
+    repaired: bool = False,
+) -> None:
+    record = {
+        "schema": "ingredients-sheet-validation",
+        "validation_version": INGREDIENTS_SHEET_VALIDATION_VERSION,
+        "status": "valid",
+        "signature": signature,
+        "layout_version": layout_version,
+        "size": [int(size[0]), int(size[1])],
+        "source_sha256s": list(source_sha256s),
+        "repair": "recomposed" if repaired else "none",
+    }
+    atomic_write_json(_sheet_validation_record_path(output_path), record)
+
+
+def _valid_sheet_validation_record(output_path: Path) -> bool:
+    record_path = _sheet_validation_record_path(output_path)
+    if not record_path.is_file():
+        return False
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(record, dict):
+        return False
+    if record.get("validation_version") != INGREDIENTS_SHEET_VALIDATION_VERSION:
+        return False
+    if record.get("status") != "valid":
+        return False
+    if not isinstance(record.get("source_sha256s"), list):
         return False
     return True
 
@@ -1238,9 +1303,35 @@ def _portable_manifest_path(
     return normalized
 
 
-def _reference_description(manifest: dict) -> dict:
+def reference_representation(manifest: dict) -> dict:
+    """Derive a reference sheet's representation metadata from its manifest.
+
+    A reference sheet -- whether a single image or a composite of multiple
+    panels/views -- always represents exactly one physical subject. This
+    metadata carries that invariant so downstream H3 prompts preserve the
+    subject's identity rather than its panel layout.
+    """
+    views = manifest.get("views") or []
+    panel_count = len(views)
+    if panel_count == 0:
+        selected = manifest.get("selected_frames")
+        panel_count = selected if isinstance(selected, int) and selected > 0 else 1
     return {
+        "sheet_kind": "single_view" if panel_count == 1 else "multiview_sheet",
+        "panel_count": panel_count,
+        "owner_identity": str(manifest.get("id") or manifest.get("name") or "").strip(),
+        "panel_semantics": "one physical subject",
+    }
+
+
+def _reference_description(manifest: dict) -> dict:
+    result: dict[str, Any] = {
         key: str(manifest.get(key, "") or "").strip()
         for key in ("id", "name", "role", "visual_description", "image_prompt")
         if str(manifest.get(key, "") or "").strip()
     }
+    representation = manifest.get("representation")
+    if not isinstance(representation, dict):
+        representation = reference_representation(manifest)
+    result["representation"] = representation
+    return result

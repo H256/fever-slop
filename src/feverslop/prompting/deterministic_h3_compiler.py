@@ -298,15 +298,15 @@ class DeterministicH3Compiler:
                             f"speaker ID {speaker_id} is already bound to {conflicting_subject}",
                         )
                     speaker_ids[subject_label] = speaker_id
-            subject_lines = [
-                _render_subject_definition(subject)
-                for subject in plan.subjects
-            ]
             metadata_by_label = {
                 str(reference.get("label")): reference
                 for reference in reference_metadata or ()
                 if str(reference.get("label") or "").strip()
             }
+            subject_lines = [
+                _render_subject_definition(subject, metadata_by_label)
+                for subject in plan.subjects
+            ]
             represented = {
                 *[label for subject in plan.subjects for label in subject.source_references],
                 *[usage.reference_label for usage in plan.reference_usage],
@@ -586,10 +586,19 @@ def _shot_reference_labels(shot: Any, plan: ResolvedPromptPlan) -> tuple[str, ..
     return tuple(dict.fromkeys(subject_labels))
 
 
-def _render_subject_definition(subject: Any) -> str:
+def _render_subject_definition(
+    subject: Any,
+    metadata_by_label: Mapping[str, Mapping[str, Any]] | None = None,
+) -> str:
     description = _lower_initial(_clean_subject_description(subject))
     sources = " and ".join(subject.source_references)
-    return f"{subject.label} is {description} in {sources}." if sources else f"{subject.label} is {description}."
+    if sources:
+        metadata = (metadata_by_label or {}).get(subject.source_references[0], {})
+        return (
+            f"{subject.label} is {description} in {sources}."
+            + _representation_clause(subject.source_references[0], metadata)
+        )
+    return f"{subject.label} is {description}."
 
 
 def _clean_subject_description(subject: Any) -> str:
@@ -770,7 +779,37 @@ def _render_prepared_reference_definition(label: str, metadata: Mapping[str, Any
         return f"{label} is an audio input; {relationship}."
     role = str(metadata.get("role") or "reference input").replace("_", " ")
     description = str(metadata.get("description") or "its supplied visual characteristics").strip().rstrip(".")
-    return f"{label} is the {role} reference, defining {description}."
+    base = f"{label} is the {role} reference, defining {description}."
+    return base + _representation_clause(label, metadata)
+
+
+def _representation_clause(label: str, metadata: Mapping[str, Any]) -> str:
+    """Return a clause that pins a reference sheet to one physical subject.
+
+    A multiview sheet is a single identity shown across several panels, not
+    several distinct subjects; the output must preserve the subject's
+    appearance rather than the sheet's panel composition.
+    """
+    representation = metadata.get("representation")
+    if not isinstance(representation, Mapping):
+        return ""
+    sheet_kind = str(representation.get("sheet_kind") or "").strip()
+    if sheet_kind != "multiview_sheet":
+        return ""
+    panel_count = representation.get("panel_count")
+    if isinstance(panel_count, int):
+        panels = panel_count
+    else:
+        try:
+            panels = int(str(panel_count).strip())
+        except ValueError:
+            panels = 0
+    if panels <= 1:
+        return ""
+    return (
+        f" {label} is a single {panels}-panel sheet of one subject shown from "
+        f"different angles; preserve the subject's appearance, not the panel layout."
+    )
 
 
 def _summary_prefix(

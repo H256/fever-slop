@@ -12,6 +12,7 @@ from feverslop.application.reference_bible import (
     ReferenceSubject,
     compose_msr_reference_sheet,
     compose_reference_sheet,
+    reference_representation,
 )
 
 
@@ -141,6 +142,64 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual("output/references/actors/singer/sheet.png", manifest["sheet_path"])
             self.assertEqual("output/references/actors/singer/views/hero.png", manifest["views"][0]["path"])
             self.assertEqual(["hero", "front", "left", "right", "closeup"], [view["name"] for view in manifest["views"]])
+
+    def test_subject_manifest_carries_representation_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = Path(temp_dir) / "project"
+            output_dir = project_dir / "output" / "references"
+            generator = ReferenceBibleGenerator(backend=FakeImageBackend(), output_dir=output_dir)
+
+            manifest_path = generator.generate_subject_bible(
+                ReferenceSubject(
+                    id="singer",
+                    name="Mara",
+                    role="lead",
+                    visual_description="silver hair",
+                    image_prompt="portrait of Mara",
+                ),
+            )
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            representation = manifest["representation"]
+            # Five views compose into a multiview sheet that still is one subject.
+            self.assertEqual("multiview_sheet", representation["sheet_kind"])
+            self.assertEqual(5, representation["panel_count"])
+            self.assertEqual("singer", representation["owner_identity"])
+            self.assertEqual("one physical subject", representation["panel_semantics"])
+
+    def test_single_view_manifest_is_single_view_representation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_dir = Path(temp_dir) / "project"
+            output_dir = project_dir / "output" / "references"
+            generator = ReferenceBibleGenerator(
+                backend=FakeImageBackend(),
+                output_dir=output_dir,
+                actor_view_names=("hero",),
+            )
+
+            manifest_path = generator.generate_subject_bible(
+                ReferenceSubject(
+                    id="solo",
+                    name="Mara",
+                    role="lead",
+                    visual_description="silver hair",
+                    image_prompt="portrait of Mara",
+                ),
+            )
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual("single_view", manifest["representation"]["sheet_kind"])
+            self.assertEqual(1, manifest["representation"]["panel_count"])
+
+    def test_reference_representation_falls_back_for_sequence_sheets(self):
+        # Sequence manifests carry no 'views'; panel count derives from selected_frames.
+        self.assertEqual(
+            {"sheet_kind": "multiview_sheet", "panel_count": 4,
+             "owner_identity": "singer", "panel_semantics": "one physical subject"},
+            reference_representation({"id": "singer", "selected_frames": 4}),
+        )
+        # No views and no selected_frames defaults to a single panel.
+        self.assertEqual("single_view", reference_representation({"id": "singer"})["sheet_kind"])
 
     def test_generator_uses_hero_as_reference_for_edit_views(self):
         with tempfile.TemporaryDirectory() as temp_dir:

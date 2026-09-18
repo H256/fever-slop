@@ -116,7 +116,7 @@ def _reference(
     name: str,
     description: str | None = None,
     role: str = "general",
-) -> dict[str, str]:
+) -> dict[str, Any]:
     source_text = str(source).replace("\\", "/")
     return {
         "label": label,
@@ -416,11 +416,11 @@ def _scene_references(
         _reference_source_key(source, reference_root): str(description)
         for source, description in audio_tags.items()
     }
-    result: list[dict[str, str]] = []
+    result: list[dict[str, Any]] = []
     images: list[Path] = []
     seen: dict[str, set[str]] = {"picture": set(), "video": set(), "audio": set()}
 
-    def add_reference(reference: dict[str, str], image_path: Path | None = None) -> None:
+    def add_reference(reference: dict[str, Any], image_path: Path | None = None) -> None:
         source = reference["source"]
         kind = reference["kind"]
         source_key = _reference_source_key(source, reference_root)
@@ -470,6 +470,9 @@ def _scene_references(
             role="subject",
         )
         actor_reference["id"] = actor_id
+        representation = metadata.get("representation")
+        if isinstance(representation, dict):
+            actor_reference["representation"] = representation
         add_reference(actor_reference, image_path)
 
     location = references.get("location_sheet_path") or references.get("location_msr_path")
@@ -477,7 +480,7 @@ def _scene_references(
         path = Path(location)
         image_path = path if path.is_absolute() or reference_root is None else reference_root / path
         location_description = references.get("location_reference_description") or {}
-        add_reference(_reference(
+        location_reference = _reference(
             label=f"<Picture {len(result) + 1}>",
             source=path,
             kind="picture",
@@ -495,7 +498,11 @@ def _scene_references(
                 or ("" if image_path.is_file() else None)
             ),
             role="environment",
-        ), image_path)
+        )
+        representation = location_description.get("representation")
+        if isinstance(representation, dict):
+            location_reference["representation"] = representation
+        add_reference(location_reference, image_path)
 
     for index, path_value in enumerate(references.get("reference_image_paths") or []):
         path = Path(path_value)
