@@ -16,6 +16,7 @@ from feverslop.domain.visual_consistency import (
     can_handoff,
 )
 from feverslop.application.visual_consistency import actor_look_id, location_look_id
+from feverslop.domain.ensemble import EnsembleConfig, validate_ensemble_cast
 from feverslop.ports.visual_consistency import ReferenceManifestSnapshot
 
 
@@ -81,6 +82,7 @@ def preflight_visual_consistency(
     subject_mode: str = "multi",
     max_scene_actors: int = 4,
     supports_continuous_transitions: bool = True,
+    ensembles: tuple[EnsembleConfig, ...] = (),
 ) -> VisualConsistencyPreflightResult:
     policy = PreflightMode.parse(preflight_mode)
     if policy is PreflightMode.OFF:
@@ -144,6 +146,15 @@ def preflight_visual_consistency(
         if missing_bindings:
             previous_contract = None
             continue
+        issues.extend(
+            _check_ensemble_bindings(
+                scene,
+                scene_number,
+                actor_ids,
+                ensembles,
+                policy,
+            ),
+        )
         contract = build_scene_contract(
             scene,
             snapshot,
@@ -365,6 +376,52 @@ def _mode_issues(
                 ),
             )
     return issues
+
+
+def _check_ensemble_bindings(
+    scene: Mapping[str, Any],
+    scene_number: int,
+    actor_ids: tuple[str, ...],
+    ensembles: tuple[EnsembleConfig, ...],
+    policy: PreflightMode,
+) -> list[ConsistencyIssue]:
+    """Enforce all-members-together for ensembles; never auto-add members."""
+    issues: list[ConsistencyIssue] = []
+    scene_type = _scene_type(scene)
+    for ensemble in ensembles:
+        missing = validate_ensemble_cast(
+            ensemble,
+            scene_actor_ids=actor_ids,
+            scene_type=scene_type,
+        )
+        if not missing:
+            continue
+        issues.append(
+            _issue(
+                "ensemble_incomplete",
+                scene_number,
+                (
+                    f"Scene {scene_number} is a {scene_type or 'required'} scene "
+                    f"for ensemble {ensemble.id!r} but is missing members "
+                    f"{', '.join(missing)}; missing members are not added "
+                    "automatically"
+                ),
+                policy,
+            ),
+        )
+    return issues
+
+
+def _scene_type(scene: Mapping[str, Any]) -> str:
+    metadata = scene.get("metadata")
+    if isinstance(metadata, Mapping):
+        raw = metadata.get("type")
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip().lower()
+    raw = scene.get("type")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip().lower()
+    return ""
 
 
 def _malformed_reference_bindings(scene: Mapping[str, Any]) -> str:

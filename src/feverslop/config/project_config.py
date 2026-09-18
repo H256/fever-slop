@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.config.video_settings import VideoSettings
+from feverslop.domain.ensemble import EnsembleConfig, load_ensembles
 from feverslop.path_utils import coerce_local_path
 
 SCENE_PROMPT_WORD_COUNT_MIN = 40
@@ -429,6 +430,7 @@ class ProjectConfig:
     global_props: tuple[GlobalAssetConfig, ...] = field(default_factory=tuple)
     subject_mode: str = "multi"
     max_scene_actors: int = 4
+    ensembles: tuple[EnsembleConfig, ...] = field(default_factory=tuple)
     narrative_contract: dict[str, Any] = field(default_factory=dict)
 
     steering: SteeringConfig = field(default_factory=SteeringConfig)
@@ -464,6 +466,7 @@ class ProjectConfig:
         loras_raw = raw.get("loras")
         actors_raw = _ensure_list(raw.get("actors", []), "actors")
         cast_policy = _load_cast_policy(raw.get("cast_policy"))
+        ensembles = load_ensembles(raw.get("ensembles"))
         locations_raw = _ensure_list(raw.get("locations", []), "locations")
         audio_refs_raw = _ensure_dict(raw.get("minimax_h3_audio_refs", {}), "minimax_h3_audio_refs")
         global_raw = _ensure_dict(raw.get("global_assets", {}), "global_assets")
@@ -682,6 +685,7 @@ class ProjectConfig:
             global_props=_load_global_assets(raw.get("global_props", global_raw.get("props")), "global_props"),
             subject_mode=subject_mode,
             max_scene_actors=max_scene_actors,
+            ensembles=ensembles,
             narrative_contract=narrative_contract,
 
             steering=SteeringConfig(

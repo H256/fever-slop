@@ -108,6 +108,7 @@ def run(argv: list[str] | None = None) -> int:
                     and selected_profile is not None
                     and selected_profile.supports_start_frame
                 ),
+                ensembles=config.ensembles if config else (),
             )
             artifact_issues = validate_project_scene_artifacts(
                 project,

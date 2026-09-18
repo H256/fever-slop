@@ -640,6 +640,7 @@ def _run_visual_consistency_preflight(
             and selected_profile is not None
             and selected_profile.supports_start_frame
         ),
+        ensembles=project_config.ensembles,
     )
     artifact_issues = validate_project_scene_artifacts(
         state.context.project_config_dir,
