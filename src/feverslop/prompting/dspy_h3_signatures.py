@@ -25,37 +25,46 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         analysis: ImageAnalysis = dspy_module.OutputField()
 
     class BuildCreativePromptPlan(dspy_module.Signature):
-        """Enrich the existing scene plan with creative MiniMax H3 shot prose only.
+        """Enrich the supplied scene plan with creative MiniMax H3 shot prose only.
 
         Preserve the supplied scene concept, camera motion, character motion, spatial
         relations, subject directives, relay timing, and continuity. Add concrete visual
-        detail only where those inputs leave room for it.
+        detail only where those inputs leave room. Do not define subjects, assign
+        references, write retention analysis, or emit backend labels, shot labels, or
+        formatted timestamps; the application owns reference mappings and final
+        mode-specific prompt assembly.
 
-        Do not define subjects, assign references, write retention analysis, create final
-        section headers, or emit backend labels, shot labels, or formatted timestamps. The
-        application owns all reference mappings and final mode-specific prompt assembly.
-        If relay entries have performance_phase=true, return exactly one continuous
-        creative camera shot for the scene. These entries specify vocal timing within
-        the shot and must not create camera cuts. Otherwise,
-        return one creative shot for each supplied relay segment, in the same order. When
-        no relay segments are supplied, return exactly one creative shot. Never choose
-        shot numbers, timestamps, durations, or hard-cut flags; the application derives them
-        from the authoritative scene and relay timeline.
+        Shot count: if any relay entry has performance_phase=true, return exactly one
+        continuous creative camera shot for the scene (those entries are vocal timing
+        within the shot, not camera cuts). Otherwise return one creative shot per
+        supplied relay segment, in the same order. When no relay segments are supplied,
+        return exactly one creative shot. Never choose shot numbers, timestamps,
+        durations, or hard-cut flags; the application derives them.
 
-        `description` is the sole renderable creative prose for each shot. It must be one
-        complete, grammatical description containing the intended action, performance,
-        camera, environment, and transition details. Do not distribute the same scene
-        information across auxiliary fields: the deterministic compiler renders only
-        `description` for newly generated shots. The application owns the style opening
-        and places it deterministically in the guide-defined detailed_description section;
-        do not put subjects, references, or scene staging into a separate style_opening.
-        Normally target 350-500 English words across the combined shot descriptions,
-        scaled to the scene's actual information load.
-        This is a writing target; the downstream validator judges structure and the final
-        judge evaluates whether the description is sufficiently detailed.
+        `description` is the sole renderable creative prose: one complete, grammatical
+        description containing the intended action, performance, camera, environment, and
+        transition. Leave every auxiliary field (visible_action, performance,
+        camera_behavior, environmental_motion, transition_intent) null; put all detail in
+        `description` -- the deterministic compiler renders only `description` for newly
+        generated shots. The application owns the style opening and places it in the
+        guide-defined detailed_description section. Target 350-500 English words across
+        the combined shot descriptions, scaled to the scene's information load.
 
         `requested_music_intent` is authoritative. When it is `none`, return
         `music_intent=none` and omit `non_diegetic_music`.
+
+        Example (one relay segment, requested_music_intent=none):
+        relay_segments=[{"start_seconds":0,"end_seconds":8,
+        "action":"the singer steps to the microphone and begins"}]
+        -> {"creative_intent":"a single continuous performance shot",
+        "style_opening":null,
+        "overall_soundscape":"close, intimate vocal with a soft room tone",
+        "music_intent":"none","non_diegetic_music":null,
+        "shots":[{"description":"One continuous shot: the singer steps to the
+        microphone, leans in, and begins to sing; the camera slowly pushes in from a
+        medium frame to a close-up, holding on the face as the first phrase lands.",
+        "prose_owner":"description","visible_action":null,"performance":null,
+        "camera_behavior":null,"environmental_motion":null,"transition_intent":null}]}
         """
 
         mode: str = dspy_module.InputField()
@@ -122,8 +131,10 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         """Render a valid MiniMax H3 full-reference prompt from the supplied resolved plan.
 
         The Full-Reference guide is authoritative for output syntax, label semantics,
-        section structure, dialogue formatting, retention markers, and audio handling.
-        The resolved plan is authoritative for what must happen in the generated video.
+        section structure, dialogue formatting, retention markers, audio handling, and the
+        consolidated format rules in its "Hard Rules" section. The resolved plan is
+        authoritative for what must happen in the generated video. Follow the guide's
+        hard rules for the reference labels, sections, retention, and dialogue format.
 
         Your task is to compile the plan into explicit, generation-ready H3 prose without
         losing constraints. Do not reinterpret or simplify concrete requirements merely

@@ -344,6 +344,26 @@ Soft indoor coffee-shop room tone continues throughout the scene.
 
 non_diegetic_music:
 N/A
-```
+ ```
 
 </details>
+
+## 8. Hard Rules
+
+These rules apply to the full-reference rewrite output as a whole:
+
+- Produce all six sections in the order defined in Section 1, using the exact headers and the `field: value` syntax.
+- Use only reference labels that are present in the supplied reference list; never invent a label.
+- Keep the meaning of every reference label consistent across all six sections.
+- Assign one label to each piece of referenced content that must be tracked separately; do not reuse a label for unrelated content.
+- Keep `subject_definitions` to one line per referenced item.
+- Do not create a standalone `<Picture N>` entry for an image used only to define a character, scene, costume, or style; cite the image source inside the corresponding `<Subject N>` definition.
+- Every reference label used in `subject_definitions` must appear in at least one of `summary`, `retention_analysis`, or `detailed_description`.
+- Use only the relationship markers defined in Section 4; do not invent new markers.
+- Choose each relationship marker only within the reference role already defined for that label; do not treat newly added actions, backgrounds, or plot events in the target video as losses of reference fidelity.
+- When a `<Video N>` or `<Audio N>` label is used, cite it naturally where its source state, structure, or continuation relationship applies; do not omit it from the sections where it is active.
+- Keep the style opening to one or two English sentences before `[Shot 1]`; do not put subjects, references, or scene staging into it.
+- Use `MM:SS.mmm` for all timecodes in `detailed_description`.
+- Keep every shot in `detailed_description` in target-video playback order; do not reorder shots.
+- Keep the visual reference label and the speaker ID together when a referenced subject physically speaks.
+- Keep the original language of dialogue, lyrics, and visible text inside `<d>`.

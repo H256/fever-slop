@@ -195,6 +195,86 @@ class AppConfigTests(unittest.TestCase):
 
         self.assertEqual(0.25, config.llm.dspy_temperature)
 
+    def test_task_temperatures_default_to_feasible_values(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text('{"llm": {}}', encoding="utf-8")
+
+            config = AppConfig.load(config_path)
+
+        self.assertEqual(
+            {"planner": 0.6, "renderer": 0.6, "judge": 0.2, "analyzer": 0.2},
+            config.llm.task_temperatures,
+        )
+
+    def test_loads_task_temperatures_overrides(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"task_temperatures": {"judge": 0.0}}}',
+                encoding="utf-8",
+            )
+
+            config = AppConfig.load(config_path)
+
+        self.assertEqual(0.0, config.llm.task_temperatures["judge"])
+        self.assertEqual(0.6, config.llm.task_temperatures["planner"])
+
+    def test_rejects_non_dict_task_temperatures(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"task_temperatures": "not-a-dict"}}',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "llm.task_temperatures must be an object"):
+                AppConfig.load(config_path)
+
+    def test_rejects_invalid_task_temperatures_values(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"task_temperatures": {"judge": "high"}}}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "llm.task_temperatures.judge must be a number"):
+                AppConfig.load(config_path)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"task_temperatures": {"judge": -0.1}}}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "llm.task_temperatures.judge must be >= 0"):
+                AppConfig.load(config_path)
+
+    def test_warns_on_unrecognized_task_temperatures_names(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                '{"llm": {"task_temperatures": {"planer": 0.9}}}',
+                encoding="utf-8",
+            )
+            with self.assertLogs("feverslop.config.app_config", level="WARNING") as logs:
+                config = AppConfig.load(config_path)
+
+        # The unknown override is stored but warned about; known defaults remain.
+        self.assertIn("planer", config.llm.task_temperatures)
+        self.assertEqual(0.6, config.llm.task_temperatures["planner"])
+        self.assertTrue(any("planer" in message for message in logs.output))
+
     def test_dspy_cache_defaults_to_false(self):
         from feverslop.config.app_config import AppConfig
 

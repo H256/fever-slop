@@ -26,6 +26,7 @@ class OpenAICompatibleLLMClient(LocalOpenAIClient):
             "prompt_judge_enabled": llm.prompt_judge_enabled,
             "prompt_planner_max_tokens": llm.prompt_planner_max_tokens,
             "chat_template_kwargs": llm.chat_template_kwargs,
+            "task_temperatures": llm.task_temperatures,
         }
         params.update(overrides)
         return cls(**params)

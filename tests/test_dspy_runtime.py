@@ -112,6 +112,48 @@ class DspyRuntimeTests(unittest.TestCase):
         self.assertEqual("lm", runtime.make_lm(LLM()))
         self.assertNotIn("chat_template_kwargs", calls[0][1])
 
+    def test_make_lm_resolves_configured_task_temperature(self):
+        calls = []
+
+        class LLM:
+            model = "gemma4-26b-a4b"
+            max_tokens = 2048
+            dspy_temperature = 0.2
+            task_temperatures = {"judge": 0.0}
+
+        runtime = DspyRuntime(
+            signatures=H3SignatureBundle(object, object, object, object),
+            lm_factory=lambda *args, **kwargs: calls.append((args, kwargs)) or "lm",
+            predict_factory=lambda signature: signature,
+            context_factory=lambda **kwargs: nullcontext(kwargs),
+        )
+
+        self.assertEqual("lm", runtime.make_lm(LLM(), task="judge"))
+        self.assertEqual(0.0, calls[0][1]["temperature"])
+        # Unknown task falls back to the global dspy_temperature.
+        self.assertEqual("lm", runtime.make_lm(LLM(), task="unknown"))
+        self.assertEqual(0.2, calls[1][1]["temperature"])
+
+    def test_make_lm_falls_back_to_default_task_temperatures(self):
+        from feverslop.prompting.dspy_runtime import DEFAULT_TASK_TEMPERATURES
+
+        calls = []
+
+        class LLM:
+            model = "gemma4-26b-a4b"
+            max_tokens = 2048
+            dspy_temperature = 0.2
+
+        runtime = DspyRuntime(
+            signatures=H3SignatureBundle(object, object, object, object),
+            lm_factory=lambda *args, **kwargs: calls.append((args, kwargs)) or "lm",
+            predict_factory=lambda signature: signature,
+            context_factory=lambda **kwargs: nullcontext(kwargs),
+        )
+
+        self.assertEqual("lm", runtime.make_lm(LLM(), task="planner"))
+        self.assertEqual(DEFAULT_TASK_TEMPERATURES["planner"], calls[0][1]["temperature"])
+
     def test_generator_accepts_fake_runtime_and_loads_h3_guides_without_live_endpoint(self):
         class FakePredict:
             def __init__(self, signature):

@@ -138,6 +138,7 @@ class LocalOpenAIClient:
         prompt_judge_enabled: bool = True,
         prompt_planner_max_tokens: int = 0,
         chat_template_kwargs: dict[str, Any] | None = None,
+        task_temperatures: dict[str, float] | None = None,
         metrics: APIMetrics | None = None,
         auth_headers: dict[str, str] | None = None,
         min_request_interval_seconds: float = 0.0,
@@ -171,6 +172,7 @@ class LocalOpenAIClient:
         self.prompt_judge_enabled = bool(prompt_judge_enabled)
         self.prompt_planner_max_tokens = int(prompt_planner_max_tokens)
         self.chat_template_kwargs = dict(chat_template_kwargs or {})
+        self.task_temperatures = dict(task_temperatures or {})
         self.request_rate_limiter = RequestRateLimiter(min_request_interval_seconds)
         self.llm_limiter = get_shared_llm_concurrency_limiter(self.max_concurrent_requests)
         self.metrics = metrics or default_api_metrics

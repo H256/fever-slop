@@ -19,6 +19,16 @@ from feverslop.adapters.api_observability import (
 
 logger = logging.getLogger(__name__)
 
+# Feasible per-task DSPy temperatures. Creative tasks (planner, renderer)
+# default higher for variety; structured tasks (judge, analyzer) default
+# lower for determinism. Operators override via llm.task_temperatures.
+DEFAULT_TASK_TEMPERATURES: dict[str, float] = {
+    "planner": 0.6,
+    "renderer": 0.6,
+    "judge": 0.2,
+    "analyzer": 0.2,
+}
+
 
 def _usage_value(usage, name: str) -> int:
     value = usage.get(name) if isinstance(usage, dict) else getattr(usage, name, 0)
@@ -114,7 +124,13 @@ class DspyRuntime:
     def context(self, *, lm: Any) -> AbstractContextManager[Any]:
         return self.context_factory(lm=lm)
 
-    def make_lm(self, llm: Any, *, max_tokens: int | None = None) -> Any:
+    def make_lm(
+        self,
+        llm: Any,
+        *,
+        max_tokens: int | None = None,
+        task: str | None = None,
+    ) -> Any:
         client = getattr(llm, "client", None)
         api_base = getattr(client, "base_url", None)
         if api_base is not None and not isinstance(api_base, str):
@@ -125,10 +141,19 @@ class DspyRuntime:
             # dspy's request cache pickles request kwargs; the injected
             # hardened client is not picklable.
             cache = False
+        # Per-task temperature: resolve the configured value for the named
+        # task, overlaying the operator's dict on the feasible defaults so a
+        # partial dict still resolves every task to a per-task value (the
+        # global dspy_temperature is only the last resort for unknown names).
+        temperature = getattr(llm, "dspy_temperature", 0.4)
+        if task is not None:
+            provided = getattr(llm, "task_temperatures", None) or {}
+            task_temps = {**DEFAULT_TASK_TEMPERATURES, **provided}
+            temperature = task_temps.get(task, temperature)
         kwargs = {
             "api_base": api_base,
             "api_key": getattr(client, "api_key", None),
-            "temperature": getattr(llm, "dspy_temperature", 0.4),
+            "temperature": temperature,
             "max_tokens": max_tokens if max_tokens is not None else llm.max_tokens,
             "cache": cache,
             # Explicit instead of dspy's implicit 3, mirroring the direct

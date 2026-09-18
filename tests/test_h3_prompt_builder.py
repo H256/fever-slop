@@ -460,6 +460,9 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         generator.judge_attempts = 1
         generator.warning_callback = None
         generator.lm = object()
+        generator.analyzer_lm = object()
+        generator.renderer_lm = object()
+        generator.judge_lm = object()
         generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
         generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
 
@@ -531,6 +534,95 @@ class H3PromptBuilderCompatibilityTests(unittest.TestCase):
         # Non-LLM consumers (shot windows, continuation intents, instrumental
         # checks) keep reading the full, unmodified relay from the request.
         self.assertEqual(original, request.relay_segments)
+
+    def test_call_runs_judge_under_judge_lm_context(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+
+        from feverslop.prompting.dspy_h3_generator_core import VideoPromptGenerator
+        from feverslop.prompting.dspy_h3_models import (
+            BaseVideoPrompt,
+            MusicIntent,
+            ReferenceLimits,
+        )
+
+        # Distinct sentinels so an accidental shared context is detectable.
+        planner_lm = object()
+        analyzer_lm = object()
+        renderer_lm = object()
+        judge_lm = object()
+
+        active_stack: list = []
+        judge_active: list = []
+        renderer_active: list = []
+
+        @contextmanager
+        def lm_context(*, lm):
+            active_stack.append(lm)
+            try:
+                yield
+            finally:
+                active_stack.pop()
+
+        def planner(**kwargs):
+            return SimpleNamespace(plan=SimpleNamespace(
+                creative_intent="A performer waits.",
+                style_opening="Cinematic.",
+                shots=[SimpleNamespace(
+                    description="A performer folds a letter.",
+                    prose_owner="description",
+                    visible_action="folds a letter",
+                    performance="sings",
+                    camera_behavior="static",
+                    environmental_motion=None,
+                    transition_intent=None,
+                )],
+                overall_soundscape="Quiet room tone.",
+                music_intent=MusicIntent.NONE,
+                non_diegetic_music=None,
+            ))
+
+        def base_renderer(**kwargs):
+            # Record which LM is active while the renderer model is invoked.
+            renderer_active.append(active_stack[-1] if active_stack else None)
+            return SimpleNamespace(result=BaseVideoPrompt(
+                integrated_multimodal_description="A performer waits.",
+                overall_soundscape="Quiet room tone.",
+            ))
+
+        def judge(**kwargs):
+            # Record which LM is active while the judge model is invoked.
+            judge_active.append(active_stack[-1] if active_stack else None)
+            return SimpleNamespace(judge={"verdict": "good", "issues": []})
+
+        generator = VideoPromptGenerator.__new__(VideoPromptGenerator)
+        generator.planner = planner
+        generator.base_renderer = base_renderer
+        generator.limits = ReferenceLimits()
+        generator.judge = judge
+        generator.judge_attempts = 1
+        generator.warning_callback = None
+        generator.lm = planner_lm
+        generator.analyzer_lm = analyzer_lm
+        generator.renderer_lm = renderer_lm
+        generator.judge_lm = judge_lm
+        generator.base_guide_path = "src/feverslop/prompting/guides/minimax-h3-base.md"
+        generator.reference_guide_path = "src/feverslop/prompting/guides/minimax-h3-references.md"
+        generator.dspy_runtime = SimpleNamespace(context=lm_context)
+
+        result = generator({
+            "mode": "t2v",
+            "user_prompt": "A singer performs.",
+            "duration_seconds": 4.0,
+        })
+
+        # The judge must run under its own LM, not the ambient planner context.
+        self.assertEqual(1, len(judge_active))
+        self.assertIs(judge_lm, judge_active[0])
+        self.assertIsNotNone(result.judge)
+        # The renderer must run under its own LM, not the planner context.
+        self.assertEqual(1, len(renderer_active))
+        self.assertIs(renderer_lm, renderer_active[0])
 
     def test_typed_plan_is_compiled_then_judged_with_exact_final_prompt(self):
         from types import SimpleNamespace

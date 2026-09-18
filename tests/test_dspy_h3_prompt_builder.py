@@ -1529,7 +1529,7 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         self.assertTrue(lm_factory.call_args.kwargs["cache"])
 
-    def test_generator_passes_dspy_temperature_to_lm(self):
+    def test_generator_uses_per_task_temperatures(self):
         class Client:
             base_url = "http://your-llm-server.local/v1"
             api_key = "none-needed"
@@ -1550,7 +1550,44 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 llm=LLM(),
             )
 
-        self.assertEqual(0.25, lm_factory.call_args.kwargs["temperature"])
+        # Four LMs (planner, analyzer, renderer, judge); without explicit
+        # task_temperatures each falls back to its feasible default.
+        self.assertEqual(0.6, lm_factory.call_args_list[0].kwargs["temperature"])
+        self.assertEqual(0.2, lm_factory.call_args_list[1].kwargs["temperature"])
+        self.assertEqual(0.6, lm_factory.call_args_list[2].kwargs["temperature"])
+        self.assertEqual(0.2, lm_factory.call_args_list[3].kwargs["temperature"])
+
+    def test_generator_honors_configured_task_temperatures(self):
+        class Client:
+            base_url = "http://your-llm-server.local/v1"
+            api_key = "none-needed"
+
+        class LLM:
+            client = Client()
+            model = "gemma4-26b-a4b"
+            temperature = 0.75
+            dspy_temperature = 0.25
+            max_tokens = 16384
+            dspy_cache = False
+            task_temperatures = {"planner": 0.1, "judge": 0.3}
+
+        guides = files("feverslop.prompting.guides")
+        with patch("dspy.LM") as lm_factory:
+            VideoPromptGenerator(
+                base_guide_path=guides / "minimax-h3-base.md",
+                reference_guide_path=guides / "minimax-h3-references.md",
+                llm=LLM(),
+            )
+
+        # Configured task values win; tasks missing from the provided dict
+        # resolve to the feasible defaults (analyzer 0.2, renderer 0.6) rather
+        # than the global dspy_temperature, so empty and partial dicts behave
+        # the same. AppConfig merges the defaults so the main path is always
+        # complete; this only diverges when a partial dict is passed directly.
+        self.assertEqual(0.1, lm_factory.call_args_list[0].kwargs["temperature"])
+        self.assertEqual(0.2, lm_factory.call_args_list[1].kwargs["temperature"])
+        self.assertEqual(0.6, lm_factory.call_args_list[2].kwargs["temperature"])
+        self.assertEqual(0.3, lm_factory.call_args_list[3].kwargs["temperature"])
 
     def test_generator_budgets_the_structured_planner_and_judge_output_tokens(self):
         class Client:
@@ -1575,8 +1612,9 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
 
         # The planner's typed plan carries multiple prose fields per shot and is
         # prone to truncation at 4k on verbose/quantized models; default is 8k.
+        # Call order: planner, analyzer, renderer, judge.
         self.assertEqual(8192, lm_factory.call_args_list[0].kwargs["max_tokens"])
-        self.assertEqual(2048, lm_factory.call_args_list[1].kwargs["max_tokens"])
+        self.assertEqual(2048, lm_factory.call_args_list[3].kwargs["max_tokens"])
 
     def test_generator_honors_prompt_planner_max_tokens_override(self):
         class Client:
@@ -1600,10 +1638,11 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 llm=LLM(),
             )
 
+        # Call order: planner, analyzer, renderer, judge.
         self.assertEqual(12288, lm_factory.call_args_list[0].kwargs["max_tokens"])
         # The judge is still capped by _H3_JUDGE_MAX_TOKENS (2048) even when the
         # override requests more.
-        self.assertEqual(2048, lm_factory.call_args_list[1].kwargs["max_tokens"])
+        self.assertEqual(2048, lm_factory.call_args_list[3].kwargs["max_tokens"])
         self.assertEqual(12288, generator.planner_max_tokens)
 
     def test_reference_limits_use_plural_picture_field(self):

@@ -100,6 +100,8 @@ def main(
             api_key=api_key,
             model=args.model or llm.model,
             temperature=llm.temperature,
+            dspy_temperature=llm.dspy_temperature,
+            task_temperatures=llm.task_temperatures,
             max_tokens=llm.max_tokens,
             request_timeout_seconds=llm.request_timeout_seconds,
         )

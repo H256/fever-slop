@@ -536,6 +536,7 @@ def build_movie_reference_generator(movie_config: dict[str, Any] | None = None):
                 model=app_config.llm.model_for("structured"),
                 temperature=app_config.llm.temperature,
                 dspy_temperature=app_config.llm.dspy_temperature,
+                task_temperatures=app_config.llm.task_temperatures,
                 max_tokens=app_config.llm.max_tokens,
                 request_timeout_seconds=app_config.llm.request_timeout_seconds,
                 dspy_cache=app_config.llm.dspy_cache,

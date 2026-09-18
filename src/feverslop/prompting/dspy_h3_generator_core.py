@@ -342,13 +342,23 @@ class VideoPromptGenerator:
             planner_max_tokens = H3_PLANNER_MAX_TOKENS
         self.planner_max_tokens = planner_max_tokens
         self.last_planner_history: list[Any] = []
-        self.lm = self.dspy_runtime.make_lm(llm, max_tokens=planner_max_tokens)
+        # Each H3 task uses its own temperature (configured per task, or the
+        # feasible default). The planner and renderer are creative (higher);
+        # the judge and analyzer are structured (lower).
+        self.lm = self.dspy_runtime.make_lm(llm, max_tokens=planner_max_tokens, task="planner")
+        self.analyzer_lm = self.dspy_runtime.make_lm(llm, task="analyzer")
+        self.renderer_lm = self.dspy_runtime.make_lm(
+            llm,
+            max_tokens=planner_max_tokens,
+            task="renderer",
+        )
         self.judge_lm = self.dspy_runtime.make_lm(
             llm,
             max_tokens=min(
                 int(getattr(llm, "prompt_judge_max_tokens", _H3_JUDGE_MAX_TOKENS)),
                 _H3_JUDGE_MAX_TOKENS,
             ),
+            task="judge",
         )
 
     def set_warning_callback(self, callback: Callable[..., None] | None) -> None:
@@ -508,7 +518,8 @@ class VideoPromptGenerator:
                 raise ValueError(f"Too many {ref.kind.value} references")
             description = ref.description
             if self.image_analyzer.should_analyze(ref):
-                description = self.image_analyzer.analyze(ref)
+                with self.dspy_runtime.context(lm=self.analyzer_lm):
+                    description = self.image_analyzer.analyze(ref)
             if not description:
                 raise ValueError(f"{self._label(ref.kind, counts[ref.kind])} has no usable description")
             result.append(ResolvedReference(
@@ -824,31 +835,37 @@ class VideoPromptGenerator:
             judge = None
             judge_attempts = []
             for _attempt in range(1, self.judge_attempts + 1):
-                if request.mode == PromptMode.R2V:
-                    output = self._render_reference(effective_request, plan, refs)
-                    prompt = ReferenceVideoPrompt(
-                        subject_definitions=plan.subjects,
-                        reference_definitions=_deterministic_reference_definitions(refs),
-                        summary=output.summary,
-                        retention_analysis=output.retention_analysis,
-                        detailed_description=output.detailed_description,
-                        overall_soundscape=output.overall_soundscape,
-                        non_diegetic_music=output.non_diegetic_music,
-                        audio_subject_bindings=request.audio_subject_bindings,
-                    )
-                else:
-                    output = self.base_renderer(
-                        guide=self._read(self.base_guide_path), mode=request.mode.value,
-                        user_prompt=request.user_prompt, plan=plan,
-                        references=refs, notes=effective_request.notes or "",
-                        strict_fidelity=request.strict_fidelity,
-                        music_intent=plan.music_intent.value,
-                        relay_segments=compact_planning_payload(request.relay_segments),
-                    )
-                    prompt = output.result
+                # Renderers are a separate creative task with their own
+                # temperature; the planner and judge LMs stay out of scope.
+                with self.dspy_runtime.context(lm=self.renderer_lm):
+                    if request.mode == PromptMode.R2V:
+                        output = self._render_reference(effective_request, plan, refs)
+                        prompt = ReferenceVideoPrompt(
+                            subject_definitions=plan.subjects,
+                            reference_definitions=_deterministic_reference_definitions(refs),
+                            summary=output.summary,
+                            retention_analysis=output.retention_analysis,
+                            detailed_description=output.detailed_description,
+                            overall_soundscape=output.overall_soundscape,
+                            non_diegetic_music=output.non_diegetic_music,
+                            audio_subject_bindings=request.audio_subject_bindings,
+                        )
+                    else:
+                        output = self.base_renderer(
+                            guide=self._read(self.base_guide_path), mode=request.mode.value,
+                            user_prompt=request.user_prompt, plan=plan,
+                            references=refs, notes=effective_request.notes or "",
+                            strict_fidelity=request.strict_fidelity,
+                            music_intent=plan.music_intent.value,
+                            relay_segments=compact_planning_payload(request.relay_segments),
+                        )
+                        prompt = output.result
                 if plan.music_intent == MusicIntent.NONE:
                     prompt.non_diegetic_music = None
-                judge = self._judge_final_prompt(effective_request, plan, refs, prompt)
+                # The judge is a separate structured task with its own
+                # temperature; it must not run under the planner context.
+                with self.dspy_runtime.context(lm=getattr(self, "judge_lm", self.lm)):
+                    judge = self._judge_final_prompt(effective_request, plan, refs, prompt)
                 if judge is not None:
                     judge_attempts.append(judge)
                 # The judgement is returned with the prompt as a user-facing
