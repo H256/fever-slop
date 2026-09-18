@@ -322,154 +322,22 @@ def _run_crop_facefix(
 
         # -- Per-actor crop / render / repair --
         for actor_id, frames_list in actor_frames.items():
-            facefix_dir = layout.scene_facefix_dir(scene_number, actor_id) if layout else scene_dir / "facefix" / actor_id
-            repaired_dir = facefix_dir / "repaired"
-            repaired_mp4 = facefix_dir / f"repaired_{actor_id}.mp4"
-            crop_frames_dir = layout.scene_face_crops_dir(scene_number, actor_id) if layout else facefix_dir / "crops"
-            anchor_dir = layout.scene_face_anchors_dir(scene_number, actor_id) if layout else facefix_dir / "anchors"
-
-            if options.skip_existing and repaired_mp4.exists():
-                if reporter:
-                    reporter.message(
-                        f"[green]OK[/green] FaceFix scene {scene_number}/{actor_id}: "
-                        f"already exists",
-                    )
-                # Rebuild track entries from pipeline results.
-                track_entries = [
-                    FaceTrackEntry(
-                        frame_index=fi,
-                        box=FaceBox(
-                            x1=int(result.box.x1),
-                            y1=int(result.box.y1),
-                            x2=int(result.box.x2),
-                            y2=int(result.box.y2),
-                            confidence=result.detection_score or 0.0,
-                            actor_id=actor_id,
-                        ),
-                    )
-                    for fi, result in frames_list
-                    if result.box is not None
-                ]
-                face_repairs_for_composite.append(
-                    FaceRepairData(
-                        actor_id=actor_id,
-                        repaired_frames_dir=repaired_dir,
-                        track_entries=track_entries,
-                        crop_size=options.crop_size,
-                    ),
-                )
-                continue
-
-            if not frames_list:
-                skip_reasons["no_detected_faces"] = skip_reasons.get("no_detected_faces", 0) + 1
-                continue
-
-            if reporter:
-                reporter.message(
-                    f"FaceFix scene {scene_number}/{actor_id}: "
-                    f"extracting {len(frames_list)} crops...",
-                )
-
-            # --- Extract and save face crops from original frames ---
-            crop_frames_dir.mkdir(parents=True, exist_ok=True)
-            anchor_dir.mkdir(parents=True, exist_ok=True)
-            anchor_paths: list[Path] = []
-
-            track_entries: list[FaceTrackEntry] = []
-
-            for fi, result in frames_list:
-                if result.box is None:
-                    continue
-                box = result.box
-                crop = _extract_face_crop(
-                    original_frames[fi],
-                    box.x1, box.y1, box.x2, box.y2,
-                    options.crop_size, options.crop_padding,
-                )
-                crop_path = crop_frames_dir / f"crop_{fi:06d}.png"
-                cv2.imwrite(str(crop_path), cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
-
-                track_entries.append(
-                    FaceTrackEntry(
-                        frame_index=fi,
-                        box=FaceBox(
-                            x1=int(box.x1),
-                            y1=int(box.y1),
-                            x2=int(box.x2),
-                            y2=int(box.y2),
-                            confidence=result.detection_score or 0.0,
-                            actor_id=actor_id,
-                        ),
-                        crop_path=crop_path,
-                    ),
-                )
-
-                # Anchor frames at regular intervals
-                if fi % options.anchor_interval == 0:
-                    anchor_path = anchor_dir / f"anchor_{fi:06d}.png"
-                    cv2.imwrite(str(anchor_path), cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
-                    anchor_paths.append(anchor_path)
-
-            if not track_entries:
-                skip_reasons["no_tracks"] = skip_reasons.get("no_tracks", 0) + 1
-                if reporter:
-                    reporter.message(
-                        f"[yellow]WARN[/yellow] FaceFix scene {scene_number}/"
-                        f"{actor_id}: no tracks found, skipping",
-                    )
-                continue
-
-            # --- Encode crop MP4 ---
-            crop_mp4 = layout.scene_face_crop_mp4(scene_number, actor_id) if layout else facefix_dir / "face_crop.mp4"
-            if not crop_mp4.exists():
-                _encode_crop_mp4(
-                    crop_frames_dir,
-                    crop_mp4,
-                    source,
-                    options.ffmpeg_path,
-                    options.ffmpeg_timeout_seconds,
-                )
-
-            # --- Render through ComfyUI ---
-            if reporter:
-                reporter.message(
-                    f"FaceFix scene {scene_number}/{actor_id}: rendering...",
-                )
-
-            crop_backend.render_scene(
+            repair = _process_actor_crop(
                 scene_number=scene_number,
-                face_crop_mp4=crop_mp4,
-                anchors_dir=anchor_dir,
-                output_dir=facefix_dir,
                 actor_id=actor_id,
-                face_ref_image=actor_face_refs.get(actor_id),
+                frames_list=frames_list,
+                original_frames=original_frames,
+                source=source,
+                layout=layout,
+                scene_dir=scene_dir,
+                crop_backend=crop_backend,
+                options=options,
+                actor_face_refs=actor_face_refs,
+                skip_reasons=skip_reasons,
+                reporter=reporter,
             )
-
-            # --- Load repaired frames ---
-            repaired_video = facefix_dir / f"repaired_{actor_id}.mp4"
-            if not repaired_video.exists():
-                repaired_video = facefix_dir / "raw_facefix_crop.mp4"
-
-            if repaired_video.exists():
-                repaired_frames = _load_video_frames(repaired_video)
-                if repaired_frames is not None:
-                    repaired_dir.mkdir(parents=True, exist_ok=True)
-                    for i, frame in enumerate(repaired_frames):
-                        if i < len(track_entries):
-                            entry = track_entries[i]
-                            cv2.imwrite(
-                                str(repaired_dir / f"repaired_{entry.frame_index:06d}.png"),
-                                frame,
-                            )
-
-                face_repairs_for_composite.append(
-                    FaceRepairData(
-                        actor_id=actor_id,
-                        repaired_frames_dir=repaired_dir,
-                        track_entries=track_entries,
-                        crop_size=options.crop_size,
-                    ),
-                )
+            if repair is not None:
+                face_repairs_for_composite.append(repair)
 
         # -- Composite and save (unchanged) --
         if face_repairs_for_composite:
@@ -530,6 +398,170 @@ def _run_crop_facefix(
         )
     return results
 
+
+def _process_actor_crop(
+    *,
+    scene_number: int,
+    actor_id: str,
+    frames_list: list[tuple[int, FrameResult]],
+    original_frames: np.ndarray,
+    source: Path,
+    layout: SceneArtifactLayout | None,
+    scene_dir: Path,
+    crop_backend: ComfyUIFaceFixCropBackend,
+    options: FaceFixCompositionOptions,
+    actor_face_refs: dict[str, Path],
+    skip_reasons: dict[str, int],
+    reporter: ConsoleReporter | None,
+) -> FaceRepairData | None:
+    """Process one actor's frames through crop -> render -> repair.
+
+    Returns a FaceRepairData when the actor produced a usable repair, or
+    None when the actor was skipped (the reason is recorded in skip_reasons).
+    """
+    facefix_dir = layout.scene_facefix_dir(scene_number, actor_id) if layout else scene_dir / "facefix" / actor_id
+    repaired_dir = facefix_dir / "repaired"
+    repaired_mp4 = facefix_dir / f"repaired_{actor_id}.mp4"
+    crop_frames_dir = layout.scene_face_crops_dir(scene_number, actor_id) if layout else facefix_dir / "crops"
+    anchor_dir = layout.scene_face_anchors_dir(scene_number, actor_id) if layout else facefix_dir / "anchors"
+
+    if options.skip_existing and repaired_mp4.exists():
+        if reporter:
+            reporter.message(
+                f"[green]OK[/green] FaceFix scene {scene_number}/{actor_id}: "
+                f"already exists",
+            )
+        # Rebuild track entries from pipeline results.
+        track_entries = [
+            FaceTrackEntry(
+                frame_index=fi,
+                box=FaceBox(
+                    x1=int(result.box.x1),
+                    y1=int(result.box.y1),
+                    x2=int(result.box.x2),
+                    y2=int(result.box.y2),
+                    confidence=result.detection_score or 0.0,
+                    actor_id=actor_id,
+                ),
+            )
+            for fi, result in frames_list
+            if result.box is not None
+        ]
+        return FaceRepairData(
+            actor_id=actor_id,
+            repaired_frames_dir=repaired_dir,
+            track_entries=track_entries,
+            crop_size=options.crop_size,
+        )
+
+    if not frames_list:
+        skip_reasons["no_detected_faces"] = skip_reasons.get("no_detected_faces", 0) + 1
+        return None
+
+    if reporter:
+        reporter.message(
+            f"FaceFix scene {scene_number}/{actor_id}: "
+            f"extracting {len(frames_list)} crops...",
+        )
+
+    # --- Extract and save face crops from original frames ---
+    crop_frames_dir.mkdir(parents=True, exist_ok=True)
+    anchor_dir.mkdir(parents=True, exist_ok=True)
+    anchor_paths: list[Path] = []
+
+    track_entries: list[FaceTrackEntry] = []
+
+    for fi, result in frames_list:
+        if result.box is None:
+            continue
+        box = result.box
+        crop = _extract_face_crop(
+            original_frames[fi],
+            box.x1, box.y1, box.x2, box.y2,
+            options.crop_size, options.crop_padding,
+        )
+        crop_path = crop_frames_dir / f"crop_{fi:06d}.png"
+        cv2.imwrite(str(crop_path), cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
+
+        track_entries.append(
+            FaceTrackEntry(
+                frame_index=fi,
+                box=FaceBox(
+                    x1=int(box.x1),
+                    y1=int(box.y1),
+                    x2=int(box.x2),
+                    y2=int(box.y2),
+                    confidence=result.detection_score or 0.0,
+                    actor_id=actor_id,
+                ),
+                crop_path=crop_path,
+            ),
+        )
+
+        # Anchor frames at regular intervals
+        if fi % options.anchor_interval == 0:
+            anchor_path = anchor_dir / f"anchor_{fi:06d}.png"
+            cv2.imwrite(str(anchor_path), cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
+            anchor_paths.append(anchor_path)
+
+    if not track_entries:
+        skip_reasons["no_tracks"] = skip_reasons.get("no_tracks", 0) + 1
+        if reporter:
+            reporter.message(
+                f"[yellow]WARN[/yellow] FaceFix scene {scene_number}/"
+                f"{actor_id}: no tracks found, skipping",
+            )
+        return None
+
+    # --- Encode crop MP4 ---
+    crop_mp4 = layout.scene_face_crop_mp4(scene_number, actor_id) if layout else facefix_dir / "face_crop.mp4"
+    if not crop_mp4.exists():
+        _encode_crop_mp4(
+            crop_frames_dir,
+            crop_mp4,
+            source,
+            options.ffmpeg_path,
+            options.ffmpeg_timeout_seconds,
+        )
+
+    # --- Render through ComfyUI ---
+    if reporter:
+        reporter.message(
+            f"FaceFix scene {scene_number}/{actor_id}: rendering...",
+        )
+
+    crop_backend.render_scene(
+        scene_number=scene_number,
+        face_crop_mp4=crop_mp4,
+        anchors_dir=anchor_dir,
+        output_dir=facefix_dir,
+        actor_id=actor_id,
+        face_ref_image=actor_face_refs.get(actor_id),
+    )
+
+    # --- Load repaired frames ---
+    repaired_video = facefix_dir / f"repaired_{actor_id}.mp4"
+    if not repaired_video.exists():
+        repaired_video = facefix_dir / "raw_facefix_crop.mp4"
+
+    if repaired_video.exists():
+        repaired_frames = _load_video_frames(repaired_video)
+        if repaired_frames is not None:
+            repaired_dir.mkdir(parents=True, exist_ok=True)
+            for i, frame in enumerate(repaired_frames):
+                if i < len(track_entries):
+                    entry = track_entries[i]
+                    cv2.imwrite(
+                        str(repaired_dir / f"repaired_{entry.frame_index:06d}.png"),
+                        frame,
+                    )
+
+        return FaceRepairData(
+            actor_id=actor_id,
+            repaired_frames_dir=repaired_dir,
+            track_entries=track_entries,
+            crop_size=options.crop_size,
+        )
 
 def _facefix_runtime(
     options: FaceFixCompositionOptions,
