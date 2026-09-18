@@ -42,6 +42,7 @@ class SequenceReferenceRequest:
     output_dir: Path
     image_prompt: str = ""
     visual_style: str = ""
+    environment_visual_style: str = ""
     seed: int = 0
     frames: int = 124
     asset_context: dict[str, Any] | None = None
@@ -81,6 +82,18 @@ class SequenceReferencePipeline:
         self.sequence_backend = sequence_backend
         self.planner = planner or DeterministicReferenceSheetPlanner()
         self.on_phase = on_phase
+
+    @staticmethod
+    def _environment_style(request: SequenceReferenceRequest) -> str:
+        """Resolve the style for environment (location) references.
+
+        Prefers an explicit environment-only style; falls back to the global
+        style for backward compatibility when no environment style is set.
+        """
+        environment = " ".join(str(request.environment_visual_style or "").split())
+        if environment:
+            return environment
+        return " ".join(str(request.visual_style or "").split())
 
     @staticmethod
     def _build_location_anchor_prompt(*, image_prompt: str, visual_style: str, reference_mode: str) -> str:
@@ -172,7 +185,7 @@ class SequenceReferencePipeline:
         else:
             anchor_prompt = self._build_location_anchor_prompt(
                 image_prompt=request.image_prompt or compiled_plan.anchor_description,
-                visual_style=request.visual_style,
+                visual_style=self._environment_style(request),
                 reference_mode=request.reference_mode,
             )
         self._report_phase(request, "anchor_start")
@@ -203,7 +216,6 @@ class SequenceReferencePipeline:
         return anchor, anchor_prompt
 
     def _generate_sequence(self, request: SequenceReferenceRequest, kind: str, compiled_plan: Any, anchor: Path, staging_dir: Path, view_count: int) -> tuple[Path, str]:
-        style = " ".join(str(request.visual_style or "").split())
         has_compiled_plan_backend = hasattr(self.sequence_backend, "build_sheet_prompt_from_plan")
         if has_compiled_plan_backend:
             prompt = self.sequence_backend.build_sheet_prompt_from_plan(compiled_plan)
@@ -215,8 +227,9 @@ class SequenceReferencePipeline:
                 frames=request.frames,
             )
         sequence_prompt = prompt.prompt
-        if style and kind == "location":
-            sequence_prompt = f"{sequence_prompt}\n\nVisual style: {style}. Preserve this style throughout the sequence."
+        environment_style = self._environment_style(request)
+        if environment_style and kind == "location":
+            sequence_prompt = f"{sequence_prompt}\n\nVisual style: {environment_style}. Preserve this style throughout the sequence."
         sequence = staging_dir / "sequence.mp4"
         self._report_phase(request, "sequence_start")
         aspect_ratio = (

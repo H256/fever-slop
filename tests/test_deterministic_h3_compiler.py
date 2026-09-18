@@ -1414,6 +1414,68 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             prompt,
         )
 
+    def test_r2v_compiler_pins_multiview_sheet_to_one_subject(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A lead singer performs.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Lead Singer", description="a woman with red hair",
+                source_references=["<Picture 1>"],
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="The lead singer sings into the microphone.",
+                camera_behavior="static",
+                start_seconds=0,
+                end_seconds=4,
+                involved_subjects=["Lead Singer"],
+            )],
+            overall_soundscape="A live performance.",
+            music_intent=MusicIntent.REFERENCE,
+        )
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 4.0)},
+            reference_metadata=[{
+                "label": "<Picture 1>", "kind": "picture", "role": "subject",
+                "representation": {"sheet_kind": "multiview_sheet", "panel_count": 6,
+                                 "owner_identity": "singer",
+                                 "panel_semantics": "one physical subject"},
+            }],
+        )
+        # The subject definition pins the six-view sheet to one physical actor.
+        self.assertIn("a single 6-panel sheet of one subject", prompt)
+        self.assertIn("preserve the subject's appearance, not the panel layout", prompt)
+
+    def test_r2v_compiler_omits_representation_clause_for_single_view(self):
+        plan = ResolvedPromptPlan(
+            creative_intent="A lead singer performs.",
+            subjects=[SubjectDefinition(
+                label="<Subject 1>", name="Lead Singer", description="a woman with red hair",
+                source_references=["<Picture 1>"],
+            )],
+            shots=[PlannedShot(
+                shot_number=1,
+                description="The lead singer sings into the microphone.",
+                camera_behavior="static",
+                start_seconds=0,
+                end_seconds=4,
+                involved_subjects=["Lead Singer"],
+            )],
+            overall_soundscape="A live performance.",
+            music_intent=MusicIntent.REFERENCE,
+        )
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts, shots=self.shots[:1],
+            shot_windows={"shot-02": (0.0, 4.0)},
+            reference_metadata=[{
+                "label": "<Picture 1>", "kind": "picture", "role": "subject",
+                "representation": {"sheet_kind": "single_view", "panel_count": 1,
+                                 "owner_identity": "singer",
+                                 "panel_semantics": "one physical subject"},
+            }],
+        )
+        self.assertNotIn("panel sheet", prompt)
+
     def test_r2v_compiler_places_partially_copied_music_stem_in_music_section(self):
         plan = ResolvedPromptPlan(
             creative_intent="A performer crosses an illuminated room.",

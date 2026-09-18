@@ -26,6 +26,32 @@ class ProjectConfigTests(unittest.TestCase):
 
         self.assertEqual(contract, config.narrative_contract)
 
+    def test_loads_environment_style(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(json.dumps({
+                "content_mode": "narrative_film",
+                "style": "a band of four musicians performing",
+                "environment_style": "dark gothic cinematic venue",
+            }), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual("a band of four musicians performing", config.style)
+        self.assertEqual("dark gothic cinematic venue", config.environment_style)
+
+    def test_environment_style_defaults_to_empty(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(json.dumps({
+                "content_mode": "narrative_film",
+                "style": "cinematic concert",
+            }), encoding="utf-8")
+
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual("", config.environment_style)
+
     def test_loads_narrative_invariant_contract(self):
         contract = {
             "one_shot_milestones": ["cup_acquired", "cup_raised"],

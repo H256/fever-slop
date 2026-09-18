@@ -64,6 +64,92 @@ class SequenceReferencePipelineTests(unittest.TestCase):
         self.assertIn("population is the primary subject", prompt)
         self.assertIn("no stage as the dominant background", prompt)
 
+    def test_environment_style_prefers_environment_visual_style(self):
+        request = SequenceReferenceRequest(
+            kind="location",
+            asset_id="stage",
+            name="Stage",
+            description="a stage",
+            output_dir=Path("/tmp"),
+            visual_style="a band of four musicians performing",
+            environment_visual_style="dark gothic cinematic venue",
+        )
+
+        self.assertEqual(
+            SequenceReferencePipeline._environment_style(request),
+            "dark gothic cinematic venue",
+        )
+
+    def test_environment_style_falls_back_to_global_style(self):
+        request = SequenceReferenceRequest(
+            kind="location",
+            asset_id="stage",
+            name="Stage",
+            description="a stage",
+            output_dir=Path("/tmp"),
+            visual_style="cinematic concert lighting",
+        )
+
+        self.assertEqual(
+            SequenceReferencePipeline._environment_style(request),
+            "cinematic concert lighting",
+        )
+
+    def test_location_sequence_prompt_uses_environment_style_not_global_cast_style(self):
+        with tempfile.TemporaryDirectory() as temp:
+            anchor_backend = FakeAnchorBackend()
+            sequence_backend = FakeSequenceBackend()
+
+            class Planner:
+                source = "test"
+                fallback_reason = None
+
+                def plan(self, **_kwargs):
+                    from feverslop.domain.reference_sheet import ReferenceSheetPlan
+
+                    return ReferenceSheetPlan(kind="location", anchor_description="a stage")
+
+            pipeline = SequenceReferencePipeline(
+                anchor_backend=anchor_backend,
+                sequence_backend=sequence_backend,
+                planner=Planner(),
+            )
+            request = SequenceReferenceRequest(
+                kind="location",
+                asset_id="stage",
+                name="Stage",
+                description="a festival stage",
+                image_prompt="an empty festival stage",
+                visual_style="a band of four musicians performing",
+                environment_visual_style="dark gothic cinematic venue",
+                reference_image_size=(1920, 1080),
+                output_dir=Path(temp),
+            )
+
+            def fake_extract(_video, output_dir, sample_count):
+                output_dir.mkdir(parents=True, exist_ok=True)
+                paths = []
+                for index in range(sample_count):
+                    path = output_dir / f"frame_{index:04}.png"
+                    Image.new("RGB", (64, 36), "white").save(path)
+                    paths.append(path)
+                return tuple(paths)
+
+            with patch(
+                "feverslop.application.sequence_reference_pipeline.extract_video_frames",
+                fake_extract,
+            ), patch(
+                "feverslop.application.sequence_reference_pipeline.select_orbitsheet_frames",
+                lambda paths, **kwargs: tuple(paths[: kwargs["count"]]),
+            ):
+                pipeline.generate(request)
+
+            render_calls = [c for c in sequence_backend.calls if c[0] == "render"]
+            self.assertTrue(render_calls)
+            sequence_prompt = render_calls[0][2]
+            self.assertIn("dark gothic cinematic venue", sequence_prompt)
+            self.assertNotIn("a band of four musicians performing", sequence_prompt)
+
     def test_character_anchor_uses_identity_plan_instead_of_action_prompt(self):
         with tempfile.TemporaryDirectory() as temp:
             anchor_backend = FakeAnchorBackend()
