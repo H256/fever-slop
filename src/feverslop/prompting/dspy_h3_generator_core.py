@@ -550,29 +550,35 @@ class VideoPromptGenerator:
         ]
         subject_names = [subject.name for subject in subjects]
         authored_shots = list(creative.shots)
-        # The model is expected to return one creative shot per relay segment.
-        # performance_phase items were historically expected to collapse to one,
-        # but the model produces one shot per segment regardless. Accept the
-        # model's shot count.
-        authoritative_count = len(request.relay_segments) or 1
-        if len(authored_shots) != authoritative_count:
-            # H3CreativeShot carries no shot_number; the plan owns numbering.
-            # Format with the index or the diagnostic itself crashes and masks
-            # the real mismatch below.
-            logger.error(
-                "H3 planner shot count mismatch: "
-                "expected=%d got=%d relay_segments=%d "
-                "creative_intent=%s shots=[%s]",
-                authoritative_count,
-                len(authored_shots),
-                len(request.relay_segments),
-                str(creative.creative_intent)[:200],
-                "; ".join(
-                    f"shot#{index}: {str(shot.description)[:120]}"
-                    for index, shot in enumerate(authored_shots, start=1)
-                ),
-            )
-            raise H3ShotCountMismatchError(authoritative_count, len(authored_shots))
+        relay = list(request.relay_segments)
+        # Performance-phase relays are vocal timing windows within one
+        # continuous camera shot; the planner is instructed to return a single
+        # shot for them (see BuildCreativePromptPlan). Only non-performance
+        # relays are actual shot boundaries that require one shot per segment.
+        # For performance relay the model's shot count is accepted; the
+        # compiler renders the relay phases as time-stamped events within the
+        # shot(s), so a single continuous shot is valid.
+        has_performance_phase = any(item.get("performance_phase") for item in relay)
+        if not has_performance_phase:
+            authoritative_count = len(relay) or 1
+            if len(authored_shots) != authoritative_count:
+                # H3CreativeShot carries no shot_number; the plan owns numbering.
+                # Format with the index or the diagnostic itself crashes and
+                # masks the real mismatch below.
+                logger.error(
+                    "H3 planner shot count mismatch: "
+                    "expected=%d got=%d relay_segments=%d "
+                    "creative_intent=%s shots=[%s]",
+                    authoritative_count,
+                    len(authored_shots),
+                    len(relay),
+                    str(creative.creative_intent)[:200],
+                    "; ".join(
+                        f"shot#{index}: {str(shot.description)[:120]}"
+                        for index, shot in enumerate(authored_shots, start=1)
+                    ),
+                )
+                raise H3ShotCountMismatchError(authoritative_count, len(authored_shots))
         windows = _authoritative_shot_windows(request, len(authored_shots))
         shots = []
         for index, authored in enumerate(authored_shots):

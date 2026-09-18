@@ -90,6 +90,75 @@ class ConfiguredAudioPathTests(unittest.TestCase):
         self.assertEqual("<Subject 1>", relay[1]["subject_label"])
         self.assertEqual("S1", relay[1]["speaker_id"])
 
+    def test_audio_binding_overrides_conflicting_llm_vocal_performer(self):
+        # The LLM picked tamsin as the visible singer, but the vocal stem is
+        # bound to soren. The binding is authoritative: one speaker ID must not
+        # be bound to two subjects, so the relay window follows the binding.
+        result = _attach_subject_directives(
+            [{
+                "segment_id": "segment_003",
+                "fps": 24,
+                "type": "mixed",
+                "references": {
+                    "actor_ids": ["tamsin", "soren"],
+                    "audio_subject_bindings": {
+                        "vocals": {"subject_id": "soren", "speaker_id": "S1"},
+                    },
+                },
+                "ltx": {"prompt_relay": [
+                    {"frame_start": 0, "frame_end": 24, "state": "instrumental"},
+                    {"frame_start": 24, "frame_end": 72, "state": "singing"},
+                ]},
+            }],
+            [{
+                "segment_id": "segment_003",
+                "vocal_performers": [{"subject_id": "tamsin", "speaker_id": "S1"}],
+            }],
+        )
+
+        relay = result[0]["ltx"]["prompt_relay"]
+        self.assertEqual("soren", relay[1]["subject_id"])
+        self.assertEqual("<Subject 2>", relay[1]["subject_label"])
+        self.assertEqual("S1", relay[1]["speaker_id"])
+
+    def test_audio_binding_preserves_non_conflicting_duet_performer(self):
+        # The vocal stem is bound to soren/S1, but a duet partner (tamsin/S2)
+        # with a distinct speaker ID does not conflict with the binding, so it
+        # is preserved alongside the binding's subject.
+        result = _attach_subject_directives(
+            [{
+                "segment_id": "segment_003",
+                "fps": 24,
+                "type": "mixed",
+                "references": {
+                    "actor_ids": ["tamsin", "soren"],
+                    "audio_subject_bindings": {
+                        "vocals": {"subject_id": "soren", "speaker_id": "S1"},
+                    },
+                },
+                "ltx": {"prompt_relay": [
+                    {"frame_start": 0, "frame_end": 24, "state": "instrumental"},
+                    {"frame_start": 24, "frame_end": 72, "state": "singing"},
+                ]},
+            }],
+            [{
+                "segment_id": "segment_003",
+                "vocal_performers": [
+                    {"subject_id": "tamsin", "speaker_id": "S2"},
+                    {"subject_id": "soren", "speaker_id": "S1"},
+                ],
+            }],
+        )
+
+        relay = result[0]["ltx"]["prompt_relay"]
+        # The binding's subject (soren/S1) is the primary vocal owner and is
+        # stamped onto the singing window first; the duet partner (tamsin/S2)
+        # is preserved in the performer list but not stamped (only the first
+        # performer is stamped per window).
+        self.assertEqual("soren", relay[1]["subject_id"])
+        self.assertEqual("<Subject 2>", relay[1]["subject_label"])
+        self.assertEqual("S1", relay[1]["speaker_id"])
+
     def test_recovers_vocalist_from_existing_llm_motion_prompt(self):
         result = _attach_subject_directives(
             [{
