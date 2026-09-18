@@ -71,6 +71,7 @@ def run(argv: list[str] | None = None) -> int:
                 lambda _project_id: project,
             ).load(project.name)
             app_config = AppConfig.load(args.app_config)
+            app_config.attach_import_store(project)
             configured_profile = app_config.resolve_video_workflow_profile(
                 pipeline=_pipeline_for_mode(args.mode),
                 purpose="final",

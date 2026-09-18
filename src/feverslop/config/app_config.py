@@ -4,7 +4,7 @@ import json
 import logging
 import math
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -168,6 +168,7 @@ class AppConfig:
         repr=False,
     )
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    import_store: Any = field(default=None, repr=False)
 
     def resolve_video_workflow_profile(
         self,
@@ -198,11 +199,55 @@ class AppConfig:
         )
         if default_name is None:
             return None
-        return next(
+        default_profile = next(
             profile
             for profile in self.video_workflow_profiles
             if profile.name == default_name
         )
+        override_path = self._imported_workflow_path(pipeline, purpose)
+        if override_path is None:
+            return default_profile
+        return replace(default_profile, workflow_path=override_path)
+
+    def _imported_workflow_path(self, pipeline: str, purpose: str) -> str | None:
+        """Return the active import's snapshot path for pipeline/purpose, if any."""
+        store = self.import_store
+        if store is None:
+            return None
+        active = store.find_active(pipeline=pipeline, purpose=purpose)
+        if active is None:
+            return None
+        return str(store.snapshot_path(active.profile_id))
+
+    def _attach_import_store(self, project_dir: Path | None) -> None:
+        """Attach the per-project import store for precedence.
+
+        Layout: ``projects_root/<project>/workflows/``. The store is a no-op
+        (returns None) when no active import exists, so this is safe to run
+        on every load. Re-anchoring is allowed (overwrites the store) so
+        render-path call sites can correct the anchor from the config-file
+        directory to the actual project directory.
+        """
+        if project_dir is None:
+            return
+        project_dir = project_dir.resolve()
+        workflows = project_dir / "workflows"
+        if not workflows.is_dir():
+            return
+        from feverslop.domain.workflow_import_store import WorkflowImportStore
+
+        self.import_store = WorkflowImportStore(
+            projects_root=project_dir.parent,
+            project_id=project_dir.name,
+        ).for_project(project_dir.name)
+
+    def attach_import_store(self, project_dir: Path | None) -> None:
+        """Re-anchor the import store to the actual project directory.
+
+        Called from render-path call sites where the project dir is known
+        but the config file lives at repo root (the common case).
+        """
+        self._attach_import_store(project_dir)
 
     @classmethod
     def load(cls, path: str | Path, *, required_keys: list[str] | None = None) -> AppConfig:
@@ -223,7 +268,9 @@ class AppConfig:
         if required_keys:
             _check_required_keys(raw, required_keys)
 
-        return cls._build_config(raw, dotenv_api_key=dotenv_api_key, base_dir=path.parent)
+        config = cls._build_config(raw, dotenv_api_key=dotenv_api_key, base_dir=path.parent)
+        config._attach_import_store(path.parent)
+        return config
 
     @classmethod
     def _build_config(
