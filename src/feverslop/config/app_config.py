@@ -219,16 +219,18 @@ class AppConfig:
             return None
         return str(store.snapshot_path(active.profile_id))
 
-    def _attach_import_store(self, base_dir: Path | None) -> None:
-        """Attach the per-project import store for precedence, if present.
+    def _attach_import_store(self, project_dir: Path | None) -> None:
+        """Attach the per-project import store for precedence.
 
-        Layout mirrors the CLI: ``projects_root/<project>/workflows/``. The
-        store is a no-op (returns None) when no active import exists, so this
-        is safe to run on every load.
+        Layout: ``projects_root/<project>/workflows/``. The store is a no-op
+        (returns None) when no active import exists, so this is safe to run
+        on every load. Re-anchoring is allowed (overwrites the store) so
+        render-path call sites can correct the anchor from the config-file
+        directory to the actual project directory.
         """
-        if self.import_store is not None or base_dir is None:
+        if project_dir is None:
             return
-        project_dir = base_dir.resolve()
+        project_dir = project_dir.resolve()
         workflows = project_dir / "workflows"
         if not workflows.is_dir():
             return
@@ -238,6 +240,14 @@ class AppConfig:
             projects_root=project_dir.parent,
             project_id=project_dir.name,
         ).for_project(project_dir.name)
+
+    def attach_import_store(self, project_dir: Path | None) -> None:
+        """Re-anchor the import store to the actual project directory.
+
+        Called from render-path call sites where the project dir is known
+        but the config file lives at repo root (the common case).
+        """
+        self._attach_import_store(project_dir)
 
     @classmethod
     def load(cls, path: str | Path, *, required_keys: list[str] | None = None) -> AppConfig:

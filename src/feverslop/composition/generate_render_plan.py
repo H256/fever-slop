@@ -122,6 +122,7 @@ def build_generate_render_plan_execution_request(
         config = config.apply_resolution_override(width=resolution[0], height=resolution[1])
     paths = ProjectPaths.from_config(config)
     app_config = AppConfig.load(request.app_config_path)
+    app_config.attach_import_store(config.project_dir)
     video_settings = config.to_video_settings()
     profile = app_config.resolve_video_workflow_profile(
         pipeline=config.video_pipeline,
