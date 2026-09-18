@@ -160,6 +160,7 @@ UNIT_MODULES = (
     "relay_range",
     "render_plan_builder",
     "render_plan_ingredients_sheets",
+    "render_plan_normalizer",
     "render_plan_references",
     "render_storyboard_composition",
     "render_video_composition_msr",
