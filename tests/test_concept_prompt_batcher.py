@@ -194,8 +194,82 @@ class ConceptPromptBatcherTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "Concept batch: repairing 2 missing or invalid scene keys: seg_2, seg_3",
+            "Concept batch: repairing 2 scene keys (2 missing, 0 invalid): seg_2, seg_3 [missing: seg_2, seg_3]",
             progress,
+        )
+
+    def test_repair_source_message_separates_missing_and_invalid(self):
+        message = ConceptPromptBatcher._repair_source_message(
+            total=3,
+            missing=["seg_1"],
+            invalid=[
+                {"segment_id": "seg_2", "reason": "actor not named"},
+                {"segment_id": "seg_3", "reason": "milestone order"},
+            ],
+            repair_ids=["seg_1", "seg_2", "seg_3"],
+        )
+        self.assertIn("repairing 3 scene keys (1 missing, 2 invalid)", message)
+        self.assertIn("[missing: seg_1]", message)
+        self.assertIn("[invalid: seg_2 (actor not named); seg_3 (milestone order)]", message)
+
+    def test_repair_source_message_single_key_and_empty_sources(self):
+        message = ConceptPromptBatcher._repair_source_message(
+            total=1,
+            missing=["seg_1"],
+            invalid=[],
+            repair_ids=["seg_1"],
+        )
+        self.assertIn("repairing 1 scene key (1 missing, 0 invalid)", message)
+        self.assertIn("[missing: seg_1]", message)
+        self.assertNotIn("[invalid:", message)
+
+    def test_reports_invalid_scene_keys_with_reasons_before_repair(self):
+        modules = FakeConceptModules([
+            json.dumps({
+                "seg_1": {
+                    "concept": "The singer performs on stage.",
+                    "references": {"actor_ids": ["singer", "bass"], "location_id": "stage"},
+                },
+            }),
+            json.dumps({
+                "seg_1": {
+                    "concept": "Goth Singer and Bass Player perform together on stage.",
+                    "references": {"actor_ids": ["singer", "bass"], "location_id": "stage"},
+                },
+            }),
+            "summary",
+        ])
+        progress = []
+        batcher = ConceptPromptBatcher(
+            llm=object(),
+            prompt_modules=modules,
+            batch_size=1,
+            progress_callback=progress.append,
+        )
+
+        batcher.create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": "seg_1", "type": "vocals"}],
+            story_idea="idea",
+            global_context={
+                "actors": [
+                    {"id": "singer", "name": "Goth Singer"},
+                    {"id": "bass", "name": "Bass Player"},
+                ],
+            },
+        )
+
+        repair_messages = [
+            message for message in progress
+            if message.startswith("Concept batch: repairing 1 scene key (0 missing, 1 invalid): seg_1")
+        ]
+        self.assertTrue(repair_messages, "invalid repair message was not reported")
+        self.assertIn(
+            "[invalid: seg_1 (",
+            repair_messages[0],
+        )
+        self.assertTrue(
+            any("bass player" in message for message in progress),
+            "invalid reason was not reported",
         )
 
     def test_repairs_concept_when_selected_actor_is_not_named(self):
