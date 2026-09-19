@@ -131,6 +131,7 @@ class GenerateRenderPlanUseCase:
             stage1_segments_json=timeline_dir / f"stage1_segments_{song_id}.json",
             ltx_prompt_relay_json=prompts_dir / f"ltx_prompt_relay_{song_id}.json",
             resolved_context_json=prompts_dir / f"resolved_context_{song_id}.json",
+            semantic_intent_json=prompts_dir / f"semantic_intent_{song_id}.json",
             concept_prompts_json=prompts_dir / f"concept_prompts_{song_id}.json",
             scene_details_json=prompts_dir / f"scene_details_{song_id}.json",
             scene_prompts_json=prompts_dir / f"scene_prompts_{song_id}.json",
