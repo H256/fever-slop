@@ -165,6 +165,49 @@ class ProjectRenderSettingsTests(unittest.TestCase):
 
         self.assertEqual("image_views", resolved.settings.reference_generation)
 
+    def test_declared_ltx25_profile_resolves_to_materialized_workflow(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text(
+                '{"input_audio":"song.wav","render_profile":"ltx25-r2v-draft"}',
+                encoding="utf-8",
+            )
+
+            resolved = resolve_project_render_settings(root, video_pipeline="ltx_i2v")
+
+        self.assertEqual(
+            str(resolve_runner_path("workflows/video/ltx_25/r2v/r2v_draft.json").resolve()),
+            resolved.runner_overrides["single_prompt_workflow"],
+        )
+
+    def test_undeclared_ltx25_profile_raises_controlled_error(self):
+        from feverslop.domain.render_profile import RenderProfileSchemaError
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text(
+                '{"input_audio":"song.wav","render_profile":"ltx25-t2v-bogus"}',
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(RenderProfileSchemaError):
+                resolve_project_render_settings(root, video_pipeline="ltx_i2v")
+
+    def test_malformed_ltx25_profile_raises_controlled_error(self):
+        from feverslop.domain.render_profile import RenderProfileSchemaError
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text(
+                '{"input_audio":"song.wav","render_profile":"ltx25-"}', encoding="utf-8"
+            )
+
+            with self.assertRaises((RenderProfileSchemaError, ValueError)):
+                resolve_project_render_settings(root, video_pipeline="ltx_i2v")
+
 
 if __name__ == "__main__":
     unittest.main()
