@@ -139,6 +139,7 @@ class ProjectReferenceManifestAdapter:
         semantic_id = cls._required_string(item.get("id"), "id", context)
         if not semantic_id:
             raise ValueError(f"Reference id is required: {manifest_path}")
+        semantic_intent = cls._semantic_intent(item, context)
 
         default_path = cls._asset_value(item, kind, context)
         if default_path:
@@ -153,6 +154,7 @@ class ProjectReferenceManifestAdapter:
                     asset_value=default_path,
                     description=cls._description(item, context),
                     manifest_path=manifest_path,
+                    semantic_intent=semantic_intent,
                 ),
                 source_path,
             )
@@ -195,6 +197,7 @@ class ProjectReferenceManifestAdapter:
                         look_context,
                     ),
                     manifest_path=manifest_path,
+                    semantic_intent=semantic_intent,
                 ),
                 source_path,
             )
@@ -258,6 +261,7 @@ class ProjectReferenceManifestAdapter:
         asset_value: str,
         description: str,
         manifest_path: Path,
+        semantic_intent: dict[str, Any] | None = None,
     ) -> ReferenceAnchor:
         normalized_description = " ".join(description.split())
         if not normalized_description:
@@ -278,7 +282,21 @@ class ProjectReferenceManifestAdapter:
             ),
             asset_sha256=sha256_file(asset),
             prompt_anchor=(prefix + normalized_description)[:350],
+            semantic_intent=semantic_intent,
         )
+
+    @classmethod
+    def _semantic_intent(
+        cls, item: Mapping[str, Any], context: str
+    ) -> dict[str, Any] | None:
+        value = item.get("semantic_intent")
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError(
+                f"Reference semantic_intent must be a JSON object: {context}",
+            )
+        return dict(value)
 
     @staticmethod
     def _resolve_asset(root: Path, value: str) -> Path:
