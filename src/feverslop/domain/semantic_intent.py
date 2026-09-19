@@ -316,3 +316,30 @@ def ledger_for_project(
         except (ValueError, OSError):
             pass
     return ledger_from_legacy_cast(actors, locations)
+
+
+def persisted_ledger_for_project(
+    project_dir: str | Path,
+    song_id: str,
+) -> IntentLedger | None:
+    """Return the persisted semantic intent ledger, or None when absent.
+
+    The pre-render validation gate should only enforce *explicitly declared*
+    obligations (a ledger written by the extraction stage), not the legacy
+    compatibility bridge. ``ledger_for_project`` falls back to
+    ``ledger_from_legacy_cast`` when no artifact exists; that fallback makes
+    every config actor a ``required``/``once`` entity, which would let the
+    gate flag config actors that are simply absent from a scene. This helper
+    returns the persisted ledger only, so the gate stays a no-op for legacy
+    projects (no declared intent) and enforces real obligations otherwise.
+    """
+    candidate = (
+        Path(project_dir) / "output" / "prompts" / f"semantic_intent_{song_id}.json"
+    )
+    if not candidate.exists():
+        return None
+    try:
+        payload = json.loads(candidate.read_text(encoding="utf-8-sig"))
+        return IntentLedger.from_dict(payload)
+    except (ValueError, OSError):
+        return None
