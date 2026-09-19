@@ -633,3 +633,84 @@ class ReferenceBibleTests(unittest.TestCase):
             with Image.open(output_path) as sheet:
                 self.assertEqual((1280, 704), sheet.size)
                 self.assertEqual((20, 30, 40), sheet.getpixel((0, 0)))
+
+
+class ReferenceBibleSemanticIntentTests(unittest.TestCase):
+    def _write_project(self, root: Path) -> Path:
+        (root / "song.mp3").write_bytes(b"audio")
+        (root / "config.json").write_text(
+            json.dumps(
+                {
+                    "input_audio": "song.mp3",
+                    "actors": [
+                        {
+                            "id": "singer",
+                            "name": "Mara",
+                            "role": "lead",
+                            "visual_description": "astronaut",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return root / "config.json"
+
+    def test_load_reference_subjects_carries_ledger_constraint_ids(self):
+        from feverslop.tools.reference_bible import load_reference_subjects
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_path = self._write_project(root)
+            prompts_dir = root / "output" / "prompts"
+            prompts_dir.mkdir(parents=True)
+            ledger_path = prompts_dir / "semantic_intent_song.json"
+            ledger_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "semantic-intent/v1",
+                        "entities": [
+                            {"id": "singer", "kind": "person", "role": "lead"}
+                        ],
+                        "relations": [],
+                        "constraints": [
+                            {
+                                "id": "c1",
+                                "entity_id": "singer",
+                                "kind": "identity",
+                                "statement": "anchor",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            subjects, _ = load_reference_subjects(config_path)
+            self.assertEqual(1, len(subjects))
+            payload = subjects[0].semantic_intent
+            self.assertIsNotNone(payload)
+            assert payload is not None
+            self.assertEqual("singer", payload["entity_id"])
+            self.assertEqual(["c1"], payload["constraint_ids"])
+
+    def test_subject_bible_manifest_includes_semantic_intent(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir) / "output" / "references"
+            generator = ReferenceBibleGenerator(
+                backend=FakeImageBackend(), output_dir=output_dir
+            )
+            subject = ReferenceSubject(
+                id="singer",
+                name="Mara",
+                image_prompt="astronaut",
+                semantic_intent={
+                    "entity_id": "singer",
+                    "constraint_ids": ["c1", "c2"],
+                },
+            )
+            manifest_path = generator.generate_subject_bible(subject)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                {"entity_id": "singer", "constraint_ids": ["c1", "c2"]},
+                manifest["semantic_intent"],
+            )
