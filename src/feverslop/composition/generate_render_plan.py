@@ -54,6 +54,7 @@ from feverslop.prompting.dspy_h3_prompt_builder import (
     DspyH3PromptBuilder,
     build_dspy_generator,
 )
+from feverslop.prompting.semantic_intent_review import DspySemanticIntentReviewer
 from feverslop.prompting.h3_prompt_builder import H3PromptBuilder
 from feverslop.prompting.lyric_alignment import LyricTimelineAligner
 from feverslop.prompting.prompt_pipeline import MusicVideoPromptPipeline
@@ -76,6 +77,7 @@ def _common_pipeline_services():
             concept_batcher_factory=ConceptPromptBatcher,
             scene_prompt_builder_factory=ScenePromptBuilder,
             global_library_factory=lambda path: GlobalLibraryAdapter(path),
+            intent_review_factory=DspySemanticIntentReviewer,
         ),
         H3PromptPipeline(
             llm_factory=_build_llm,

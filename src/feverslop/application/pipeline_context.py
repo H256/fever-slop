@@ -35,6 +35,7 @@ class GenerateRenderPlanContext:
     stage1_segments_json: Path | None = None
     ltx_prompt_relay_json: Path | None = None
     resolved_context_json: Path | None = None
+    semantic_intent_review_json: Path | None = None
     concept_prompts_json: Path | None = None
     scene_details_json: Path | None = None
     scene_prompts_json: Path | None = None
