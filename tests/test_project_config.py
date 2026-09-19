@@ -935,6 +935,28 @@ class ProjectConfigValidationTests(unittest.TestCase):
             "max_scene_actors": 3,
         })
 
+    def test_validate_project_config_accepts_minimax_h3_i2v(self):
+        # #1324: documented pipeline value must be accepted
+        validate_project_config({
+            "project_name": "test",
+            "input_audio": "song.mp3",
+            "video_pipeline": "minimax-h3-i2v",
+        })
+
+    def test_validate_project_config_accepts_minimax_h3_fl2v(self):
+        validate_project_config({
+            "project_name": "test",
+            "input_audio": "song.mp3",
+            "video_pipeline": "minimax-h3-fl2v",
+        })
+
+    def test_validate_project_config_accepts_minimax_h3_l2v(self):
+        validate_project_config({
+            "project_name": "test",
+            "input_audio": "song.mp3",
+            "video_pipeline": "minimax-h3-l2v",
+        })
+
     def test_rejects_invalid_fps_type(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

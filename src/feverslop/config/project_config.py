@@ -53,8 +53,8 @@ def validate_project_config(data: Any, *, project_type: str = "standard_music_vi
     if subject_mode not in {"single", "multi"}:
         raise ValueError("subject_mode must be 'single' or 'multi'")
     video_pipeline = data.get("video_pipeline")
-    if video_pipeline not in {None, "", "ltx_i2v", "ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-t2v"}:
-        raise ValueError("video_pipeline must be 'ltx_i2v', 'ltx_msr', 'ltx_ingredients', 'minimax-h3-r2v', or 'minimax-h3-t2v'")
+    if video_pipeline not in {None, "", "ltx_i2v", "ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v", "minimax-h3-fl2v", "minimax-h3-l2v"}:
+        raise ValueError("video_pipeline must be 'ltx_i2v', 'ltx_msr', 'ltx_ingredients', 'minimax-h3-r2v', 'minimax-h3-t2v', 'minimax-h3-i2v', 'minimax-h3-fl2v', or 'minimax-h3-l2v'")
     max_scene_actors = _parse_max_scene_actors(
         data.get("max_scene_actors", 1 if subject_mode == "single" else 4)
     )
