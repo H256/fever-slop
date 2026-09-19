@@ -1,13 +1,38 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from math import isfinite
 from numbers import Real
+from pathlib import Path
 from typing import Any, Mapping
 
 
 class H3TwoPassSchemaError(ValueError):
     """Raised when an H3 two-pass contract is invalid."""
+
+
+class I2VFrameMode(str, Enum):
+    """Anchor modes supported by the H3 I2V two-pass workflow (issue #761)."""
+
+    START_ONLY = "start_only"
+    START_END = "start_end"
+
+
+def validate_i2v_frames(
+    start_frame: str | Path | None,
+    end_frame: str | Path | None = None,
+) -> I2VFrameMode:
+    """Validate I2V frame inputs before ComfyUI submission.
+
+    I2V always requires a start frame (the source image). An end frame is
+    optional: its presence selects ``START_END``, its absence ``START_ONLY``.
+    """
+    if start_frame is None:
+        raise H3TwoPassSchemaError("i2v requires a start frame")
+    if end_frame is None:
+        return I2VFrameMode.START_ONLY
+    return I2VFrameMode.START_END
 
 
 # Calibrated two-pass budgets for each quality profile. This is the single
