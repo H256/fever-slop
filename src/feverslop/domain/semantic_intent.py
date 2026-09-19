@@ -168,12 +168,12 @@ class IntentLedger(BaseModel):
         if self.schema_version != SCHEMA_VERSION:
             raise ValueError(f"unsupported semantic intent schema: {self.schema_version}")
         entity_ids = _unique_ids([e.id for e in self.entities], "entity")
+        _unique_ids([relation.id for relation in self.relations], "relation")
         for relation in self.relations:
-            _unique_ids([relation.id], "relation")
             _require(entity_ids, relation.subject_id, f"relation {relation.id} subject")
             _require(entity_ids, relation.target_id, f"relation {relation.id} target")
+        _unique_ids([constraint.id for constraint in self.constraints], "constraint")
         for constraint in self.constraints:
-            _unique_ids([constraint.id], "constraint")
             _require(entity_ids, constraint.entity_id, f"constraint {constraint.id} entity")
         return self
 
