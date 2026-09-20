@@ -271,25 +271,6 @@ class ScenePromptBuilder:
 
         return result
 
-    def build_ltx_base_prompt(
-        self,
-        *,
-        segment: dict,
-        concept: str,
-        scene_details: dict,
-        global_context: dict,
-        t2i_prompt: str = "",
-        custom_instructions: str = "",
-    ) -> str:
-        return self.build_i2v_prompt_from_t2i(
-            segment=segment,
-            concept=concept,
-            scene_details=scene_details,
-            global_context=global_context,
-            t2i_prompt=t2i_prompt,
-            custom_instructions=custom_instructions,
-        )
-
     def build_i2v_prompt_from_t2i(
         self,
         *,
