@@ -6,7 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from feverslop.composition.seedvr2_pipeline import (
+    FFPROBE_TIMEOUT_SECONDS,
     SeedVR2CompositionOptions,
+    _probe_duration,
     _probe_size,
     run_seedvr2,
 )
@@ -325,3 +327,33 @@ class ProbeSizeTests(unittest.TestCase):
 
         self.assertIn(str(path), str(ctx.exception))
         self.assertIn("timed out", str(ctx.exception))
+
+
+class ProbeDurationTests(unittest.TestCase):
+    def test_probe_duration_returns_duration(self):
+        path = Path("/tmp/scene_0001.mp4")
+        result = subprocess.CompletedProcess(args=[], returncode=0, stdout="12.5\n", stderr="")
+        with patch("feverslop.composition.seedvr2_pipeline.subprocess.run", return_value=result):
+            duration = _probe_duration(path)
+
+        self.assertEqual(12.5, duration)
+
+    def test_probe_duration_returns_none_on_ffprobe_timeout(self):
+        path = Path("/tmp/scene_0002.mp4")
+        with patch(
+            "feverslop.composition.seedvr2_pipeline.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="ffprobe", timeout=30),
+        ):
+            duration = _probe_duration(path)
+
+        self.assertIsNone(duration)
+
+    def test_probe_duration_passes_ffprobe_timeout(self):
+        path = Path("/tmp/scene_0003.mp4")
+        with patch(
+            "feverslop.composition.seedvr2_pipeline.subprocess.run",
+            return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="1.0\n", stderr=""),
+        ) as run_mock:
+            _probe_duration(path)
+
+        self.assertEqual(FFPROBE_TIMEOUT_SECONDS, run_mock.call_args.kwargs["timeout"])
