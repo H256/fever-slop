@@ -17,6 +17,10 @@ from feverslop.domain.render_profile import (
     RenderProfileRegistry,
 )
 from feverslop.domain.workflow_capability_manifest import WorkflowCapabilityManifest
+from feverslop.domain.ltx25_audio_contract import (
+    load_ltx25_audio_policy,
+    validate_ltx25_audio_workflow,
+)
 
 from .config_loader import resolve_runner_path, runner_root
 
@@ -85,6 +89,7 @@ def resolve_project_render_settings(
     pipeline_defaults = {
         "minimax-h3-r2v": "workflows/video/minimax_h3/r2v_audio_two_pass.json",
         "minimax-h3-t2v": "workflows/video/minimax_h3/t2v_two_pass.json",
+        "minimax-h3-i2v": "workflows/video/minimax_h3/i2v_two_pass.json",
     }
     pipeline_default = pipeline_defaults.get(video_pipeline)
     if pipeline_default and config.workflows.video is None and video_target not in explicit:
@@ -111,6 +116,11 @@ def resolve_project_render_settings(
             if not validation.ok:
                 missing = ", ".join((*validation.missing_models, *validation.missing_nodes))
                 raise ValueError(f"LTX 2.5 workflow capability validation failed: {missing}")
+            audio_policy = load_ltx25_audio_policy(profile_path)
+            validate_ltx25_audio_workflow(
+                json.loads(profile_path.read_text(encoding="utf-8-sig")),
+                audio_policy,
+            )
             video_selection = WorkflowSelection.from_path(profile_path.resolve(), root=runner_root())
             overrides[video_target] = str(profile_path.resolve())
     if config.workflows.video is not None and video_target not in explicit:

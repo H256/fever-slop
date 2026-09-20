@@ -300,7 +300,7 @@
     },
     "class_type": "BasicScheduler",
     "_meta": {
-      "title": "#PASS1_SCHEDULER"
+      "title": "BasicScheduler"
     }
   },
   "168": {
