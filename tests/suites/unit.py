@@ -91,6 +91,7 @@ UNIT_MODULES = (
     "json_io",
     "llm_api_key_validation",
     "llm_benchmark_cli",
+    "ltx25_audio_contract",
     "ltx25_workflow_hygiene",
     "llm_benchmark",
     "llm_boundary_classification",
