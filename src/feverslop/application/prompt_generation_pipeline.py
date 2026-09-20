@@ -22,6 +22,9 @@ from feverslop.prompting.subject_directive_planning import (
     DspySubjectDirectivePlanner,
     build_shared_staging_plan,
 )
+from feverslop.prompting.semantic_intent_extraction import (
+    SemanticIntentExtractor,
+)
 from feverslop.prompting.planning_payload import compact_planning_payload
 from feverslop.prompting.concept_prompt_batcher import (
     validate_and_annotate_concept_chronology,
@@ -298,6 +301,7 @@ class PromptGenerationPipeline:
         scene_prompt_builder_factory: ScenePromptBuilderFactory,
         global_library_factory: Callable[[Any], Any] | None = None,
         intent_review_factory: Callable[[Any], Any] | None = None,
+        intent_extractor_factory: Callable[[Any], Any] | None = None,
     ):
         self.llm_factory = llm_factory
         self.prompt_pipeline_factory = prompt_pipeline_factory
@@ -305,6 +309,7 @@ class PromptGenerationPipeline:
         self.scene_prompt_builder_factory = scene_prompt_builder_factory
         self.global_library_factory = global_library_factory
         self.intent_review_factory = intent_review_factory
+        self.intent_extractor_factory = intent_extractor_factory
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
@@ -319,6 +324,7 @@ class PromptGenerationPipeline:
         resume = bool(getattr(request, "resume", False))
         stage1_segments = context["stage1_segments"]
         resolved_context_json: Path = context["resolved_context_json"]
+        semantic_intent_json: Path | None = getattr(context, "semantic_intent_json", None)
         concept_prompts_json: Path = context["concept_prompts_json"]
         scene_details_json: Path = context["scene_details_json"]
         scene_prompts_json: Path = context["scene_prompts_json"]
@@ -347,6 +353,8 @@ class PromptGenerationPipeline:
                 resolved_context_json=resolved_context_json,
                 artifact_store=artifact_store,
                 log_file=log_file,
+                llm=llm,
+                semantic_intent_json=semantic_intent_json,
             )
             self._review_semantic_intent(
                 llm=llm,
@@ -575,6 +583,8 @@ class PromptGenerationPipeline:
         resolved_context_json: Path,
         artifact_store: Any,
         log_file: Callable[[str, Path], None],
+        llm: Any = None,
+        semantic_intent_json: Path | None = None,
     ) -> dict:
         all_lyrics = " ".join(
             seg.get("lyrics", "")
@@ -588,6 +598,10 @@ class PromptGenerationPipeline:
             all_lyrics=all_lyrics,
             run_spinner=run_spinner,
             reporter=reporter,
+            llm=llm,
+            semantic_intent_json=semantic_intent_json,
+            artifact_store=artifact_store,
+            log_file=log_file,
         )
         prompt_pipeline.save_json(
             resolved_context_json,
@@ -1021,6 +1035,47 @@ class PromptGenerationPipeline:
             "configured_actor_items": configured_actor_items,
         }
 
+    def _extract_semantic_intent(
+        self,
+        *,
+        llm: Any,
+        story_idea: str,
+        notes: dict,
+        semantic_intent_json: Path | None,
+        artifact_store: Any,
+        log_file: Callable[[str, Path], None],
+        reporter: Any,
+    ) -> dict:
+        """Run the typed intent extraction and persist the artifact.
+
+        With no extractor factory configured (tests, or a non-LLM run) this
+        is a no-op that returns an empty ledger -- it never invents entities.
+        A failed extraction is bounded: it still persists a constructible,
+        empty ledger with a visible status so subject/location generation
+        always has a valid artifact.
+        """
+        factory = self.intent_extractor_factory
+        if factory is None or llm is None:
+            extractor = SemanticIntentExtractor()
+        else:
+            extractor = factory(llm)
+        result = extractor.extract(story_idea=story_idea, notes=notes.get("story_notes", ""))
+        payload = {
+            "status": result.status,
+            "warnings": result.warnings,
+            "ledger": result.ledger.to_dict(),
+        }
+        if semantic_intent_json is not None and artifact_store is not None:
+            artifact_store.write_json(semantic_intent_json, payload)
+            if log_file is not None:
+                log_file("Semantic Intent JSON", semantic_intent_json)
+        if reporter is not None and result.warnings:
+            reporter.message(
+                f"[yellow]Semantic intent extraction: {result.status} "
+                f"({len(result.warnings)} warnings)[/yellow]"
+            )
+        return payload
+
     def _resolve_story_idea(self, *, config_values: dict, prompt_pipeline: Any, all_lyrics: str, notes: dict, run_spinner: Callable, reporter: Any) -> str:
         return resolve_text_override(
             configured_value=config_values["story_idea"],
@@ -1102,6 +1157,10 @@ class PromptGenerationPipeline:
         run_spinner: Callable[[str, Callable[[], Any]], Any],
         reporter: Any = None,
         console: Any = None,
+        llm: Any = None,
+        semantic_intent_json: Path | None = None,
+        artifact_store: Any = None,
+        log_file: Callable[[str, Path], None] | None = None,
     ) -> dict:
         if reporter is None and console is not None:
             reporter = console
@@ -1113,6 +1172,15 @@ class PromptGenerationPipeline:
             all_lyrics=all_lyrics,
             notes=notes,
             run_spinner=run_spinner,
+            reporter=reporter,
+        )
+        self._extract_semantic_intent(
+            llm=llm,
+            story_idea=story_idea,
+            notes=notes,
+            semantic_intent_json=semantic_intent_json,
+            artifact_store=artifact_store,
+            log_file=log_file,
             reporter=reporter,
         )
         style_block = self._resolve_style_block(
