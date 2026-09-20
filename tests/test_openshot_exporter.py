@@ -577,6 +577,55 @@ class MltExporterTests(unittest.TestCase):
             self.assertIn("scene 2 ends at frame 22, before frame 48", message)
             self.assertIn(f"Render plan: {plan}", message)
 
+    def test_mlt_attaches_clips_to_correct_timeline_position_for_reordered_plan(self):
+        """A plan whose entries are not chronological must still attach each
+        rendered clip to the entry it was rendered for, not to the Nth
+        sorted interval (issue #1314)."""
+        from feverslop.application.mlt_exporter import export_render_plan_to_mlt
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            # Input order is NOT chronological: entry 1 is scene 2 (starts at
+            # 1.0s), entry 2 is scene 1 (starts at 0.0s).
+            plan = root / "plan.json"
+            plan.write_text(json.dumps([
+                {"scene": 2, "duration_seconds": 1.0, "abs_start_seconds": 1.0},
+                {"scene": 1, "duration_seconds": 1.0, "abs_start_seconds": 0.0},
+            ]), encoding="utf-8")
+            # clip_paths follow render-plan (input) order: index 0 is the clip
+            # rendered for input entry 1 (scene 2), index 1 for entry 2 (scene 1).
+            clips = [root / "input1_scene2.mp4", root / "input2_scene1.mp4"]
+            for clip in clips:
+                clip.touch()
+
+            export_render_plan_to_mlt(
+                render_plan_path=plan,
+                clip_paths=clips,
+                output_path=root / "timeline.mlt",
+                width=1216,
+                height=672,
+                fps=24,
+            )
+
+            document = ET.parse(root / "timeline.mlt").getroot()
+            # Map producer id -> resource path.
+            resources = {}
+            for chain in document.findall("chain"):
+                resource = chain.find("property[@name='resource']")
+                resources[chain.attrib["id"]] = resource.text if resource is not None else None
+
+            # The first timeline entry (t=0) is scene 1 (input index 2); the
+            # second (t=1.0s) is scene 2 (input index 1).
+            playlist = document.find("playlist[@id='playlist0']")
+            producers = [entry.attrib["producer"] for entry in playlist.findall("entry")]
+            # Sorted order: scene 1 (input index 2 -> producer video_0002) first,
+            # scene 2 (input index 1 -> producer video_0001) second.
+            self.assertEqual(producers, ["video_0002", "video_0001"])
+            # The clip rendered for scene 1 (input index 2) must be attached to
+            # the t=0 position, and vice versa.
+            self.assertIn("input2_scene1.mp4", resources["video_0002"])
+            self.assertIn("input1_scene2.mp4", resources["video_0001"])
+
 
 if __name__ == "__main__":
     unittest.main()

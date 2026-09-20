@@ -19,6 +19,7 @@ from feverslop.application.reference_bible import (
 from feverslop.application.reference_sheet_planning import ReferenceSheetPlanner
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
+from feverslop.domain.semantic_intent import IntentLedger, entity_constraint_ids, ledger_for_project
 from feverslop.path_utils import resolve_workflow_reference
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.ports.reporting import ConsoleReporter, Reporter, install_reporter_logging
@@ -62,6 +63,7 @@ def load_reference_subjects(project_config_path: str | Path) -> tuple[list[Refer
     resolved_context = _load_resolved_context(config)
     actor_source = resolved_context.get("actors") or config.actors
     location_source = resolved_context.get("structured_locations") or config.structured_locations
+    ledger = _load_project_ledger(config)
     subjects = [
         ReferenceSubject(
             id=_item_value(actor, "id"),
@@ -73,6 +75,7 @@ def load_reference_subjects(project_config_path: str | Path) -> tuple[list[Refer
                 or _item_value(actor, "visual_description")
                 or _item_value(actor, "name")
             ),
+            semantic_intent=_semantic_intent_payload(ledger, _item_value(actor, "id")),
         )
         for actor in actor_source
     ]
@@ -83,6 +86,7 @@ def load_reference_subjects(project_config_path: str | Path) -> tuple[list[Refer
                 name="Subject",
                 visual_description=config.subject,
                 image_prompt=config.subject,
+                semantic_intent=_semantic_intent_payload(ledger, "subject"),
             ),
         )
 
@@ -97,10 +101,48 @@ def load_reference_subjects(project_config_path: str | Path) -> tuple[list[Refer
                 or _item_value(location, "name")
             ),
             reference_mode=_item_value(location, "reference_mode") or "empty_environment",
+            semantic_intent=_semantic_intent_payload(ledger, _item_value(location, "id")),
         )
         for location in location_source
     ]
     return subjects, locations
+
+
+def _load_project_ledger(config: ProjectConfig) -> IntentLedger:
+    """Resolve the semantic intent ledger for a project (persisted or legacy)."""
+    actors = [
+        {
+            "id": actor.id,
+            "name": actor.name,
+            "role": actor.role,
+            "visual_description": actor.visual_description,
+        }
+        for actor in config.actors
+    ]
+    locations = [
+        {
+            "id": location.id,
+            "name": location.name,
+            "visual_description": location.visual_description,
+        }
+        for location in config.structured_locations
+    ]
+    return ledger_for_project(config.project_dir, config.song_id, actors, locations)
+
+
+def _semantic_intent_payload(ledger: IntentLedger, entity_id: str) -> dict | None:
+    """Build the retained-constraint provenance payload for one entity.
+
+    Returns None when the entity is not in the ledger (no provenance to carry);
+    otherwise the stable entity id plus the constraint ids the ledger binds to
+    it, so a reference manifest can prove what it retained.
+    """
+    if not entity_id:
+        return None
+    known = ledger.entity_ids()
+    if not known or entity_id not in known:
+        return None
+    return {"entity_id": entity_id, "constraint_ids": entity_constraint_ids(ledger, entity_id)}
 
 
 def _load_resolved_context(config: ProjectConfig) -> dict:

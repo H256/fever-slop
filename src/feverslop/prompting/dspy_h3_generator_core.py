@@ -17,6 +17,7 @@ from feverslop.prompting.dspy_h3_models import (
     BaseVideoPrompt,
     CreativeFieldIssue,
     GeneratedVideoPrompt,
+    H3CreativePlan,
     ImageAnalysisMode,
     MusicIntent,
     PlannedShot,
@@ -123,12 +124,42 @@ def _authoritative_shot_windows(
 
 def _authoritative_continuation_intents(
     request: VideoPromptRequest,
+    creative: "H3CreativePlan | None" = None,
 ) -> list[ContinuationIntent]:
-    intents = []
+    """Merge planner-owned creative continuity with upstream relay data.
+
+    The LLM's creative decision (``creative.shots[*].requires_continuation``) is
+    the primary source: it is the autonomous one-shot decision the issue asks for.
+    Upstream ``relay_segments`` data is a backward-compatible fallback for runs
+    that predate the creative field. Intents are deduped by ``action_id`` with
+    the first (creative) source winning, so an explicit upstream flag never
+    suppresses an accepted creative one-shot.
+    """
+    intents: list[ContinuationIntent] = []
+    seen: set[str] = set()
+
+    if creative is not None:
+        for index, shot in enumerate(creative.shots):
+            # Tolerant: some stored plans / test fakes put PlannedShot objects
+            # here, which lack the creative continuity fields.
+            if not getattr(shot, "requires_continuation", False):
+                continue
+            action_id = f"creative_shot_{index + 1}"
+            if action_id in seen:
+                continue
+            seen.add(action_id)
+            intents.append(ContinuationIntent(
+                action_id=action_id,
+                requires_continuation=True,
+                rationale=getattr(shot, "continuation_rationale", None) or "",
+                desired_duration_seconds=getattr(shot, "desired_duration_seconds", None),
+            ))
+
     for item in request.relay_segments:
         action_id = str(item.get("action_id") or "").strip()
-        if not action_id:
+        if not action_id or action_id in seen:
             continue
+        seen.add(action_id)
         intents.append(ContinuationIntent(
             action_id=action_id,
             requires_continuation=bool(item.get("requires_continuation", False)),
@@ -630,7 +661,7 @@ class VideoPromptGenerator:
                 None if music_intent is MusicIntent.NONE else creative.non_diegetic_music
             ),
             alignment_instruction=None,
-            continuation_intents=_authoritative_continuation_intents(request),
+            continuation_intents=_authoritative_continuation_intents(request, creative),
         )
 
     def planner_diagnostic(self) -> dict[str, Any]:

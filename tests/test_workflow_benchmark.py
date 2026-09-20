@@ -1081,6 +1081,49 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
             self.assertTrue(review_path.is_dir())
             self.assertFalse(mapping_path.exists())
 
+    def test_cli_create_review_reports_mismatched_environment_fingerprint(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            environment_path = _write_environment(root)
+            results_path = root / "results.json"
+            review_path = root / "review.json"
+            mapping_path = root / "sealed.json"
+            results_path.write_text(
+                json.dumps({
+                    "results": [
+                        dict(
+                            _unscored_result(label=label, scene=scene),
+                            environment_fingerprint="f" * 64,
+                        )
+                        for label in ("baseline", "candidate")
+                        for scene in range(1, 7)
+                    ],
+                }),
+                encoding="utf-8",
+            )
+            output = io.StringIO()
+
+            with redirect_stdout(output):
+                status = run([
+                    str(results_path),
+                    "--create-review",
+                    str(review_path),
+                    "--sealed-mapping",
+                    str(mapping_path),
+                    "--seed",
+                    "4707",
+                    "--environment",
+                    str(environment_path),
+                    "--json",
+                ])
+
+            self.assertEqual(1, status)
+            payload = json.loads(output.getvalue())
+            self.assertFalse(payload["valid"])
+            self.assertIn("environment fingerprint", payload["error"])
+            self.assertFalse(review_path.exists())
+            self.assertFalse(mapping_path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

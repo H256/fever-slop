@@ -119,8 +119,12 @@ def _append_scene_clips(
     """Add one producer and playlist entry per rendered clip; return (total_frames, cursor)."""
     timeline_cursor = 0
     total_frames = 0
-    indexed_entries = list(zip(intervals, clip_paths, strict=True))
-    for _position, (interval, clip_path) in enumerate(indexed_entries):
+    # Intervals are sorted by timeline position; clip_paths arrive in render-plan
+    # (input) order. Reorder the clips by each interval's original 1-based plan
+    # index so every clip is attached to the entry it was rendered for, even
+    # when the plan's entries are not already chronological.
+    ordered_clips = [clip_paths[interval[0] - 1] for interval in intervals]
+    for _position, (interval, clip_path) in enumerate(zip(intervals, ordered_clips, strict=True)):
         original_index, entry, scene_number, duration, _start_seconds, start_frame, end_frame = interval
         path = Path(clip_path)
         if not path.is_file():
