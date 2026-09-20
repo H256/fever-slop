@@ -5,6 +5,49 @@ All notable changes to FeverSlop are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-09-20
+
+### Added
+
+- Semantic intent ledgers with multilingual extraction, deterministic validation,
+  independent review, bounded repair, and provenance carried into scene
+  anchors and reference manifests.
+- LLM-derived narrative contracts that turn a story idea into a usable story
+  arc for music-video planning.
+- Resumable main-pipeline execution at sub-step granularity, with explicit
+  replay policy and idempotent promotion of completed renders.
+- Per-project workflow imports with deterministic boundary inspection,
+  validation, activation, and immutable pinned snapshots.
+- Declarative ensemble constraints and a pre-render validation gate, preventing
+  silent fallback when cast requirements are not met.
+- A two-pass MiniMax H3 I2V profile with optional end-frame support, quality
+  budget wiring, and improved continuation, relay, and vocal-timing contracts.
+- GPU and workflow benchmark tooling, including reproducible benchmark and
+  regression fixtures.
+
+### Changed
+
+- Pipeline stages are split into focused modules, and several large application
+  and prompt-generation paths are decomposed while preserving the public CLI.
+- Reference sheets are now reused per actor when valid rather than rendered
+  again for every scene.
+- LTX 2.5 profile resolution accepts only declared profiles and enforces each
+  profile's audio contract.
+- H3 prompting uses task-specific temperature policies and feeds shot-count
+  constraints back into planning retries.
+
+### Fixed
+
+- Semantic-intent repairs now propagate through the production pipeline; IDs,
+  entity aliases, and selection filters are validated consistently.
+- H3 shot-cut timestamps, vocal bindings, relay timing, frame inputs, and
+  quality-budget wiring are validated and materialized consistently.
+- Resume paths handle BOM-prefixed plans and configuration files, quote
+  non-Windows hints safely, and avoid reprocessing valid artifacts.
+- Timeline exports place reordered MLT clips at their intended positions.
+- FFprobe calls used by SeedVR2 now time out rather than blocking a render
+  indefinitely; runtime dependencies are declared explicitly.
+
 ## [0.6.0] - 2026-09-05
 
 ### Added
@@ -188,6 +231,7 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Previous tagged release.
 
 [0.5.0]: https://forgejo.elysium.lan/H256/fever-slop/compare/v0.4.1...v0.5.0
+[0.7.0]: https://forgejo.elysium.lan/H256/fever-slop/compare/v0.6.0...v0.7.0
 [0.6.0]: https://forgejo.elysium.lan/H256/fever-slop/compare/v0.5.0...v0.6.0
 [0.4.1]: https://forgejo.elysium.lan/H256/fever-slop/compare/v0.4.0...v0.4.1
 [0.4.0]: https://forgejo.elysium.lan/H256/fever-slop/compare/v0.3.0...v0.4.0
