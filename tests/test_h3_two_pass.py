@@ -167,6 +167,31 @@ class H3TwoPassBudgetWiringTests(unittest.TestCase):
         self.assertEqual(20, single_pass["1"]["inputs"]["steps"])
         self.assertEqual(1.0, single_pass["1"]["inputs"]["denoise"])
 
+    def test_single_pass_turbo_template_keeps_template_steps(self):
+        # Regression: the full-mix turbo template is single-pass but carried a
+        # #PASS1_SCHEDULER anchor, so the quality budget overwrote its 8 steps.
+        from feverslop.adapters.comfyui_minimax_h3_video_backend import ComfyUIMiniMaxH3VideoRenderBackend
+        from feverslop.adapters.workflow_patcher import WorkflowPatcher
+        from feverslop.domain.h3_two_pass import default_h3_two_pass_spec
+
+        turbo = (
+            Path(__file__).resolve().parents[1]
+            / "workflows" / "video" / "minimax_h3"
+            / "r2v_audio_fullmix_guide_1-pass_turbo.json"
+        )
+        backend = ComfyUIMiniMaxH3VideoRenderBackend.__new__(ComfyUIMiniMaxH3VideoRenderBackend)
+        for quality in ("draft", "standard", "final"):
+            with self.subTest(quality=quality):
+                patcher = WorkflowPatcher(json.loads(turbo.read_text(encoding="utf-8")))
+                backend._patch_two_pass_budget(patcher, default_h3_two_pass_spec(quality))
+                schedulers = [
+                    node for node in patcher.get().values()
+                    if node.get("class_type") == "BasicScheduler"
+                ]
+                self.assertEqual(1, len(schedulers))
+                self.assertEqual(8, schedulers[0]["inputs"]["steps"])
+                self.assertEqual(1, schedulers[0]["inputs"]["denoise"])
+
 
 if __name__ == "__main__":
     unittest.main()

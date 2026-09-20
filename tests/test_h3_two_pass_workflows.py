@@ -38,6 +38,18 @@ class H3TwoPassWorkflowTests(unittest.TestCase):
                 self.assertNotIn("height", upscaler["inputs"])
                 self.assertNotIn("megapixels", upscaler["inputs"])
 
+    def test_i2v_profile_declares_frame_capabilities(self):
+        # Issue #761: the I2V two-pass profile sidecar must declare the
+        # start-only and start-end anchor capabilities consumed by the
+        # I2V backend before ComfyUI submission.
+        root = Path(__file__).resolve().parents[1]
+        profile = json.loads(
+            (root / "workflows" / "video" / "minimax_h3" / "i2v_two_pass.profile.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual("i2v", profile["mode"])
+        self.assertEqual(["start_only", "start_end"], profile["frame_capabilities"])
+        self.assertEqual("two_pass", profile["pass_strategy"])
+
 
 if __name__ == "__main__":
     unittest.main()
