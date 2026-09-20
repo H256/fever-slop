@@ -41,6 +41,7 @@ __all__ = [
     "FAILED",
     "NEEDS_REPAIR",
     "OK",
+    "REPAIRED",
     "SEMANTIC_INTENT_REVIEW",
     "SEMANTIC_INTENT_REVIEW_GUIDE",
     "DEFAULT_REVIEW_MAX_ATTEMPTS",
@@ -62,6 +63,7 @@ SEMANTIC_INTENT_REVIEW_GUIDE = "semantic-intent-review"
 
 #: Bounded visible status values for a structured review attempt.
 OK = "ok"
+REPAIRED = "repaired"
 NEEDS_REPAIR = "needs_repair"
 AMBIGUOUS = "ambiguous"
 FAILED = "failed"
@@ -149,7 +151,7 @@ def build_semantic_intent_review_signature(dspy_module: Any | None = None) -> An
         """
 
         story_idea: str = dspy_module.InputField()
-        ledger: str = dspy_module.InputField(default="")
+        ledger: dict[str, Any] = dspy_module.InputField()
         guide: str = dspy_module.InputField(default="")
         review: IntentReviewResult = dspy_module.OutputField()
 
@@ -334,6 +336,12 @@ def repair_ledger(
                     f"finding {finding.id} skipped: unknown target entity {target or '(none)'}"
                 )
                 continue
+            if not _record_exists(payload, record_id):
+                skipped.append(finding.id)
+                warnings.append(
+                    f"finding {finding.id} skipped: unknown rebindable record {record_id}"
+                )
+                continue
             rebind[record_id] = target
             applied.append(finding.id)
         else:  # omitted
@@ -374,7 +382,7 @@ def repair_ledger(
             skipped=[f.id for f in findings],
             warnings=[f"repair left ledger invalid, kept original: {exc}"],
         )
-    status = NEEDS_REPAIR if applied else (AMBIGUOUS if skipped else OK)
+    status = NEEDS_REPAIR if skipped else (REPAIRED if applied else OK)
     return IntentRepairResult(
         ledger=repaired,
         status=status,
@@ -438,4 +446,12 @@ def review_and_repair(
             skipped=[f.id for f in review.findings],
             warnings=["ambiguous source; no targeted repair applied"],
         )
-    return repair_ledger(ledger, review.findings)
+    result = repair_ledger(ledger, review.findings)
+    status = (
+        NEEDS_REPAIR
+        if review.status == NEEDS_REPAIR and result.status == OK
+        else result.status
+    )
+    return result.model_copy(
+        update={"status": status, "warnings": [*review.warnings, *result.warnings]}
+    )

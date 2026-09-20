@@ -1,4 +1,5 @@
 import unittest
+import warnings
 
 from feverslop.application.visual_consistency_preflight import (
     preflight_visual_consistency,
@@ -38,6 +39,25 @@ class VisualConsistencyPreflightTests(unittest.TestCase):
         self.assertFalse(result.renderable)
         self.assertEqual(["missing_actor_reference"], [issue.code for issue in result.issues])
         self.assertEqual("error", result.issues[0].severity)
+
+    def test_explicit_actorless_scene_does_not_reconstruct_cast(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = preflight_visual_consistency(
+                [{
+                    "scene": 1,
+                    "references": {"actor_ids": [], "location_id": "stage"},
+                }],
+                self.snapshot,
+                mode="msr",
+                workflow_profile="msr-default",
+                preflight_mode=PreflightMode.STRICT,
+            )
+
+        self.assertEqual(1, len(result.contracts))
+        self.assertFalse(
+            any("reconstructed actor IDs" in str(item.message) for item in caught)
+        )
 
     def test_warn_legacy_unknown_is_nonblocking(self):
         result = preflight_visual_consistency(

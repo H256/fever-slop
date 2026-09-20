@@ -12,6 +12,7 @@ from feverslop.prompting.semantic_intent_extraction import (
     EXTRACTION_EMPTY,
     EXTRACTION_FAILED,
     EXTRACTION_OK,
+    EXTRACTION_REPAIRED,
     SemanticIntentExtractor,
     build_semantic_intent_signature,
     ledger_from_extraction,
@@ -32,6 +33,18 @@ class SemanticIntentExtractionContractTests(unittest.TestCase):
         fields = set(bundle.model_fields.keys())
         self.assertIn("story_idea", fields)
         self.assertIn("extraction", fields)
+
+    def test_extraction_schema_names_nested_constraint_fields(self):
+        schema = IntentExtractionResult.model_json_schema()
+        constraint_items = schema["properties"]["constraints"]["items"]
+        self.assertIn("$ref", constraint_items)
+        definition_name = constraint_items["$ref"].rsplit("/", 1)[-1]
+        properties = schema["$defs"][definition_name]["properties"]
+
+        self.assertIn("entity_id", properties)
+        self.assertIn("kind", properties)
+        self.assertIn("statement", properties)
+        self.assertIn("provenance", properties)
 
     def test_no_predictor_yields_empty_ledger_without_invention(self):
         # Acceptance: a story without a singer does not invent one.
@@ -228,6 +241,7 @@ class SemanticIntentExtractionRepairTests(unittest.TestCase):
         self.assertEqual(len(result.ledger.relations), 0)
         self.assertEqual(len(result.ledger.constraints), 0)
         self.assertTrue(result.warnings)
+        self.assertEqual(EXTRACTION_REPAIRED, result.status)
 
 
 if __name__ == "__main__":

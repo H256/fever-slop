@@ -32,6 +32,7 @@ def resolve_scene_cast(
     subject_mode: str = "multi",
     max_scene_actors: int = 4,
     scene_number: object | None = None,
+    fallback_on_empty: bool = True,
 ) -> SceneCast:
     actors_by_id = {
         actor.id: actor
@@ -42,7 +43,12 @@ def resolve_scene_cast(
     selected = tuple(dict.fromkeys(str(value).strip() for value in selected_actor_ids if str(value).strip()))
     valid = tuple(actor_id for actor_id in selected if actor_id in actors_by_id)[:limit]
     normalized_mode = str(subject_mode).strip().lower() or "multi"
-    if not valid and actors_by_id and normalized_mode != "location_only":
+    if (
+        not valid
+        and actors_by_id
+        and normalized_mode != "location_only"
+        and fallback_on_empty
+    ):
         valid = (next(iter(actors_by_id)),)
         if scene_number is not None:
             warnings.warn(

@@ -864,6 +864,22 @@ def validate_and_annotate_concept_chronology(
     contract: dict[str, Any],
 ) -> dict[str, Any]:
     """Validate the complete ordered concept sequence before downstream prompts."""
+    final_segment_id = next(reversed(concepts), "")
+    terminal_milestones = set(
+        _normalized_list(contract.get("terminal_milestones") or ["story_complete"])
+    )
+    for segment_id, value in concepts.items():
+        if segment_id == final_segment_id:
+            continue
+        premature = terminal_milestones.intersection(
+            _normalized_list(_narrative(value).get("milestones"))
+        )
+        if premature:
+            milestone = sorted(premature)[0]
+            raise ValueError(
+                "Concept chronology validation failed: terminal milestone "
+                f"{milestone!r} is only valid on final segment {final_segment_id!r}"
+            )
     accepted: dict[str, Any] = {}
     failures: list[str] = []
     for segment_id, value in concepts.items():
