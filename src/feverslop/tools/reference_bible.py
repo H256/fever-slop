@@ -224,6 +224,9 @@ def run(args: argparse.Namespace, reporter: Reporter | None = None) -> list[Path
     elif args.only_kind == "location":
         subjects = []
         locations = [location for location in locations if location.id == args.only_id]
+    elif args.only_id is not None:
+        subjects = [subject for subject in subjects if subject.id == args.only_id]
+        locations = [location for location in locations if location.id == args.only_id]
     if not subjects and not locations:
         raise ValueError(
             "No reference actors or locations found. Run the prompt/render-plan step first "
