@@ -181,6 +181,7 @@ UNIT_MODULES = (
     "seedvr2_planner",
     "seedvr2_timeline_export",
     "semantic_intent",
+    "semantic_intent_validation",
     "semantic_intent_extraction",
     "semantic_intent_wiring",
     "sequence_reference_pipeline",
