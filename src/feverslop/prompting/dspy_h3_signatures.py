@@ -50,6 +50,19 @@ def build_h3_signature_bundle(dspy_module: Any | None = None) -> H3SignatureBund
         guide-defined detailed_description section. Target 350-500 English words across
         the combined shot descriptions, scaled to the scene's information load.
 
+        Creative continuity (autonomous, no user directive required): decide for each
+        shot whether the action, camera move, subject state, or environmental
+        transformation is stronger as ONE uninterrupted shot even if that semantic shot
+        exceeds the backend's per-clip duration capability. When it is, set
+        `requires_continuation=true` on that shot and state why in
+        `continuation_rationale` (a short creative reason, no frame counts). You may set
+        `desired_duration_seconds` to the intended semantic length in seconds; it is a
+        hint only. Never let the per-clip hardware duration create or suppress a cut:
+        it is a technical limit applied after creative planning. An explicit hard cut
+        stays a hard cut. You never choose backend frame counts, workflow limits, or
+        exact technical boundaries; the deterministic compiler splits an accepted
+        one-shot into safe technical clips.
+
         `requested_music_intent` is authoritative. When it is `none`, return
         `music_intent=none` and omit `non_diegetic_music`.
 

@@ -54,6 +54,7 @@ from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
 from feverslop.domain.render_plan import RenderPlan, RenderScene
+from feverslop.domain.semantic_intent import persisted_ledger_for_project
 from feverslop.domain.visual_consistency import (
     PreflightMode,
     SceneConsistencyContract,
@@ -641,6 +642,10 @@ def _run_visual_consistency_preflight(
             and selected_profile.supports_start_frame
         ),
         ensembles=project_config.ensembles,
+        semantic_intent_ledger=persisted_ledger_for_project(
+            project_config.project_dir,
+            project_config.song_id,
+        ),
     )
     artifact_issues = validate_project_scene_artifacts(
         state.context.project_config_dir,

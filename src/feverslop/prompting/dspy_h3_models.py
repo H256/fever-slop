@@ -208,6 +208,15 @@ class H3CreativeShot(BaseModel):
     camera_behavior: str | None = None
     environmental_motion: str | None = None
     transition_intent: str | None = None
+    # Planner-owned creative continuity decision. True means this shot is one
+    # uninterrupted semantic shot even when it exceeds the backend's per-clip
+    # duration capability; the deterministic compiler then splits it into safe
+    # technical clips. The LLM never chooses frame counts or technical
+    # boundaries -- only the creative one-shot decision and an optional desired
+    # semantic duration (seconds).
+    requires_continuation: bool = False
+    continuation_rationale: str | None = None
+    desired_duration_seconds: float | None = Field(default=None, gt=0)
 
     @field_validator(
         "description",
@@ -216,6 +225,7 @@ class H3CreativeShot(BaseModel):
         "camera_behavior",
         "environmental_motion",
         "transition_intent",
+        "continuation_rationale",
     )
     @classmethod
     def reject_compiler_syntax(cls, value: str | None) -> str | None:

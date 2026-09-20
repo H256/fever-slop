@@ -50,6 +50,17 @@ class AppConfigTests(unittest.TestCase):
             configured = AppConfig.load(config_path)
         self.assertTrue(configured.llm.prompt_judge_enabled)
 
+    def test_load_tolerates_utf8_bom_prefixed_config(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_bytes(
+                b"\xef\xbb\xbf" + b'{"llm": {"prompt_judge_enabled": true}}'
+            )
+            loaded = AppConfig.load(config_path)
+        self.assertTrue(loaded.llm.prompt_judge_enabled)
+
     def test_execution_config_does_not_change_existing_positional_arguments(self):
         from feverslop.config.app_config import AppConfig, ComfyUIConfig, LLMConfig
 
