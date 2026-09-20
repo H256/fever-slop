@@ -37,6 +37,20 @@ class BenchmarkFixtureTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "hash mismatch"):
                 validate_benchmark_project(root)
 
+    def test_non_dict_manifest_raises_value_error_not_attribute_error(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "benchmark.json").write_text(json.dumps([]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must be a JSON object"):
+                validate_benchmark_project(root)
+
+    def test_scalar_manifest_raises_value_error_not_attribute_error(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "benchmark.json").write_text(json.dumps("just-a-string"), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must be a JSON object"):
+                validate_benchmark_project(root)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,7 @@
+{
+  "schema": "feverslop.gpu-benchmark-matrix/v1",
+  "profiles": ["ltxv_final"],
+  "scenes": [1, 2],
+  "seeds": [10, 20, 30],
+  "command": "uv run python -m feverslop.tools.gpu_benchmark --profiles ltxv_final --scenes 1,2 --seeds 10,20,30 --backend fake --output-dir example-project/output/benchmark"
+}
