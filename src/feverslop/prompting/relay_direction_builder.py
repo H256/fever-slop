@@ -11,6 +11,7 @@ from feverslop.prompting.subject_directive_planning import (
     project_directives_to_prompt,
     subject_directives_from_scene,
 )
+from feverslop.utils.io import read_json
 
 
 def _extract_json_array(text: str) -> list[dict[str, Any]]:
@@ -108,7 +109,7 @@ class RelayDirectionBuilder:
         input_render_plan = Path(input_render_plan)
         output_render_plan = Path(output_render_plan)
 
-        plan = json.loads(input_render_plan.read_text(encoding="utf-8"))
+        plan = read_json(input_render_plan)
         compacted = self.compact_render_plan(plan)
 
         output_render_plan.parent.mkdir(parents=True, exist_ok=True)

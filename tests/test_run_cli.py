@@ -12,7 +12,7 @@ from unittest.mock import patch
 from rich.console import Console
 
 import main
-from feverslop.cli.run_cli import run_project_command
+from feverslop.cli.run_cli import run_project_command, _resume_command
 from feverslop.domain.execution_plan import ExecutionPlan, ExecutionPlanItem, PlanAction
 
 
@@ -613,6 +613,21 @@ class RunCliTests(unittest.TestCase):
         )
         blocked = _blocked_h3_scene_numbers(self.project)
         self.assertEqual([3], blocked)
+
+    def test_resume_command_posix_quotes_path_with_spaces(self):
+        project = Path("my project")
+        with patch("feverslop.cli.run_cli.os.name", "posix"):
+            command = _resume_command(project, scenes="2,4")
+        self.assertIn("'my project'", command)
+        self.assertIn("--scenes 2,4", command)
+
+    def test_resume_command_windows_uses_list2cmdline(self):
+        project = Path("my project")
+        with patch("feverslop.cli.run_cli.os.name", "nt"):
+            command = _resume_command(project, scenes="2,4")
+        self.assertIn("my project", command)
+        self.assertNotIn("'", command)
+        self.assertIn("--scenes 2,4", command)
 
 
 if __name__ == "__main__":

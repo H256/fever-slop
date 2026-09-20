@@ -771,17 +771,17 @@ def run(argv: list[str] | None = None) -> int:
             }
             _emit_result(output, json_output=args.json, human_output="; ".join(failures))
             return 2
-        review, sealed_mapping = create_blinded_review_artifact(
-            results, environment=environment, seed=args.seed,
-        )
         try:
+            review, sealed_mapping = create_blinded_review_artifact(
+                results, environment=environment, seed=args.seed,
+            )
             _write_json_pair_atomic(
                 review_path,
                 review,
                 mapping_path,
                 sealed_mapping,
             )
-        except OSError as exc:
+        except (OSError, TypeError, ValueError) as exc:
             output = {"valid": False, "error": str(exc)}
             _emit_result(output, json_output=args.json, human_output=output["error"])
             return 1
