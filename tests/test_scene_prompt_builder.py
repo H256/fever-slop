@@ -578,6 +578,83 @@ class ScenePromptBuilderTests(unittest.TestCase):
         self.assertTrue(t2i_payload["scene_cast"]["requires_group_staging"])
         self.assertEqual(expected_ids, i2v_payload["scene_cast"]["visible_actor_ids"])
 
+    def test_build_scene_prompts_preserves_explicit_actorless_scene(self):
+        modules = GeneralModulesFake()
+        builder = ScenePromptBuilder(object(), modules=modules)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            builder.build_scene_prompts(
+                stage1_segments=[{"segment_id": "segment_023", "type": "instrumental"}],
+                concept_prompts={
+                    "segment_023": {
+                        "concept": "Only smoke rises from the dying fire.",
+                        "references": {"actor_ids": [], "location_id": "forest"},
+                    },
+                },
+                scene_details={},
+                global_context={
+                    "subject": "schamanin",
+                    "story_idea": "A ritual ends.",
+                    "style": "cinematic",
+                    "locations": ["Forest"],
+                    "actors": [{"id": "schamanin", "name": "Schamanin"}],
+                    "structured_locations": [{"id": "forest", "name": "Forest"}],
+                    "subject_mode": "multi",
+                    "max_scene_actors": 4,
+                },
+                output_json_path=Path(temp_dir) / "scene_prompts.json",
+                artifact_store=JsonArtifactStore(),
+            )
+
+        self.assertEqual([], modules.calls[0].payload["scene_cast"]["visible_actor_ids"])
+        self.assertEqual([], modules.calls[1].payload["scene_cast"]["visible_actor_ids"])
+
+    def test_build_scene_prompts_repairs_invalid_nonempty_actor_selection(self):
+        modules = GeneralModulesFake()
+        builder = ScenePromptBuilder(object(), modules=modules)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            builder.build_scene_prompts(
+                stage1_segments=[{"segment_id": "segment_023", "type": "instrumental"}],
+                concept_prompts={
+                    "segment_023": {
+                        "concept": "A malformed actor reference is repaired.",
+                        "references": {"actor_ids": ["unknown"], "location_id": "forest"},
+                    },
+                },
+                scene_details={},
+                global_context={
+                    "subject": "schamanin",
+                    "story_idea": "A ritual ends.",
+                    "style": "cinematic",
+                    "locations": ["Forest"],
+                    "actors": [{"id": "schamanin", "name": "Schamanin"}],
+                    "structured_locations": [{"id": "forest", "name": "Forest"}],
+                    "subject_mode": "multi",
+                    "max_scene_actors": 4,
+                },
+                output_json_path=Path(temp_dir) / "scene_prompts.json",
+                artifact_store=JsonArtifactStore(),
+            )
+
+        self.assertEqual(
+            ["schamanin"],
+            modules.calls[0].payload["scene_cast"]["visible_actor_ids"],
+        )
+
+    def test_normalize_scene_references_preserves_explicit_empty_actor_ids(self):
+        references = normalize_scene_references(
+            {"actor_ids": [], "location_id": "forest"},
+            {
+                "actors": [{"id": "schamanin"}],
+                "structured_locations": [{"id": "forest"}],
+                "subject_mode": "multi",
+            },
+            segment_type="instrumental",
+        )
+
+        self.assertEqual([], references["actor_ids"])
+
     def test_h3_scene_prompt_builder_preserves_more_than_four_selected_actors(self):
         modules = GeneralModulesFake()
         builder = ScenePromptBuilder(object(), modules=modules)

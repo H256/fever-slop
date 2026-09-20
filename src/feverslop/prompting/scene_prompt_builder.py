@@ -126,6 +126,7 @@ def normalize_scene_references(
     max_scene_actors = max(1, max_scene_actors)
 
     output = dict(references or {})
+    actor_selection_is_explicit = "actor_ids" in output
     scene_subject_mode = str(output.get("subject_mode") or "").strip().lower()
     if scene_subject_mode == "location_only":
         output["subject_mode"] = scene_subject_mode
@@ -141,7 +142,9 @@ def normalize_scene_references(
                 for actor_id in output.get("actor_ids", [])
                 if str(actor_id).strip() in actors
             ]
-            output["actor_ids"] = (selected or [actors[0]])[:max_scene_actors]
+            output["actor_ids"] = (
+                selected if actor_selection_is_explicit else (selected or [actors[0]])
+            )[:max_scene_actors]
 
     absent_actors = {
         str(actor_id).strip()
@@ -347,6 +350,7 @@ class ScenePromptBuilder:
             segment_id = segment["segment_id"]
             concept = concept_prompts[segment_id]
             references = {}
+            fallback_on_empty_cast = True
             narrative = None
             semantic_validation = None
             if isinstance(concept, dict):
@@ -363,8 +367,26 @@ class ScenePromptBuilder:
                     and isinstance(continuity.get("outgoing"), dict)
                     else narrative
                 )
+                raw_references = dict(concept.get("references") or {})
+                requested_actor_ids = [
+                    str(actor_id).strip()
+                    for actor_id in raw_references.get("actor_ids") or []
+                    if str(actor_id).strip()
+                ]
+                known_actor_ids = {
+                    str(actor.get("id", "")).strip()
+                    for actor in global_context.get("actors") or []
+                    if isinstance(actor, dict) and str(actor.get("id", "")).strip()
+                }
+                fallback_on_empty_cast = (
+                    "actor_ids" not in raw_references
+                    or bool(requested_actor_ids)
+                    and not any(
+                        actor_id in known_actor_ids for actor_id in requested_actor_ids
+                    )
+                )
                 references = normalize_scene_references(
-                    dict(concept.get("references") or {}),
+                    raw_references,
                     global_context,
                     segment_type=str(segment.get("type") or ""),
                     narrative=(
@@ -380,6 +402,7 @@ class ScenePromptBuilder:
                 subject_mode=str(references.get("subject_mode") or global_context.get("subject_mode") or "multi"),
                 max_scene_actors=int(global_context.get("max_scene_actors") or 4),
                 scene_number=segment.get("scene") or segment_id,
+                fallback_on_empty=fallback_on_empty_cast,
             )
             scene_cast = scene_cast_to_prompt_payload(cast)
             details = scene_details.get(segment_id, {})

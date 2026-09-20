@@ -404,10 +404,17 @@ class PromptGenerationPipeline:
             reporter.message("[yellow]Resuming scene details; using existing scene details.[/yellow]")
             scene_details = artifact_store.read_json(scene_details_json)
         else:
-            reporter.message(
-                f"[cyan]Scene details started: {len(stage1_segments)} scenes; "
-                "camera and character motion per scene[/cyan]",
-            )
+            skip_scene_details = get_config_value(config, "video_pipeline") == "minimax-h3-r2v"
+            if skip_scene_details:
+                reporter.message(
+                    "[yellow]Scene details skipped for MiniMax H3 R2V; "
+                    "H3 structured prompts are generated after reference sheets.[/yellow]",
+                )
+            else:
+                reporter.message(
+                    f"[cyan]Scene details started: {len(stage1_segments)} scenes; "
+                    "camera and character motion per scene[/cyan]",
+                )
             scene_details = self._generate_scene_details(
                 config=config,
                 prompt_pipeline=prompt_pipeline,
@@ -676,9 +683,15 @@ class PromptGenerationPipeline:
         if reporter is not None:
             if review.findings or result.warnings:
                 reporter.message(
-                    f"[yellow]Semantic intent review: {result.status} "
+                    f"[yellow]Semantic intent review result: {result.status} "
                     f"({len(review.findings)} findings, "
+                    f"{len(result.applied)} applied, {len(result.skipped)} unresolved, "
                     f"{len(result.warnings)} warnings)[/yellow]"
+                )
+                self._report_warning_details(
+                    reporter,
+                    result.warnings,
+                    title="Semantic intent review",
                 )
             else:
                 reporter.message("[green]Semantic intent review: clean[/green]")
@@ -720,16 +733,24 @@ class PromptGenerationPipeline:
         global_context: dict[str, Any],
         reporter: Any,
     ) -> Any:
-        scene_details_progress = SubStepProgress(reporter, "Scene details", len(stage1_segments))
+        skip_llm = get_config_value(config, "video_pipeline") == "minimax-h3-r2v"
+        scene_details_progress = (
+            None if skip_llm else SubStepProgress(reporter, "Scene details", len(stage1_segments))
+        )
         scene_details = call_with_supported_kwargs(
             prompt_pipeline.create_scene_details,
             concept_prompts=concept_prompts,
             stage1_segments=stage1_segments,
             global_context=global_context,
-            progress_callback=lambda current, total: scene_details_progress.update(current),
-            skip_llm=get_config_value(config, "video_pipeline") == "minimax-h3-r2v",
+            progress_callback=(
+                None
+                if scene_details_progress is None
+                else lambda current, total: scene_details_progress.update(current)
+            ),
+            skip_llm=skip_llm,
         )
-        reporter.message("[green]Scene details finished.[/green]")
+        if not skip_llm:
+            reporter.message("[green]Scene details finished.[/green]")
         return scene_details
 
     def _build_scene_prompt_pack(
@@ -1074,7 +1095,34 @@ class PromptGenerationPipeline:
                 f"[yellow]Semantic intent extraction: {result.status} "
                 f"({len(result.warnings)} warnings)[/yellow]"
             )
+            self._report_warning_details(
+                reporter,
+                result.warnings,
+                title="Semantic intent extraction",
+            )
         return payload
+
+    @staticmethod
+    def _report_warning_details(
+        reporter: Any,
+        warnings: list[str],
+        *,
+        title: str,
+        limit: int = 20,
+    ) -> None:
+        report_warning = getattr(reporter, "warning", None)
+        for warning in warnings[:limit]:
+            if callable(report_warning):
+                report_warning(warning, title=title)
+            else:
+                reporter.message(f"[yellow]{title}: {warning}[/yellow]")
+        remaining = len(warnings) - limit
+        if remaining > 0:
+            summary = f"{remaining} additional warnings are stored in the JSON artifact"
+            if callable(report_warning):
+                report_warning(summary, title=title)
+            else:
+                reporter.message(f"[yellow]{title}: {summary}[/yellow]")
 
     def _resolve_story_idea(self, *, config_values: dict, prompt_pipeline: Any, all_lyrics: str, notes: dict, run_spinner: Callable, reporter: Any) -> str:
         return resolve_text_override(

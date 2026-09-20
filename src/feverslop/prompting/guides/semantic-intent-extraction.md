@@ -35,3 +35,12 @@ Copy only what the source states. Leave fields empty rather than invent them:
 Return only the `extraction` result. Do not echo this guide or any DSPy
 markers. Use stable, readable IDs. If the idea is empty or unparseable, return
 empty lists rather than guessing.
+
+- `entities[]`: `id`, `kind`, `role`, `identity`, `recurrence`, `status`,
+  `description`.
+- `relations[]`: `id`, `subject_id`, `relation`, `target_id`, `cardinality`,
+  `status`, `provenance`.
+- `constraints[]`: `id`, `entity_id`, `kind`, `statement`, `status`,
+  `provenance`. `statement` contains the explicit constraint wording and must
+  not be omitted.
+- `provenance`: `origin`, `source_text`, `language`, `source_ref`.

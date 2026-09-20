@@ -42,6 +42,7 @@ __all__ = [
     "EXTRACTION_EMPTY",
     "EXTRACTION_FAILED",
     "EXTRACTION_OK",
+    "EXTRACTION_REPAIRED",
     "SEMANTIC_INTENT_EXTRACTION",
     "SEMANTIC_INTENT_GUIDE",
     "DspySemanticIntentExtractor",
@@ -60,6 +61,7 @@ SEMANTIC_INTENT_GUIDE = "semantic-intent-extraction"
 
 #: Visible, bounded status values for a structured-output attempt.
 EXTRACTION_OK = "ok"
+EXTRACTION_REPAIRED = "repaired"
 EXTRACTION_EMPTY = "empty"
 EXTRACTION_FAILED = "failed"
 
@@ -73,13 +75,48 @@ _ENTITY_KIND_ALIASES = {
 }
 
 
+class ExtractedEntity(BaseModel):
+    """Permissive model output shape for one declared entity."""
+
+    id: str = ""
+    kind: str = ""
+    role: str = ""
+    identity: dict[str, Any] = Field(default_factory=dict)
+    recurrence: str = "once"
+    status: str = "required"
+    description: str = ""
+
+
+class ExtractedRelation(BaseModel):
+    """Permissive model output shape for one declared relation."""
+
+    id: str = ""
+    subject_id: str = ""
+    relation: str = ""
+    target_id: str = ""
+    cardinality: int | str = 1
+    status: str = "required"
+    provenance: dict[str, Any] | None = None
+
+
+class ExtractedConstraint(BaseModel):
+    """Permissive model output shape for one declared constraint."""
+
+    id: str = ""
+    entity_id: str = ""
+    kind: str = "identity"
+    statement: str = ""
+    status: str = "required"
+    provenance: dict[str, Any] | None = None
+
+
 class IntentExtractionResult(BaseModel):
     """Typed extraction output from the DSPy model (language-neutral)."""
 
     language: str = Field(default="", max_length=16)
-    entities: list[dict[str, Any]] = Field(default_factory=list)
-    relations: list[dict[str, Any]] = Field(default_factory=list)
-    constraints: list[dict[str, Any]] = Field(default_factory=list)
+    entities: list[ExtractedEntity] = Field(default_factory=list)
+    relations: list[ExtractedRelation] = Field(default_factory=list)
+    constraints: list[ExtractedConstraint] = Field(default_factory=list)
 
 
 class SemanticIntentExtraction(BaseModel):
@@ -142,26 +179,23 @@ def ledger_from_extraction(
 
     entities: list[IntentEntity] = []
     used_ids: set[str] = set()
-    for raw in extraction.entities:
-        if not isinstance(raw, dict):
-            continue
+    for record in extraction.entities:
+        raw = record.model_dump()
         entity = _build_entity(raw, used_ids, warnings)
         if entity is not None:
             entities.append(entity)
 
     entity_ids = {entity.id for entity in entities}
     relations: list[IntentRelation] = []
-    for index, raw in enumerate(extraction.relations):
-        if not isinstance(raw, dict):
-            continue
+    for index, record in enumerate(extraction.relations):
+        raw = record.model_dump()
         relation = _build_relation(raw, index, entity_ids, used_ids, warnings)
         if relation is not None:
             relations.append(relation)
 
     constraints: list[IntentConstraint] = []
-    for index, raw in enumerate(extraction.constraints):
-        if not isinstance(raw, dict):
-            continue
+    for index, record in enumerate(extraction.constraints):
+        raw = record.model_dump()
         constraint = _build_constraint(raw, index, entity_ids, used_ids, warnings)
         if constraint is not None:
             constraints.append(constraint)
@@ -342,7 +376,11 @@ class SemanticIntentExtractor:
                 warnings=[f"extraction failed: {type(exc).__name__}"],
             )
         ledger, warnings = ledger_from_extraction(extraction, language=language)
-        status = EXTRACTION_EMPTY if not ledger.entities else EXTRACTION_OK
+        status = (
+            EXTRACTION_EMPTY
+            if not ledger.entities
+            else EXTRACTION_REPAIRED if warnings else EXTRACTION_OK
+        )
         return SemanticIntentExtraction(ledger=ledger, status=status, warnings=warnings)
 
     def _decode(self, raw: Any) -> IntentExtractionResult:

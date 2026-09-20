@@ -242,6 +242,12 @@ def _check_scene_bindings(
         for actor_id in actor_ids
         if any(key[0] == actor_id for key in snapshot.actors)
     )
+    references = scene.get("references") or {}
+    actor_selection_is_explicitly_empty = (
+        isinstance(references, Mapping)
+        and "actor_ids" in references
+        and not actor_ids
+    )
     cast = resolve_scene_cast(
         selected_actor_ids=known_selected,
         available_actors=available_actors,
@@ -251,6 +257,7 @@ def _check_scene_bindings(
         ),
         max_scene_actors=max_scene_actors,
         scene_number=scene_number,
+        fallback_on_empty=not actor_selection_is_explicitly_empty,
     )
     if known_selected and cast.visible_actor_ids != known_selected:
         issues.append(

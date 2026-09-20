@@ -462,6 +462,12 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             )
             self.assertFalse(any("I2V" in step for step in reporter.steps))
             self.assertTrue(any("Scene prompt pack finished" in message for message in reporter.messages))
+            self.assertTrue(
+                any("Scene details skipped" in message for message in reporter.messages)
+            )
+            self.assertFalse(
+                any("Scene details started" in message for message in reporter.messages)
+            )
 
     def test_prompt_pipeline_uses_injected_concept_batcher_when_batching(self):
         with tempfile.TemporaryDirectory() as temp_dir:

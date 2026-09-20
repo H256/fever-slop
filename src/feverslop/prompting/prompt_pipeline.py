@@ -100,12 +100,21 @@ class MusicVideoPromptPipeline:
             else:
                 concept_text = str(concept)
             context = global_context or {}
+            requested_actor_ids = [
+                str(actor_id).strip()
+                for actor_id in references.get("actor_ids") or []
+                if str(actor_id).strip()
+            ]
+            actor_selection_is_explicitly_empty = (
+                "actor_ids" in references and not requested_actor_ids
+            )
             scene_cast = scene_cast_to_prompt_payload(resolve_scene_cast(
                 selected_actor_ids=references.get("actor_ids") or [],
                 available_actors=context.get("actors") or [],
                 subject_mode=str(references.get("subject_mode") or context.get("subject_mode") or "multi"),
                 max_scene_actors=int(context.get("max_scene_actors") or 4),
                 scene_number=references.get("scene") or segment_id,
+                fallback_on_empty=not actor_selection_is_explicitly_empty,
             ))
 
             detail_payload = {
