@@ -147,6 +147,21 @@ class ProjectRenderSettingsTests(unittest.TestCase):
             resolved.runner_overrides["single_prompt_workflow"],
         )
 
+    def test_h3_i2v_selects_two_pass_workflow_without_project_override(self):
+        # Issue #761: the I2V pipeline default resolves through the shared
+        # registry to the two-pass I2V profile.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text('{"input_audio":"song.wav"}', encoding="utf-8")
+
+            resolved = resolve_project_render_settings(root, video_pipeline="minimax-h3-i2v")
+
+        self.assertEqual(
+            str(resolve_runner_path("workflows/video/minimax_h3/i2v_two_pass.json").resolve()),
+            resolved.runner_overrides["single_prompt_workflow"],
+        )
+
     def test_explicit_reference_generation_overrides_project_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -164,6 +179,81 @@ class ProjectRenderSettingsTests(unittest.TestCase):
             )
 
         self.assertEqual("image_views", resolved.settings.reference_generation)
+
+    def test_declared_ltx25_profile_resolves_to_materialized_workflow(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text(
+                '{"input_audio":"song.wav","render_profile":"ltx25-r2v-draft"}',
+                encoding="utf-8",
+            )
+
+            resolved = resolve_project_render_settings(root, video_pipeline="ltx_i2v")
+
+        self.assertEqual(
+            str(resolve_runner_path("workflows/video/ltx_25/r2v/r2v_draft.json").resolve()),
+            resolved.runner_overrides["single_prompt_workflow"],
+        )
+
+    def test_undeclared_ltx25_profile_raises_controlled_error(self):
+        from feverslop.domain.render_profile import RenderProfileSchemaError
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text(
+                '{"input_audio":"song.wav","render_profile":"ltx25-t2v-bogus"}',
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(RenderProfileSchemaError):
+                resolve_project_render_settings(root, video_pipeline="ltx_i2v")
+
+    def test_malformed_ltx25_profile_raises_controlled_error(self):
+        from feverslop.domain.render_profile import RenderProfileSchemaError
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text(
+                '{"input_audio":"song.wav","render_profile":"ltx25-"}', encoding="utf-8"
+            )
+
+            with self.assertRaises((RenderProfileSchemaError, ValueError)):
+                resolve_project_render_settings(root, video_pipeline="ltx_i2v")
+
+    def test_ltx25_default_profile_passes_capability_and_audio_contract(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text(
+                '{"input_audio":"song.wav","render_profile":"ltx25-t2v-draft"}',
+                encoding="utf-8",
+            )
+
+            resolved = resolve_project_render_settings(root, video_pipeline="ltx")
+
+        self.assertIn("single_prompt_workflow", resolved.runner_overrides)
+
+    def test_ltx25_audio_contract_rejects_unsupported_policy(self):
+        from dataclasses import replace
+        import json
+        from feverslop.domain.ltx25_audio_contract import (
+            LTX25AudioContractError,
+            load_ltx25_audio_policy,
+            validate_ltx25_audio_workflow,
+        )
+        from feverslop.composition.config_loader import runner_root
+
+        profile_path = (
+            runner_root() / "workflows" / "video" / "ltx_25" / "t2v" / "t2v_draft.json"
+        )
+        payload = json.loads(profile_path.read_text(encoding="utf-8-sig"))
+        policy = load_ltx25_audio_policy(profile_path)
+        self.assertEqual("native_audio_when_declared", policy.audio_policy)
+        with self.assertRaises(LTX25AudioContractError):
+            validate_ltx25_audio_workflow(payload, replace(policy, audio_policy="weird"))
 
 
 if __name__ == "__main__":

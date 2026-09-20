@@ -28,7 +28,9 @@ def validate_benchmark_project(project_dir: str | Path) -> dict[str, Any]:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"cannot read benchmark manifest: {manifest_path}") from exc
-    if not isinstance(manifest, dict) or manifest.get("schema") != SCHEMA:
+    if not isinstance(manifest, dict):
+        raise ValueError(f"benchmark manifest must be a JSON object, got {type(manifest).__name__}")
+    if manifest.get("schema") != SCHEMA:
         raise ValueError(f"unsupported benchmark manifest schema: {manifest.get('schema')!r}")
     project = manifest.get("project")
     if not isinstance(project, dict):
@@ -56,7 +58,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project", type=Path)
     args = parser.parse_args()
-    validate_benchmark_project(args.project)
+    try:
+        validate_benchmark_project(args.project)
+    except (OSError, ValueError) as exc:
+        report_message(f"error: {exc}")
+        return 2
     report_message(f"validated benchmark project: {args.project}")
     return 0
 

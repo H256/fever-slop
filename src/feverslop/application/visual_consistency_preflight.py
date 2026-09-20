@@ -17,6 +17,7 @@ from feverslop.domain.visual_consistency import (
 )
 from feverslop.application.visual_consistency import actor_look_id, location_look_id
 from feverslop.domain.ensemble import EnsembleConfig, validate_ensemble_cast
+from feverslop.domain.semantic_intent import IntentLedger, entity_constraint_ids
 from feverslop.ports.visual_consistency import ReferenceManifestSnapshot
 
 
@@ -83,6 +84,7 @@ def preflight_visual_consistency(
     max_scene_actors: int = 4,
     supports_continuous_transitions: bool = True,
     ensembles: tuple[EnsembleConfig, ...] = (),
+    semantic_intent_ledger: IntentLedger | None = None,
 ) -> VisualConsistencyPreflightResult:
     policy = PreflightMode.parse(preflight_mode)
     if policy is PreflightMode.OFF:
@@ -93,6 +95,15 @@ def preflight_visual_consistency(
     issues: list[ConsistencyIssue] = []
     seen_scene_numbers: set[int] = set()
     previous_contract: SceneConsistencyContract | None = None
+    cast_universe, scene_presence = _semantic_cast_universe(scene_items)
+    issues.extend(
+        _check_semantic_project_presence(
+            semantic_intent_ledger,
+            cast_universe,
+            scene_presence,
+            policy,
+        )
+    )
     for scene in scene_items:
         scene_number = scene.get("scene")
         if type(scene_number) is not int or scene_number <= 0:
@@ -152,6 +163,15 @@ def preflight_visual_consistency(
                 scene_number,
                 actor_ids,
                 ensembles,
+                policy,
+            ),
+        )
+        issues.extend(
+            _check_semantic_scene_presence(
+                semantic_intent_ledger,
+                scene_number,
+                actor_ids,
+                location_id,
                 policy,
             ),
         )
@@ -410,6 +430,131 @@ def _check_ensemble_bindings(
             ),
         )
     return issues
+
+
+def _semantic_cast_universe(
+    scene_items: tuple[Mapping[str, Any], ...],
+) -> tuple[set[str], dict[int, set[str]]]:
+    """Collect the union of every scene's actor/location ids and per-scene presence.
+
+    The cast universe is the id namespace the ledger obligations are evaluated
+    against. Guarding by it keeps the gate kind-agnostic and prevents false
+    positives when a ledger entity id is not referenced by any scene.
+    """
+    universe: set[str] = set()
+    presence: dict[int, set[str]] = {}
+    for scene in scene_items:
+        scene_number = scene.get("scene")
+        if type(scene_number) is not int or scene_number <= 0:
+            continue
+        actor_ids, location_id = normalize_reference_ids(scene)
+        present = set(actor_ids)
+        if location_id:
+            present.add(location_id)
+        universe.update(present)
+        presence[scene_number] = present
+    return universe, presence
+
+
+def _check_semantic_project_presence(
+    ledger: IntentLedger | None,
+    cast_universe: set[str],
+    scene_presence: dict[int, set[str]],
+    policy: PreflightMode,
+) -> list[ConsistencyIssue]:
+    """Fail required entities that never appear in any scene.
+
+    A ``required`` entity whose recurrence is ``once`` or ``recurring`` must be
+    present in at least one scene. ``always`` entities are checked per scene.
+    No issues when the ledger is None (legacy/no declared intent) or empty.
+    """
+    if ledger is None:
+        return []
+    issues: list[ConsistencyIssue] = []
+    for entity in ledger.entities:
+        if entity.status != "required" or entity.recurrence == "always":
+            continue
+        if entity.id in cast_universe:
+            continue
+        issues.append(
+            _issue(
+                "semantic_required_missing",
+                next(iter(scene_presence)) if scene_presence else 1,
+                (
+                    f"Required entity {entity.id!r} (constraint ids "
+                    f"{_constraint_ids_text(ledger, entity.id)}) is not present "
+                    "in any scene; it was not added automatically"
+                ),
+                policy,
+            ),
+        )
+    return issues
+
+
+def _check_semantic_scene_presence(
+    ledger: IntentLedger | None,
+    scene_number: int,
+    actor_ids: tuple[str, ...],
+    location_id: str,
+    policy: PreflightMode,
+) -> list[ConsistencyIssue]:
+    """Enforce per-scene always-presence and required co-presence.
+
+    ``required`` + ``always`` entities must be present in every scene.
+    Required relations enforce co-presence: when the subject is present, the
+    target must be too. Both are evaluated per scene against that scene's
+    actual presence, so a ledger id absent from a given scene is flagged only
+    for that scene. No issues when the ledger is None (legacy/no declared
+    intent) or empty.
+    """
+    if ledger is None:
+        return []
+    present = set(actor_ids)
+    if location_id:
+        present.add(location_id)
+    issues: list[ConsistencyIssue] = []
+    for entity in ledger.entities:
+        if entity.status != "required" or entity.recurrence != "always":
+            continue
+        if entity.id in present:
+            continue
+        issues.append(
+            _issue(
+                "semantic_always_missing",
+                scene_number,
+                (
+                    f"Scene {scene_number} is missing always-present required "
+                    f"entity {entity.id!r} (constraint ids "
+                    f"{_constraint_ids_text(ledger, entity.id)})"
+                ),
+                policy,
+            ),
+        )
+    for relation in ledger.relations:
+        if relation.status != "required":
+            continue
+        if relation.subject_id not in present:
+            continue
+        if relation.target_id in present:
+            continue
+        issues.append(
+            _issue(
+                "semantic_co_presence",
+                scene_number,
+                (
+                    f"Scene {scene_number} has {relation.subject_id!r} but not "
+                    f"co-present required target {relation.target_id!r} "
+                    f"(relation {relation.id!r})"
+                ),
+                policy,
+            ),
+        )
+    return issues
+
+
+def _constraint_ids_text(ledger: IntentLedger, entity_id: str) -> str:
+    ids = entity_constraint_ids(ledger, entity_id)
+    return ", ".join(ids) if ids else "none"
 
 
 def _scene_type(scene: Mapping[str, Any]) -> str:

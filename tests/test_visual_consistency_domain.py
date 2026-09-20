@@ -169,6 +169,10 @@ class SceneConsistencyContractTests(unittest.TestCase):
         )
         payload = original.to_dict()
         payload.pop("fingerprint")
+        for anchor in payload["actors"]:
+            anchor.pop("semantic_intent", None)
+        if payload["location"] is not None:
+            payload["location"].pop("semantic_intent", None)
         expected = hashlib.sha256(
             json.dumps(
                 payload,
