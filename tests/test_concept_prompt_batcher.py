@@ -57,6 +57,24 @@ def semantic_concept(
 
 
 class ConceptPromptBatcherTests(unittest.TestCase):
+    def test_story_complete_is_only_valid_on_final_segment_without_contract(self):
+        concepts = {
+            "segment_001": {
+                "concept": "The screen fades to black.",
+                "narrative": {"milestones": ["story_complete"]},
+            },
+            "segment_002": {
+                "concept": "The ritual continues.",
+                "narrative": {"milestones": ["ritual_continues"]},
+            },
+        }
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "story_complete.*only valid on final segment 'segment_002'",
+        ):
+            validate_and_annotate_concept_chronology(concepts, {})
+
     def test_planning_omits_replicated_evidence_in_batches_and_repairs(self):
         from copy import deepcopy
         segment = dict(segment_id="s1", start=1, end=3, duration=2, type="vocals", lyrics="Keep these words",

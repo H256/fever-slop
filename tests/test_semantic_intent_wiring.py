@@ -19,7 +19,9 @@ from feverslop.prompting.semantic_intent_extraction import (
     EXTRACTION_EMPTY,
     EXTRACTION_OK,
     SemanticIntentExtractor,
+    SemanticIntentExtraction,
 )
+from feverslop.domain.semantic_intent import IntentLedger
 
 
 class _FakePromptPipeline:
@@ -87,6 +89,45 @@ def _config() -> ProjectConfig:
 
 
 class SemanticIntentWiringTests(unittest.TestCase):
+    def test_extraction_reports_individual_warning_details(self):
+        class Reporter:
+            def __init__(self):
+                self.messages = []
+                self.warnings = []
+
+            def message(self, text):
+                self.messages.append(text)
+
+            def warning(self, text, *, title=None):
+                self.warnings.append((title, text))
+
+        class Extractor:
+            def extract(self, **_kwargs):
+                return SemanticIntentExtraction(
+                    ledger=IntentLedger(),
+                    status="empty",
+                    warnings=["constraint 0 without statement dropped"],
+                )
+
+        store = _RecordingArtifactStore()
+        reporter = Reporter()
+        pipeline = _build_pipeline(intent_extractor_factory=lambda _llm: Extractor())
+
+        pipeline._extract_semantic_intent(
+            llm=object(),
+            story_idea="A story",
+            notes={},
+            semantic_intent_json=Path("semantic_intent_song.json"),
+            artifact_store=store,
+            log_file=lambda _name, _path: None,
+            reporter=reporter,
+        )
+
+        self.assertEqual(
+            [("Semantic intent extraction", "constraint 0 without statement dropped")],
+            reporter.warnings,
+        )
+
     def test_configured_factory_is_invoked_and_artifact_is_persisted(self):
         """The pipeline must call the configured extractor factory and persist
         the artifact before subject/location generation completes."""

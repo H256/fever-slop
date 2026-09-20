@@ -52,6 +52,17 @@ class SceneCastTests(unittest.TestCase):
         self.assertEqual("location_only", payload["subject_mode"])
         self.assertEqual("", payload["primary_actor_id"])
 
+    def test_explicit_empty_selection_does_not_fallback_to_first_actor(self):
+        cast = resolve_scene_cast(
+            selected_actor_ids=[],
+            available_actors=ACTORS,
+            subject_mode="multi",
+            fallback_on_empty=False,
+            scene_number=23,
+        )
+
+        self.assertEqual((), cast.visible_actor_ids)
+
     def test_malformed_cast_fallback_warns_with_scene_and_reconstructed_id(self):
         with patch("feverslop.domain.scene_cast.warnings.warn") as warn:
             cast = resolve_scene_cast(

@@ -300,21 +300,17 @@ def ledger_for_project(
 ) -> IntentLedger:
     """Resolve the semantic intent ledger for a project.
 
-    Prefers a persisted ledger artifact at
-    ``<project_dir>/output/prompts/semantic_intent_<song_id>.json`` (written by
-    the extraction stage). Falls back to the legacy cast/location compatibility
-    path so existing projects adopt the ledger without a fixed singer/band
-    ontology. A missing or unreadable artifact degrades to the legacy path
-    rather than failing the pipeline.
+    Prefers the reviewed ledger artifact, then the extraction artifact under
+    ``<project_dir>/output/prompts``. Falls back to the legacy cast/location
+    compatibility path so existing projects adopt the ledger without a fixed
+    singer/band ontology. Missing or unreadable artifacts degrade to the legacy
+    path rather than failing the pipeline.
     """
     base = Path(project_dir)
-    candidate = base / "output" / "prompts" / f"semantic_intent_{song_id}.json"
-    if candidate.exists():
-        try:
-            payload = json.loads(candidate.read_text(encoding="utf-8-sig"))
-            return IntentLedger.from_dict(payload)
-        except (ValueError, OSError):
-            pass
+    for candidate in _persisted_ledger_candidates(base, song_id):
+        ledger = _load_persisted_ledger(candidate)
+        if ledger is not None:
+            return ledger
     return ledger_from_legacy_cast(actors, locations)
 
 
@@ -325,7 +321,7 @@ def persisted_ledger_for_project(
     """Return the persisted semantic intent ledger, or None when absent.
 
     The pre-render validation gate should only enforce *explicitly declared*
-    obligations (a ledger written by the extraction stage), not the legacy
+    obligations (a ledger written by extraction or review), not the legacy
     compatibility bridge. ``ledger_for_project`` falls back to
     ``ledger_from_legacy_cast`` when no artifact exists; that fallback makes
     every config actor a ``required``/``once`` entity, which would let the
@@ -333,13 +329,31 @@ def persisted_ledger_for_project(
     returns the persisted ledger only, so the gate stays a no-op for legacy
     projects (no declared intent) and enforces real obligations otherwise.
     """
-    candidate = (
-        Path(project_dir) / "output" / "prompts" / f"semantic_intent_{song_id}.json"
+    for candidate in _persisted_ledger_candidates(Path(project_dir), song_id):
+        ledger = _load_persisted_ledger(candidate)
+        if ledger is not None:
+            return ledger
+    return None
+
+
+def _persisted_ledger_candidates(project_dir: Path, song_id: str) -> tuple[Path, ...]:
+    prompts = project_dir / "output" / "prompts"
+    return (
+        prompts / f"semantic_intent_review_{song_id}.json",
+        prompts / f"semantic_intent_{song_id}.json",
     )
-    if not candidate.exists():
+
+
+def _load_persisted_ledger(path: Path) -> IntentLedger | None:
+    if not path.exists():
         return None
     try:
-        payload = json.loads(candidate.read_text(encoding="utf-8-sig"))
-        return IntentLedger.from_dict(payload)
-    except (ValueError, OSError):
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        if not isinstance(payload, dict):
+            return None
+        ledger_payload = payload.get("ledger", payload)
+        if not isinstance(ledger_payload, dict):
+            return None
+        return IntentLedger.from_dict(ledger_payload)
+    except (TypeError, ValueError, OSError):
         return None

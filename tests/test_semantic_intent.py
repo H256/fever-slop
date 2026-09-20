@@ -15,6 +15,7 @@ from feverslop.domain.semantic_intent import (
     entity_constraint_ids,
     ledger_for_project,
     ledger_from_legacy_cast,
+    persisted_ledger_for_project,
 )
 
 
@@ -294,6 +295,68 @@ class SemanticIntentPropagationHelpersTests(unittest.TestCase):
             resolved = ledger_for_project(project_dir, "song1", actors=[{"id": "a1", "name": "A"}])
             self.assertEqual(resolved.entity_ids(), frozenset({"band"}))
             self.assertEqual(entity_constraint_ids(resolved, "band"), ["c1"])
+
+    def test_persisted_ledger_unwraps_extraction_artifact(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            prompts = project_dir / "output" / "prompts"
+            prompts.mkdir(parents=True)
+            ledger = IntentLedger(entities=[IntentEntity(id="cat", kind="creature")])
+            (prompts / "semantic_intent_song1.json").write_text(
+                json.dumps({"status": "ok", "warnings": [], "ledger": ledger.to_dict()}),
+                encoding="utf-8",
+            )
+
+            resolved = persisted_ledger_for_project(project_dir, "song1")
+
+            self.assertIsNotNone(resolved)
+            self.assertEqual(resolved.entity_ids(), frozenset({"cat"}))
+
+    def test_persisted_ledger_prefers_reviewed_artifact(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            prompts = project_dir / "output" / "prompts"
+            prompts.mkdir(parents=True)
+            extracted = IntentLedger(entities=[IntentEntity(id="invented", kind="person")])
+            reviewed = IntentLedger(entities=[IntentEntity(id="cat", kind="creature")])
+            (prompts / "semantic_intent_song1.json").write_text(
+                json.dumps({"status": "ok", "warnings": [], "ledger": extracted.to_dict()}),
+                encoding="utf-8",
+            )
+            (prompts / "semantic_intent_review_song1.json").write_text(
+                json.dumps({"status": "needs_repair", "warnings": [], "ledger": reviewed.to_dict()}),
+                encoding="utf-8",
+            )
+
+            persisted = persisted_ledger_for_project(project_dir, "song1")
+            compatible = ledger_for_project(project_dir, "song1", actors=[])
+
+            self.assertEqual(persisted.entity_ids(), frozenset({"cat"}))
+            self.assertEqual(compatible.entity_ids(), frozenset({"cat"}))
+
+    def test_persisted_ledger_ignores_invalid_review_shape(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            prompts = project_dir / "output" / "prompts"
+            prompts.mkdir(parents=True)
+            extracted = IntentLedger(entities=[IntentEntity(id="cat", kind="creature")])
+            (prompts / "semantic_intent_song1.json").write_text(
+                json.dumps({"status": "ok", "ledger": extracted.to_dict()}),
+                encoding="utf-8",
+            )
+            (prompts / "semantic_intent_review_song1.json").write_text(
+                json.dumps(["invalid"]), encoding="utf-8"
+            )
+
+            resolved = persisted_ledger_for_project(project_dir, "song1")
+
+            self.assertEqual(resolved.entity_ids(), frozenset({"cat"}))
 
     def test_ledger_for_project_falls_back_to_legacy_cast(self):
         import tempfile

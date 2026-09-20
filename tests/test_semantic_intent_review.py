@@ -12,6 +12,7 @@ and false-positive controls are covered.
 import unittest
 
 from pathlib import Path
+from typing import Any
 
 from feverslop.domain.semantic_intent import (
     IntentConstraint,
@@ -25,8 +26,10 @@ from feverslop.prompting.semantic_intent_review import (
     FAILED,
     NEEDS_REPAIR,
     OK,
+    REPAIRED,
     DspySemanticIntentReviewer,
     IntentFinding,
+    IntentReviewResult,
     SemanticIntentReviewer,
     build_semantic_intent_review_signature,
     repair_ledger,
@@ -78,6 +81,7 @@ class SemanticIntentReviewContractTests(unittest.TestCase):
         self.assertIn("story_idea", fields)
         self.assertIn("ledger", fields)
         self.assertIn("review", fields)
+        self.assertEqual(bundle.input_fields["ledger"].annotation, dict[str, Any])
 
     def test_no_predictor_yields_ok_without_findings(self):
         # Acceptance: with no reviewer configured, no findings are invented.
@@ -88,6 +92,25 @@ class SemanticIntentReviewContractTests(unittest.TestCase):
 
 
 class SemanticIntentReviewDetectionTests(unittest.TestCase):
+    def test_successfully_applied_findings_report_repaired(self):
+        payload = {
+            "review": {
+                "findings": [
+                    {
+                        "id": "drop-r1",
+                        "kind": "invented",
+                        "record_id": "r1",
+                        "description": "not stated",
+                    }
+                ],
+                "status": "needs_repair",
+            }
+        }
+
+        result = review_and_repair("idea", _sample_ledger(), _reviewer_returning(payload))
+
+        self.assertEqual(REPAIRED, result.status)
+
     def test_detects_all_four_finding_classes(self):
         # Acceptance: judge detects omitted, invented, contradicted, misbound.
         payload = {
@@ -191,6 +214,40 @@ class SemanticIntentRepairTests(unittest.TestCase):
         self.assertEqual(result.applied, [])
         self.assertEqual(result.skipped, ["f1"])
         self.assertTrue(result.warnings)
+
+    def test_misbound_unknown_record_is_not_reported_as_repaired(self):
+        findings = [
+            IntentFinding(
+                id="f1",
+                kind="misbound",
+                record_id="missing",
+                correct_entity_id="statue",
+                description="unknown record",
+            ),
+        ]
+
+        result = repair_ledger(_sample_ledger(), findings)
+
+        self.assertEqual(result.status, NEEDS_REPAIR)
+        self.assertEqual(result.applied, [])
+        self.assertEqual(result.skipped, ["f1"])
+
+    def test_review_warnings_and_unresolved_status_survive_repair(self):
+        review = IntentReviewResult(
+            status=NEEDS_REPAIR,
+            findings=[],
+            warnings=["judge could not identify an exact record"],
+        )
+
+        result = review_and_repair(
+            "idea",
+            _sample_ledger(),
+            _reviewer_returning({"review": {"status": "ok"}}),
+            review=review,
+        )
+
+        self.assertEqual(result.status, NEEDS_REPAIR)
+        self.assertIn("judge could not identify an exact record", result.warnings)
 
     def test_dropping_entity_cascades_dependents_and_stays_constructible(self):
         # A "invented" finding that drops an entity must also drop the
@@ -316,9 +373,13 @@ class _FakeArtifactStore:
 class _FakeReporter:
     def __init__(self):
         self.messages: list[str] = []
+        self.warnings: list[tuple[str | None, str]] = []
 
     def message(self, text):
         self.messages.append(text)
+
+    def warning(self, text, *, title=None):
+        self.warnings.append((title, text))
 
 
 class TestPipelineWiring(unittest.TestCase):
@@ -385,6 +446,54 @@ class TestPipelineWiring(unittest.TestCase):
             payload = next(iter(store.written.values()))
             self.assertEqual(payload["status"], OK)
             self.assertEqual(payload["ledger"], ledger.to_dict())
+
+    def test_review_reports_applied_skipped_and_warning_details(self):
+        import tempfile
+
+        from feverslop.domain.semantic_intent import IntentLedger
+
+        ledger = IntentLedger(entities=[{"id": "statue", "kind": "object"}])
+        review_payload = {
+            "review": {
+                "status": "needs_repair",
+                "findings": [
+                    {
+                        "id": "invented-statue",
+                        "kind": "invented",
+                        "record_id": "statue",
+                        "description": "not in source",
+                    },
+                    {
+                        "id": "omitted-band",
+                        "kind": "omitted",
+                        "record_id": "band",
+                        "description": "missing band",
+                    },
+                ],
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "semantic_intent.json"
+            src.write_text(__import__("json").dumps({"ledger": ledger.to_dict()}))
+            store = _FakeArtifactStore({"ledger": ledger.to_dict()})
+            pipeline = self._pipeline(intent_review_factory=lambda _llm: _reviewer_returning(review_payload))
+            reporter = _FakeReporter()
+
+            pipeline._review_semantic_intent(
+                llm=object(),
+                story_idea="A band plays.",
+                semantic_intent_json=src,
+                semantic_intent_review_json=Path(tmp) / "review.json",
+                artifact_store=store,
+                log_file=lambda name, path: None,
+                reporter=reporter,
+            )
+
+        self.assertTrue(any("1 applied, 1 unresolved" in message for message in reporter.messages))
+        self.assertEqual(
+            [("Semantic intent review", "finding omitted-band skipped: omitted records are not invented")],
+            reporter.warnings,
+        )
 
     def test_review_failure_is_bounded_not_fatal(self):
         import tempfile
