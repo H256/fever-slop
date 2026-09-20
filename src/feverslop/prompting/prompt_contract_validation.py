@@ -482,7 +482,7 @@ def _validate_shots(text: str, plan: ResolvedPromptPlan) -> list[PromptContractI
                 "h3.shot.first_timestamp", f"shots[{index}]", "Shot 1 must not have a timestamp",
             ))
         if index > 0:
-            expected = _h3_time(float(shot.start_seconds or 0.0))
+            expected = format_h3_time(float(shot.start_seconds or 0.0))
             if timestamp != expected:
                 issues.append(PromptContractIssue(
                     "h3.shot.timestamp", f"shots[{index}]", f"shot cut timestamp must be {expected}",
@@ -540,7 +540,12 @@ def _line_for_label(section: str, label: str) -> str | None:
     )
 
 
-def _h3_time(seconds: float) -> str:
+def format_h3_time(seconds: float) -> str:
+    """Format a shot timestamp as ``MM:SS.mmm``.
+
+    The single canonical formatter shared by the H3 prompt producer and the
+    prompt-contract validator, so both sides always agree on the string.
+    """
     milliseconds = int(round(float(seconds) * 1000))
     minutes, remainder = divmod(milliseconds, 60_000)
     whole_seconds, millis = divmod(remainder, 1000)
@@ -556,6 +561,7 @@ def _h3_section(text: str, header: str, next_header: str) -> str:
 __all__ = [
     "PromptContractError",
     "PromptContractIssue",
+    "format_h3_time",
     "validate_h3_prompt_contract",
     "validate_h3_prompt_shape",
     "validate_prompt_contract",

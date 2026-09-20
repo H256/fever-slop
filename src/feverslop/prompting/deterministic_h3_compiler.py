@@ -10,7 +10,7 @@ from feverslop.domain.prompt_corruption import ensure_no_replacement_character
 from feverslop.prompting.dspy_h3_models import CreativeShotPayload
 from feverslop.prompting.dspy_h3_models import MusicIntent, PromptMode
 from feverslop.prompting.dspy_h3_models import ResolvedPromptPlan
-from feverslop.prompting.prompt_contract_validation import PromptContractError, validate_prompt_contract
+from feverslop.prompting.prompt_contract_validation import PromptContractError, format_h3_time, validate_prompt_contract
 
 
 H3_COMPILER_NAME = "deterministic_h3_compiler"
@@ -228,7 +228,7 @@ class DeterministicH3Compiler:
             if float(start) < 0 or float(end) <= float(start):
                 raise ValueError(f"invalid timing window for shot: {shot_id}")
             shot = by_id[shot_id]
-            lines.append(f"[Shot {index} | {_time(start)}-{_time(end)}]")
+            lines.append(f"[Shot {index} | {format_h3_time(start)}-{format_h3_time(end)}]")
             lines.append(f"Action: {shot.visible_action.strip()}")
             lines.append(f"Performance: {shot.performance.strip()}")
             if shot.camera_behavior:
@@ -646,7 +646,7 @@ def _render_shot_with_references(
     missing = [label for label in labels if label not in description]
     if missing:
         description = f"{_with_terminal_punctuation(description)} The frame includes {' and '.join(missing)}."
-    cut = "" if index == 1 else f" At {_time(float(shot.start_seconds or 0.0))},"
+    cut = "" if index == 1 else f" At {format_h3_time(float(shot.start_seconds or 0.0))},"
     return f"[Shot {index}]{cut} {description}"
 
 
@@ -930,7 +930,7 @@ def _render_base_shot(
         description = f"{description.rstrip('.')} and ends on <Picture 2>."
     elif mode is PromptMode.L2V and final_shot:
         description = f"{description.rstrip('.')} and converges to the final frame in <Picture 1>."
-    cut = "" if index == 1 else f" At {_time(float(shot.start_seconds or 0.0))},"
+    cut = "" if index == 1 else f" At {format_h3_time(float(shot.start_seconds or 0.0))},"
     return f"[Shot {index}]{cut} {description}"
 
 
@@ -1425,9 +1425,3 @@ def validate_creative_shots_against_plan(
         if shot_id not in by_id:
             raise ValueError(f"missing creative shot payload: {shot_id}")
     return tuple(by_id[shot_id] for shot_id in expected)
-
-
-def _time(value: Any) -> str:
-    seconds = float(value)
-    minutes, remainder = divmod(seconds, 60.0)
-    return f"{int(minutes):02d}:{remainder:06.3f}"

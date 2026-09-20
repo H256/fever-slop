@@ -1995,6 +1995,50 @@ class DeterministicH3CompilerTests(unittest.TestCase):
             result,
         )
 
+    def test_time_formatter_producer_and_validator_agree_on_boundaries(self):
+        from feverslop.prompting.prompt_contract_validation import format_h3_time
+        # The previously divergent window: the old producer emitted 00:60.000 /
+        # 00:00.001 while the validator expected 01:00.000 / 00:00.000.
+        self.assertEqual("01:00.000", format_h3_time(59.9995))
+        self.assertEqual("00:00.000", format_h3_time(0.0005))
+        self.assertEqual("01:00.000", format_h3_time(59.9999))
+        self.assertEqual("00:59.999", format_h3_time(59.99949))
+
+    def test_compiled_window_timestamp_matches_validator_expectation(self):
+        from feverslop.prompting.prompt_contract_validation import (
+            format_h3_time,
+            validate_h3_prompt_contract,
+        )
+        plan = ResolvedPromptPlan(
+            creative_intent="A singer performs.",
+            subjects=[],
+            reference_usage=[],
+            shots=[
+                PlannedShot(shot_number=1, start_seconds=0, end_seconds=59.9995,
+                           description="The singer holds the opening pose."),
+                PlannedShot(shot_number=2, start_seconds=59.9995, end_seconds=61.0,
+                           description="The singer moves into the final pose."),
+            ],
+            overall_soundscape="Quiet room tone.",
+            music_intent=MusicIntent.NONE,
+        )
+        references = [dict(label="<Audio 1>", kind="audio", name="vocals",
+                         description="isolated vocals", copy_mode="partially_copy")]
+        prompt = DeterministicH3Compiler().compile(
+            mode="r2v", plan=plan, facts=self.facts,
+            shots=creative_shots_from_plan(plan),
+            shot_windows={"shot-01": (0, 59.9995), "shot-02": (59.9995, 61.0)},
+            prepared_reference_labels=["<Audio 1>"], reference_metadata=references,
+        )
+        # The producer now emits the carry-into-minutes form for the boundary
+        # (the old _time emitted "At 00:60.000", which fails the validator's
+        # MM:SS.mmm pattern and fired h3.shot.timestamp).
+        self.assertIn(f"At {format_h3_time(59.9995)},", prompt)
+        # ...and the validator agrees, so no spurious h3.shot.timestamp fires.
+        issues = validate_h3_prompt_contract(
+            prompt, mode="r2v", plan=plan, reference_metadata=references)
+        self.assertNotIn("h3.shot.timestamp", [i.code for i in issues])
+
 
 if __name__ == "__main__":
     unittest.main()
