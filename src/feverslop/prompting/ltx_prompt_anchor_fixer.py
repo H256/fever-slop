@@ -10,6 +10,7 @@ from feverslop.domain.effective_render_plan import (
     project_effective_plan,
 )
 from feverslop.domain.canonical_render_plan import PromptRole
+from feverslop.utils.io import read_json
 
 FORBIDDEN_RELAY_PHRASES = [
     "no subject visible",
@@ -77,7 +78,7 @@ class LTXPromptAnchorFixer:
         input_render_plan = Path(input_render_plan)
         output_render_plan = Path(output_render_plan)
 
-        plan = json.loads(input_render_plan.read_text(encoding="utf-8"))
+        plan = read_json(input_render_plan)
         fixed = self.fix_render_plan(plan)
 
         output_render_plan.parent.mkdir(parents=True, exist_ok=True)
@@ -302,7 +303,7 @@ def validate_anchor_file(
     render_plan_path: str | Path,
     subject_hint: str,
 ) -> list[str]:
-    plan = json.loads(Path(render_plan_path).read_text(encoding="utf-8"))
+    plan = read_json(render_plan_path)
     subject_words = [w.lower() for w in re.findall(r"[A-Za-z]+", subject_hint) if len(w) >= 4]
     warnings = []
 
