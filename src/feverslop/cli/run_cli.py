@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -363,4 +365,6 @@ def _resume_command(
         command.extend(["--scenes", scenes])
     if video_pipeline:
         command.extend(["--video-pipeline", video_pipeline])
-    return subprocess.list2cmdline(command)
+    if os.name == "nt":
+        return subprocess.list2cmdline(command)
+    return " ".join(shlex.quote(arg) for arg in command)
