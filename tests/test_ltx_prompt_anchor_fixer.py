@@ -1,4 +1,7 @@
-﻿import unittest
+﻿import json
+import tempfile
+import unittest
+from pathlib import Path
 
 from feverslop.application.effective_render_plan import canonical_plan_revision
 from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
@@ -182,6 +185,28 @@ class LTXPromptAnchorFixerTests(unittest.TestCase):
         self.assertIn("mage_lead and rogue_lead remain clearly visible and sing", scene["ltx"]["i2v_prompt_from_t2i"])
         self.assertIn("mage_lead and rogue_lead remain clearly visible", scene["ltx"]["prompt_relay"][0]["prompt"])
         self.assertNotIn("global warrior", scene["ltx"]["i2v_prompt_from_t2i"])
+
+    def test_fix_file_tolerates_bom_prefixed_render_plan(self):
+        fixer = LTXPromptAnchorFixer(subject_anchor="singer")
+        plan = [{
+            "scene": 1,
+            "z_image": {"prompt": "Singer at a microphone."},
+            "ltx": {
+                "base_prompt": "generated base",
+                "i2v_prompt_from_t2i": "generated i2v",
+                "prompt_relay": [{"state": "instrumental", "prompt": "generated relay"}],
+            },
+            "metadata": {"type": "instrumental"},
+        }]
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = Path(tmp) / "render_plan.json"
+            input_path.write_bytes(b"\xef\xbb\xbf" + json.dumps(plan).encode("utf-8"))
+            output_path = Path(tmp) / "fixed.json"
+
+            result = fixer.fix_file(input_path, output_path)
+
+            self.assertTrue(output_path.exists())
+            self.assertEqual(output_path, result)
 
 
 if __name__ == "__main__":

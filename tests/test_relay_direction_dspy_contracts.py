@@ -1,5 +1,8 @@
+import json
+import tempfile
 import unittest
 from contextlib import nullcontext
+from pathlib import Path
 
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.relay_direction_builder import RelayDirectionBuilder
@@ -143,6 +146,26 @@ class RelayDirectionDspyContractTests(unittest.TestCase):
         self.assertLessEqual(len(prompt.split()), 28)
         self.assertIn("singing", prompt)
         self.assertIn("lip sync", prompt)
+
+    def test_compact_render_plan_file_tolerates_bom_prefixed_render_plan(self):
+        class LLM:
+            pass
+
+        builder = RelayDirectionBuilder(LLM(), subject_anchor=SUBJECT_ANCHOR)
+        plan = [{
+            "scene": 1,
+            "metadata": {"type": "instrumental"},
+            "ltx": {"base_prompt": "A dark road."},
+        }]
+        with tempfile.TemporaryDirectory() as tmp:
+            input_path = Path(tmp) / "render_plan.json"
+            input_path.write_bytes(b"\xef\xbb\xbf" + json.dumps(plan).encode("utf-8"))
+            output_path = Path(tmp) / "compacted.json"
+
+            result = builder.compact_render_plan_file(input_path, output_path)
+
+            self.assertTrue(output_path.exists())
+            self.assertEqual(output_path, result)
 
 
 if __name__ == "__main__":
