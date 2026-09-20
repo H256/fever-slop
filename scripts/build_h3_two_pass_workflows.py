@@ -25,7 +25,7 @@ def _first(workflow: dict, class_type: str) -> tuple[str, dict]:
     raise KeyError(f"missing workflow node: {class_type}")
 
 
-def build(template: Path, output: Path, *, audio: bool = False) -> None:
+def build(template: Path, output: Path, *, audio: bool = False, mode: str = "t2v") -> None:
     workflow = read_json(template)
     sampler_id, sampler = _first(workflow, "SamplerCustomAdvanced")
     sampler.setdefault("_meta", {})["title"] = "#PASS1"
@@ -90,15 +90,26 @@ def build(template: Path, output: Path, *, audio: bool = False) -> None:
         "audio_policy": "preserve_original_av_audio_latent" if audio else "not_applicable",
         "preserve_audio_latent": audio,
     }
+    if mode == "i2v":
+        # Capability declaration for start-only and start-end anchor modes
+        # (issue #761); the I2V backend validates frame inputs before
+        # ComfyUI submission based on these names.
+        profile["mode"] = "i2v"
+        profile["frame_capabilities"] = ["start_only", "start_end"]
     output.parent.mkdir(parents=True, exist_ok=True)
-    write_json_document(output, workflow, ensure_ascii=False)
-    write_json_document(output.with_suffix(".profile.json"), profile, ensure_ascii=False)
+    # atomic_write_json already sets ensure_ascii=False; passing it again
+    # raised TypeError (pre-existing on master, blocked this script).
+    write_json_document(output, workflow)
+    write_json_document(output.with_suffix(".profile.json"), profile)
 
 
 def main() -> None:
     build(WORKFLOW_DIR / "r2v_v1.json", WORKFLOW_DIR / "r2v_two_pass.json")
     build(WORKFLOW_DIR / "r2v_audio_v1.json", WORKFLOW_DIR / "r2v_audio_two_pass.json", audio=True)
     build(WORKFLOW_DIR / "t2v.json", WORKFLOW_DIR / "t2v_two_pass.json")
+    # I2V two-pass (issue #761): same topology as T2V; the I2V node
+    # already accepts start/end frame anchors (#T2V_START / #T2V_END).
+    build(WORKFLOW_DIR / "t2v.json", WORKFLOW_DIR / "i2v_two_pass.json", mode="i2v")
 
 
 if __name__ == "__main__":

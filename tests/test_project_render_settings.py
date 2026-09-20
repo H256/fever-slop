@@ -147,6 +147,21 @@ class ProjectRenderSettingsTests(unittest.TestCase):
             resolved.runner_overrides["single_prompt_workflow"],
         )
 
+    def test_h3_i2v_selects_two_pass_workflow_without_project_override(self):
+        # Issue #761: the I2V pipeline default resolves through the shared
+        # registry to the two-pass I2V profile.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text('{"input_audio":"song.wav"}', encoding="utf-8")
+
+            resolved = resolve_project_render_settings(root, video_pipeline="minimax-h3-i2v")
+
+        self.assertEqual(
+            str(resolve_runner_path("workflows/video/minimax_h3/i2v_two_pass.json").resolve()),
+            resolved.runner_overrides["single_prompt_workflow"],
+        )
+
     def test_explicit_reference_generation_overrides_project_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
