@@ -98,6 +98,26 @@ class SemanticIntentLedgerTests(unittest.TestCase):
                 ]
             )
 
+    def test_rejects_duplicate_relation_ids(self):
+        with self.assertRaises(ValidationError):
+            IntentLedger(
+                entities=[IntentEntity(id="e1", kind="person")],
+                relations=[
+                    IntentRelation(id="r1", subject_id="e1", relation="a", target_id="e1"),
+                    IntentRelation(id="r1", subject_id="e1", relation="b", target_id="e1"),
+                ],
+            )
+
+    def test_rejects_duplicate_constraint_ids(self):
+        with self.assertRaises(ValidationError):
+            IntentLedger(
+                entities=[IntentEntity(id="e1", kind="person")],
+                constraints=[
+                    IntentConstraint(id="c1", entity_id="e1", kind="identity", statement="x"),
+                    IntentConstraint(id="c1", entity_id="e1", kind="identity", statement="y"),
+                ],
+            )
+
     def test_rejects_dangling_relation_subject(self):
         with self.assertRaises(ValidationError):
             IntentLedger(
