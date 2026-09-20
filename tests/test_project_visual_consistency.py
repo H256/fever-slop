@@ -95,6 +95,60 @@ class ProjectReferenceManifestAdapterTests(unittest.TestCase):
         self.assertIn(("stage", "default"), snapshot.locations)
         self.assertEqual(64, len(snapshot.revision))
 
+    def test_propagates_semantic_intent_provenance_into_anchors(self):
+        hero = self._asset("output/references/actors/hero/sheet.png", b"hero")
+        self._legacy_manifest(
+            "actor",
+            "hero",
+            {
+                "sheet_path": hero.relative_to(self.project).as_posix(),
+                "visual_description": "silver-haired singer",
+                "semantic_intent": {
+                    "entity_id": "hero",
+                    "constraint_ids": ["c-identity", "c-recurrence"],
+                },
+            },
+        )
+
+        snapshot = self.adapter.load("demo")
+
+        anchor = snapshot.actors[("hero", "default")]
+        self.assertEqual(
+            {
+                "entity_id": "hero",
+                "constraint_ids": ["c-identity", "c-recurrence"],
+            },
+            anchor.semantic_intent,
+        )
+
+    def test_semantic_intent_is_excluded_from_fingerprint(self):
+        asset = self._asset("output/references/actors/hero/sheet.png", b"hero")
+        self._legacy_manifest(
+            "actor",
+            "hero",
+            {
+                "sheet_path": asset.relative_to(self.project).as_posix(),
+                "visual_description": "silver-haired singer",
+                "semantic_intent": {"entity_id": "hero", "constraint_ids": ["c1"]},
+            },
+        )
+        with_intent = self.adapter.load("demo")
+        self._legacy_manifest(
+            "actor",
+            "hero",
+            {
+                "sheet_path": asset.relative_to(self.project).as_posix(),
+                "visual_description": "silver-haired singer",
+            },
+        )
+        without_intent = self.adapter.load("demo")
+
+        self.assertEqual(
+            with_intent.actors[("hero", "default")].fingerprint_payload(),
+            without_intent.actors[("hero", "default")].fingerprint_payload(),
+        )
+        self.assertIsNone(without_intent.actors[("hero", "default")].semantic_intent)
+
     def test_loads_current_movie_manifest_and_revision_is_canonical_json(self):
         asset = self._asset("movie/references/actors/hero/msr.png", b"hero")
         decoded = {

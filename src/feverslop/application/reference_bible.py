@@ -108,6 +108,7 @@ class ReferenceSubject:
     role: str = ""
     visual_description: str = ""
     image_prompt: str = ""
+    semantic_intent: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -117,6 +118,7 @@ class ReferenceLocation:
     visual_description: str = ""
     image_prompt: str = ""
     reference_mode: str = "empty_environment"
+    semantic_intent: dict[str, Any] | None = None
 
 
 class ReferenceBibleGenerator:

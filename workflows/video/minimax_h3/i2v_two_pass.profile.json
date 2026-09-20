@@ -1,0 +1,18 @@
+{
+  "model_family": "minimax-h3",
+  "pass_strategy": "two_pass",
+  "topology": [
+    "#PASS1",
+    "#SEPARATE_AV",
+    "#LATENT_UPSCALE",
+    "#RECOMBINE_AV",
+    "#PASS2"
+  ],
+  "audio_policy": "not_applicable",
+  "preserve_audio_latent": false,
+  "mode": "i2v",
+  "frame_capabilities": [
+    "start_only",
+    "start_end"
+  ]
+}
