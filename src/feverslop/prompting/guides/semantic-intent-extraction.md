@@ -6,9 +6,11 @@ English, performers, humans, or fixed roles.
 
 ## What to extract
 
-- **Entities**: arbitrary people, objects, creatures, places, or abstract
-  concepts the idea names. Use `kind` from: `person`, `object`, `creature`,
-  `place`, `abstract`. Assign a `role` only when the idea states one (for
+- **Entities**: arbitrary people, objects, creatures, groups, locations, or
+  abstract concepts the idea names. Use `kind` from: `person`, `object`,
+  `creature`, `group`, `location`, `abstract`. Common synonyms are accepted as
+  aliases: `human`, `animal`, `item`, `collective`, `place`, and `concept`.
+  Assign a `role` only when the idea states one (for
   example `lead`, `narrator`, `listener`).
 - **Attributes / constraints**: explicit properties bound to an entity. Keep the
   `entity_id` pointing at the correct entity. Preserve the source-language
