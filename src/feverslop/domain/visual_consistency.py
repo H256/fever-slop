@@ -53,6 +53,7 @@ class ReferenceAnchor:
     asset_role: str
     asset_sha256: str
     prompt_anchor: str
+    semantic_intent: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         _required(self.id, "id")
@@ -62,8 +63,10 @@ class ReferenceAnchor:
         _required(self.asset_role, "asset role")
         _validate_sha256(self.asset_sha256, "asset sha256")
         _required(self.prompt_anchor, "prompt anchor")
+        if self.semantic_intent is not None and not isinstance(self.semantic_intent, dict):
+            raise ValueError("semantic_intent must be a mapping or None")
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "kind": self.kind,
@@ -71,6 +74,7 @@ class ReferenceAnchor:
             "asset_role": self.asset_role,
             "asset_sha256": self.asset_sha256,
             "prompt_anchor": self.prompt_anchor,
+            "semantic_intent": self.semantic_intent,
         }
 
     @classmethod
@@ -82,7 +86,24 @@ class ReferenceAnchor:
             asset_role=payload["asset_role"],
             asset_sha256=payload["asset_sha256"],
             prompt_anchor=payload["prompt_anchor"],
+            semantic_intent=payload.get("semantic_intent"),
         )
+
+    def fingerprint_payload(self) -> dict[str, str]:
+        """Canonical fields that determine the contract fingerprint.
+
+        ``semantic_intent`` is provenance metadata carried for downstream
+        validation and is intentionally excluded so anchors with or without
+        it produce the same fingerprint (stored contracts stay compatible).
+        """
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "look_id": self.look_id,
+            "asset_role": self.asset_role,
+            "asset_sha256": self.asset_sha256,
+            "prompt_anchor": self.prompt_anchor,
+        }
 
 
 @dataclass(frozen=True)
@@ -183,7 +204,7 @@ class SceneConsistencyContract:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            **_canonical_payload(
+            **_serialized_payload(
                 scene=self.scene,
                 mode=self.mode,
                 workflow_profile=self.workflow_profile,
@@ -224,6 +245,26 @@ class SceneConsistencyContract:
 
 
 def _canonical_payload(
+    *,
+    scene: int,
+    mode: str,
+    workflow_profile: str,
+    actors: tuple[ReferenceAnchor, ...],
+    location: ReferenceAnchor | None,
+    transition_from_previous: str,
+) -> dict[str, Any]:
+    return {
+        "schema": SCHEMA,
+        "scene": scene,
+        "mode": mode,
+        "workflow_profile": workflow_profile,
+        "actors": [anchor.fingerprint_payload() for anchor in actors],
+        "location": location.fingerprint_payload() if location is not None else None,
+        "transition_from_previous": transition_from_previous,
+    }
+
+
+def _serialized_payload(
     *,
     scene: int,
     mode: str,
