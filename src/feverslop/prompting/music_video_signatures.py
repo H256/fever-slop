@@ -11,6 +11,22 @@ class MusicVideoSubjectLocations(BaseModel):
     locations: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class MusicVideoNarrativeContract(BaseModel):
+    """Structured story arch the concept LLM is constrained by.
+
+    ``location_order`` / ``milestone_order`` entries may be ``{id, source}``
+    objects or plain strings; the batcher normalizes both. Every other field
+    is optional and omitted (not invented) when the story does not warrant it.
+    """
+
+    location_order: list[Any] = Field(default_factory=list)
+    milestone_order: list[Any] = Field(default_factory=list)
+    terminal_states: dict[str, Any] = Field(default_factory=dict)
+    actor_allowed_locations: dict[str, Any] = Field(default_factory=dict)
+    chronology_exceptions: dict[str, Any] = Field(default_factory=dict)
+    one_shot_milestones: list[str] = Field(default_factory=list)
+
+
 def build_music_video_signature_bundle(dspy_module: Any | None = None):
     if dspy_module is None:
         import dspy as dspy_module
@@ -43,6 +59,20 @@ def build_music_video_signature_bundle(dspy_module: Any | None = None):
             desc="Explicit cast/design guidance from the project config; may be empty.",
         )
         result: MusicVideoSubjectLocations = dspy_module.OutputField()
+
+    class NarrativeContract(dspy_module.Signature):
+        """Derive the structured narrative contract (story arch) from the story idea.
+
+        The supplied ``locations`` and ``actors`` are the canonical structured
+        ids; the contract must reference only those ids (never invent new ones).
+        """
+
+        guide: str = dspy_module.InputField()
+        story_idea: str = dspy_module.InputField()
+        locations: list[dict[str, Any]] = dspy_module.InputField()
+        actors: list[dict[str, Any]] = dspy_module.InputField()
+        notes: str = dspy_module.InputField()
+        contract: MusicVideoNarrativeContract = dspy_module.OutputField()
 
     class ConceptMap(dspy_module.Signature):
         """Map every supplied timed segment to one visual concept."""
@@ -92,6 +122,7 @@ def build_music_video_signature_bundle(dspy_module: Any | None = None):
         "story_idea": StoryIdea,
         "style_block": StyleBlock,
         "subject_locations": SubjectLocations,
+        "narrative_contract": NarrativeContract,
         "concept_map": ConceptMap,
         "detail": Detail,
         "t2i": T2I,

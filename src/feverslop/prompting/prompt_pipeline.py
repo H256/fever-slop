@@ -61,6 +61,40 @@ class MusicVideoPromptPipeline:
             location["image_prompt"] = " ".join(prompt.split()).strip(" .,-")
         return data
 
+    def create_narrative_contract(
+        self,
+        story_idea: str,
+        locations: list[dict],
+        actors: list[dict],
+        notes: str = "",
+    ) -> dict:
+        """Derive the structured narrative contract from the story idea.
+
+        Returns a plain dict (possibly empty). The module returns a
+        ``MusicVideoNarrativeContract`` model in production; this normalizes
+        model / dict / JSON-string responses to a dict for the caller.
+        """
+        method = self.prompt_modules.narrative_contract
+        kwargs = {
+            "story_idea": story_idea,
+            "locations": locations,
+            "actors": actors,
+            "notes": notes,
+        }
+        supported = {
+            key: value
+            for key, value in kwargs.items()
+            if key in inspect.signature(method).parameters
+        }
+        response = method(**supported)
+        if hasattr(response, "model_dump"):
+            return response.model_dump()
+        if isinstance(response, dict):
+            return response
+        if isinstance(response, str):
+            return extract_json_object(response)
+        return {}
+
     def create_concept_prompts(
         self,
         stage1_segments: list[dict],

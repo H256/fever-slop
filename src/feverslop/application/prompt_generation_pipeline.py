@@ -250,6 +250,12 @@ def call_with_supported_kwargs(func: Callable[..., Any], **kwargs):
     return func(**supported)
 
 
+def _contract_entry_id(raw: Any) -> str:
+    """Return the id of a narrative-contract entry (``{id, source}`` or string)."""
+    value = raw.get("id") if isinstance(raw, dict) else raw
+    return str(value or "").strip()
+
+
 def resolve_text_override(
     *,
     configured_value: Any,
@@ -1195,6 +1201,117 @@ class PromptGenerationPipeline:
         )
         return subject_locations, subject, locations
 
+    def _derive_narrative_contract(
+        self,
+        *,
+        config: Any,
+        prompt_pipeline: Any,
+        story_idea: str,
+        actors: list[dict],
+        structured_locations: list[dict],
+        notes: dict,
+        run_spinner: Callable[[str, Callable[[], Any]], Any],
+        reporter: Any,
+    ) -> tuple[dict, str]:
+        """Resolve the narrative contract, preferring config over LLM derivation.
+
+        A non-empty configured contract wins unchanged (source ``config``).
+        Otherwise the contract is derived from the story idea and the resolved
+        cast/locations (source ``llm``). Derivation is bounded: any failure or
+        a contract that references unknown canonical ids falls back to an empty
+        contract (source ``empty``) so the pipeline never blocks on it.
+        """
+        configured = get_config_value(config, "narrative_contract", {}) or {}
+        if configured:
+            if reporter is not None:
+                reporter.message("[cyan]Narrative contract: using configured contract.[/cyan]")
+            return dict(configured), "config"
+        if reporter is not None:
+            reporter.message("[cyan]Narrative contract: deriving from story idea...[/cyan]")
+        try:
+            derived = run_spinner(
+                "Deriving narrative contract...",
+                lambda: prompt_pipeline.create_narrative_contract(
+                    story_idea=story_idea,
+                    locations=structured_locations,
+                    actors=actors,
+                    notes=notes.get("story_notes", ""),
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - bounded, never blocks
+            if reporter is not None:
+                reporter.message(f"[yellow]Narrative contract derivation failed: {exc}[/yellow]")
+            return {}, "empty"
+        derived = derived if isinstance(derived, dict) else {}
+        if not derived:
+            if reporter is not None:
+                reporter.message("[yellow]Narrative contract: LLM returned empty; using empty contract.[/yellow]")
+            return {}, "empty"
+        warnings = self._validate_narrative_contract(derived, actors, structured_locations)
+        if warnings:
+            if reporter is not None:
+                reporter.message(
+                    f"[yellow]Narrative contract invalid ({'; '.join(warnings)}); "
+                    f"using empty contract.[/yellow]"
+                )
+            return {}, "empty"
+        if reporter is not None:
+            reporter.message(
+                "[green]Narrative contract derived "
+                f"({len(derived.get('location_order') or [])} locations, "
+                f"{len(derived.get('milestone_order') or [])} milestones).[/green]"
+            )
+        return derived, "llm"
+
+    def _validate_narrative_contract(
+        self,
+        contract: dict,
+        actors: list[dict],
+        structured_locations: list[dict],
+    ) -> list[str]:
+        """Return warnings for canonical ids the contract invents.
+
+        Only location and actor ids can be checked against the resolved cast
+        and locations; milestone and chronology-exception names are narrative
+        and are not validated.
+        """
+        if not isinstance(contract, dict) or not contract:
+            return []
+        location_ids = {
+            str(location.get("id") or "").strip()
+            for location in (structured_locations or [])
+            if isinstance(location, dict) and str(location.get("id") or "").strip()
+        }
+        actor_ids = {
+            str(actor.get("id") or "").strip()
+            for actor in (actors or [])
+            if isinstance(actor, dict) and str(actor.get("id") or "").strip()
+        }
+        warnings: list[str] = []
+        for raw in contract.get("location_order") or ():
+            item_id = _contract_entry_id(raw)
+            if item_id and item_id not in location_ids:
+                warnings.append(f"location_order references unknown location {item_id!r}")
+        allowed = contract.get("actor_allowed_locations") or {}
+        if isinstance(allowed, dict):
+            for actor_id, allowed_locations in allowed.items():
+                actor_id = str(actor_id or "").strip()
+                if actor_id and actor_id not in actor_ids:
+                    warnings.append(f"actor_allowed_locations references unknown actor {actor_id!r}")
+                for raw in allowed_locations or ():
+                    item_id = _contract_entry_id(raw)
+                    if item_id and item_id not in location_ids:
+                        warnings.append(
+                            f"actor_allowed_locations[{actor_id!r}] references unknown location {item_id!r}"
+                        )
+        terminal = contract.get("terminal_states") or {}
+        if isinstance(terminal, dict):
+            for actor_id in terminal:
+                actor_id = str(actor_id or "").strip()
+                if actor_id and actor_id not in actor_ids:
+                    warnings.append(f"terminal_states references unknown actor {actor_id!r}")
+        return warnings
+
     def build_resolved_global_context(
         self,
         *,
@@ -1267,6 +1384,17 @@ class PromptGenerationPipeline:
             else {}
         )
 
+        narrative_contract, narrative_contract_source = self._derive_narrative_contract(
+            config=config,
+            prompt_pipeline=prompt_pipeline,
+            story_idea=story_idea,
+            actors=actors,
+            structured_locations=structured_locations,
+            notes=notes,
+            run_spinner=run_spinner,
+            reporter=reporter,
+        )
+
         return {
             "story_idea": story_idea,
             "style": style_block,
@@ -1287,9 +1415,8 @@ class PromptGenerationPipeline:
             "global_asset_snapshots": list(global_resolution.snapshots) if global_resolution else [],
             "subject_mode": config_values["subject_mode"],
             "max_scene_actors": config_values["max_scene_actors"],
-            "narrative_contract": dict(
-                get_config_value(config, "narrative_contract", {}) or {},
-            ),
+            "narrative_contract": narrative_contract,
+            "narrative_contract_source": narrative_contract_source,
             "audio_subject_bindings": audio_subject_bindings,
             "video_pipeline": str(get_config_value(config, "video_pipeline", "ltx_i2v") or "ltx_i2v").strip(),
             "language": config_values["language"],
