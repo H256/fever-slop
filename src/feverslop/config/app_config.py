@@ -1,6 +1,5 @@
 ﻿from __future__ import annotations
 
-import json
 import logging
 import math
 import os
@@ -15,6 +14,7 @@ from feverslop.domain.video_workflow_profile import VideoWorkflowProfile
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.reporting import parse_log_level
 from feverslop.prompting.dspy_runtime import DEFAULT_TASK_TEMPERATURES
+from feverslop.utils.io import read_json
 
 _logger = logging.getLogger(__name__)
 
@@ -270,7 +270,7 @@ class AppConfig:
                 comfyui=ComfyUIConfig(),
             )
 
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = read_json(path)
 
         if required_keys:
             _check_required_keys(raw, required_keys)

@@ -237,6 +237,120 @@ class BuildRenderPlanTests(unittest.TestCase):
             self.assertTrue(all(s["duration_seconds"] <= 3.0 for s in segments))
             self.assertEqual([False, True, True], [s["starts_with_anchor"] for s in segments])
 
+    def test_planner_owned_20s_one_take_splits_into_multiple_technical_clips(self):
+        # A 20-second semantic one-take (planner-owned intent, no user directive)
+        # becomes a chain of safe technical clips, each <= the per-clip capability,
+        # with absolute audio windows preserved and anchor boundaries attached.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            h3_path = temp / "h3.json"
+            output_path = temp / "render_plan.json"
+            scene_prompts_path.write_text(json.dumps([{
+                "scene": 1,
+                "segment_id": "scene-001",
+                "type": "vocals",
+                "start": 0.0,
+                "end": 20.0,
+                "duration": 20.0,
+                "zimage_prompt": "z",
+                "ltx_base_prompt": "base",
+            }]), encoding="utf-8")
+            relay_path.write_text(json.dumps([{"scene": 1, "prompt_relay": []}]), encoding="utf-8")
+            h3_path.write_text(json.dumps([{
+                "segment_id": "scene-001",
+                "continuation_intents": [{
+                    "action_id": "creative_shot_1",
+                    "requires_continuation": True,
+                    "rationale": "One uninterrupted transformation.",
+                    "desired_duration_seconds": 20.0,
+                }],
+            }]), encoding="utf-8")
+
+            build_render_plan(
+                scene_prompts_path, relay_path, output_path,
+                VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
+                h3_prompts_json=h3_path,
+                duration_capability=DurationCapability.create(
+                    fps=24, min_seconds=2.0, max_seconds=3.0,
+                    preferred_seconds=3.0, frame_alignment=8, frame_offset=0,
+                ),
+            )
+
+            scenes = json.loads(output_path.read_text(encoding="utf-8"))
+            group = scenes[0]["metadata"]["continuation_groups"][0]
+            segments = group["segments"]
+            # Multiple technical clips (20s / 3s -> >= 6 clips).
+            self.assertGreaterEqual(len(segments), 6)
+            # Absolute audio windows preserved end-to-end.
+            self.assertEqual(0.0, group["semantic_start_seconds"])
+            self.assertEqual(20.0, group["semantic_end_seconds"])
+            self.assertEqual(0.0, segments[0]["start_seconds"])
+            self.assertEqual(20.0, segments[-1]["end_seconds"])
+            # Every technical clip respects the hardware per-clip limit.
+            self.assertTrue(all(s["duration_seconds"] <= 3.0 for s in segments))
+            # Anchor boundaries: first clip is free, the rest anchor to the
+            # predecessor's final frame.
+            self.assertEqual([False] + [True] * (len(segments) - 1),
+                            [s["starts_with_anchor"] for s in segments])
+
+    def test_planner_owned_three_minute_one_take_is_one_semantic_group_with_safe_chain(self):
+        # A three-minute creative one-take is one semantic group with a safe
+        # technical chain (not one oversized ComfyUI request).
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            scene_prompts_path = temp / "scene_prompts.json"
+            relay_path = temp / "relay.json"
+            h3_path = temp / "h3.json"
+            output_path = temp / "render_plan.json"
+            scene_prompts_path.write_text(json.dumps([{
+                "scene": 1,
+                "segment_id": "scene-001",
+                "type": "vocals",
+                "start": 0.0,
+                "end": 180.0,
+                "duration": 180.0,
+                "zimage_prompt": "z",
+                "ltx_base_prompt": "base",
+            }]), encoding="utf-8")
+            relay_path.write_text(json.dumps([{"scene": 1, "prompt_relay": []}]), encoding="utf-8")
+            h3_path.write_text(json.dumps([{
+                "segment_id": "scene-001",
+                "continuation_intents": [{
+                    "action_id": "creative_shot_1",
+                    "requires_continuation": True,
+                    "rationale": "One three-minute uninterrupted performance.",
+                    "desired_duration_seconds": 180.0,
+                }],
+            }]), encoding="utf-8")
+
+            build_render_plan(
+                scene_prompts_path, relay_path, output_path,
+                VideoSettings(fps=24, width=1280, height=704),
+                artifact_store=JsonArtifactStore(),
+                h3_prompts_json=h3_path,
+                duration_capability=DurationCapability.create(
+                    fps=24, min_seconds=2.0, max_seconds=3.0,
+                    preferred_seconds=3.0, frame_alignment=8, frame_offset=0,
+                ),
+            )
+
+            scenes = json.loads(output_path.read_text(encoding="utf-8"))
+            groups = scenes[0]["metadata"]["continuation_groups"]
+            # One semantic group (one creative one-take), not many.
+            self.assertEqual(1, len(groups))
+            group = groups[0]
+            segments = group["segments"]
+            # A long, safe technical chain (180s / 3s -> 60 clips).
+            self.assertGreaterEqual(len(segments), 50)
+            self.assertEqual(0.0, group["semantic_start_seconds"])
+            self.assertEqual(180.0, group["semantic_end_seconds"])
+            self.assertEqual(0.0, segments[0]["start_seconds"])
+            self.assertEqual(180.0, segments[-1]["end_seconds"])
+            self.assertTrue(all(s["duration_seconds"] <= 3.0 for s in segments))
+
     def test_seed_minus_one_generates_and_persists_a_different_seed_per_scene(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
