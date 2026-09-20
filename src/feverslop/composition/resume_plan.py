@@ -382,6 +382,14 @@ def reference_manifests_reusable(
     return all(_reference_manifest_reusable(references_dir, kind, identifier) for kind, identifier in required)
 
 
+def reference_asset_reusable(references_dir: Path, kind: str, identifier: str) -> bool:
+    """Return whether a single MSR reference asset has a usable local sheet."""
+    identifier = str(identifier).strip()
+    if not identifier:
+        return False
+    return _reference_manifest_reusable(references_dir, kind, identifier)
+
+
 def _reference_manifest_reusable(references_dir: Path, kind: str, identifier: str) -> bool:
     manifest_path = references_dir / kind / identifier / "manifest.json"
     if not manifest_path.is_file():

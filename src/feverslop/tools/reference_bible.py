@@ -17,6 +17,7 @@ from feverslop.application.reference_bible import (
     ReferenceSubject,
 )
 from feverslop.application.reference_sheet_planning import ReferenceSheetPlanner
+from feverslop.composition.resume_plan import reference_asset_reusable
 from feverslop.config.app_config import AppConfig
 from feverslop.config.project_config import ProjectConfig
 from feverslop.domain.semantic_intent import IntentLedger, entity_constraint_ids, ledger_for_project
@@ -233,6 +234,34 @@ def run(args: argparse.Namespace, reporter: Reporter | None = None) -> list[Path
             "so output/prompts/resolved_context_<song>.json exists, or add subject/actors/locations "
             "to the project config.",
         )
+
+    reused_actors = [
+        subject for subject in subjects if reference_asset_reusable(output_dir, "actors", subject.id)
+    ]
+    subjects = [
+        subject for subject in subjects if not reference_asset_reusable(output_dir, "actors", subject.id)
+    ]
+    reused_locations = [
+        location
+        for location in locations
+        if reference_asset_reusable(output_dir, "locations", location.id)
+    ]
+    locations = [
+        location
+        for location in locations
+        if not reference_asset_reusable(output_dir, "locations", location.id)
+    ]
+    for subject in reused_actors:
+        reporter.message(
+            f"[yellow]Reusing actor {subject.id}; existing reference sheet is reusable.[/yellow]"
+        )
+    for location in reused_locations:
+        reporter.message(
+            f"[yellow]Reusing location {location.id}; existing reference sheet is reusable.[/yellow]"
+        )
+    if not subjects and not locations:
+        reporter.message("[green]All reference sheets are reusable; nothing to render.[/green]")
+        return []
 
     actor_view_names, location_view_names = resolve_view_names(args.view_set)
     actor_work = 1 if sequence_backend is not None else len(actor_view_names)
