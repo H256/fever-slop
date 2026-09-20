@@ -8,7 +8,12 @@ from pathlib import Path
 
 from feverslop.application.effective_render_plan import project_effective_plan
 from feverslop.application.msr_prompt_enrichment import msr_prompt_input_fingerprint
-from feverslop.composition.resume_plan import _h3_state, build_resume_plan
+from feverslop.composition.resume_plan import (
+    _h3_state,
+    build_resume_plan,
+    reference_asset_reusable,
+    reference_manifests_reusable,
+)
 from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.domain.execution_plan import ExecutionPlan, ExecutionPlanItem, PlanAction
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
@@ -665,6 +670,59 @@ class ResumePlanTests(unittest.TestCase):
         h3 = next(item for item in plan.items if item.phase == "h3 prompts")
         self.assertEqual(PlanAction.RUN, h3.action)
         self.assertIn("checkpoint", h3.reason)
+
+
+class ReferenceAssetReusabilityTests(unittest.TestCase):
+    def _write_sheet(self, references_dir: Path, kind: str, identifier: str) -> None:
+        reference_dir = references_dir / kind / identifier
+        reference_dir.mkdir(parents=True)
+        (reference_dir / "sheet.png").write_bytes(b"sheet")
+        (reference_dir / "manifest.json").write_text(
+            json.dumps({"sheet_path": "sheet.png"}),
+            encoding="utf-8",
+        )
+
+    def test_single_asset_reusable_when_sheet_present(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            references_dir = Path(temp_dir)
+            self._write_sheet(references_dir, "actors", "varen")
+
+            self.assertTrue(reference_asset_reusable(references_dir, "actors", "varen"))
+            self.assertFalse(reference_asset_reusable(references_dir, "actors", "ravena"))
+
+    def test_single_asset_not_reusable_without_manifest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            references_dir = Path(temp_dir)
+            (references_dir / "actors" / "varen").mkdir(parents=True)
+            (references_dir / "actors" / "varen" / "sheet.png").write_bytes(b"sheet")
+
+            self.assertFalse(reference_asset_reusable(references_dir, "actors", "varen"))
+
+    def test_single_asset_ignores_blank_identifier(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            references_dir = Path(temp_dir)
+
+            self.assertFalse(reference_asset_reusable(references_dir, "actors", "   "))
+
+    def test_all_or_nothing_requires_every_configured_asset(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            references_dir = Path(temp_dir)
+            self._write_sheet(references_dir, "actors", "varen")
+
+            self.assertFalse(
+                reference_manifests_reusable(
+                    references_dir,
+                    actor_ids=["varen", "ravena"],
+                    location_id=None,
+                )
+            )
+            self.assertTrue(
+                reference_manifests_reusable(
+                    references_dir,
+                    actor_ids=["varen"],
+                    location_id=None,
+                )
+            )
 
 
 if __name__ == "__main__":

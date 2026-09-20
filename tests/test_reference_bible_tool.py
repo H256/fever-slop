@@ -401,3 +401,128 @@ class ReferenceBibleToolTests(unittest.TestCase):
 
             column_types = [type(column) for column in run._last_progress_columns]
             self.assertNotIn(SpinnerColumn, column_types)
+
+    def test_run_skips_actors_with_reusable_sheets(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "input_audio": "song.mp3",
+                        "actors": [
+                            {"id": "varen", "name": "Varen", "image_prompt": "varen"},
+                            {"id": "ravena", "name": "Ravena", "image_prompt": "ravena"},
+                        ],
+                    },
+                ),
+                encoding="utf-8",
+            )
+            output_dir = temp / "output" / "references"
+            varen_dir = output_dir / "actors" / "varen"
+            varen_dir.mkdir(parents=True)
+            (varen_dir / "sheet.png").write_bytes(b"sheet")
+            (varen_dir / "manifest.json").write_text(
+                json.dumps({"sheet_path": "sheet.png"}),
+                encoding="utf-8",
+            )
+            args = build_arg_parser().parse_args(
+                [
+                    "--project-config",
+                    str(config_path),
+                    "--app-config",
+                    "app_config.json",
+                    "--hero-workflow",
+                    "hero.json",
+                    "--edit-workflow",
+                    "edit.json",
+                    "--output-dir",
+                    str(output_dir),
+                ],
+            )
+            generated_ids: list[str] = []
+            fake_generator = Mock()
+            fake_generator.view_names = ("hero", "front")
+
+            def generate_subject_bible(subject):
+                generated_ids.append(subject.id)
+                return temp / f"{subject.id}.json"
+
+            fake_generator.generate_subject_bible.side_effect = generate_subject_bible
+            generator_factory = Mock(return_value=fake_generator)
+            record_console = Console(file=io.StringIO(), record=True, force_terminal=False, width=120)
+
+            with patch("feverslop.tools.reference_bible.AppConfig.load") as app_config, \
+                    patch("feverslop.tools.reference_bible.ComfyUIClient"), \
+                    patch("feverslop.tools.reference_bible.ComfyUIModelResolver"), \
+                    patch("feverslop.tools.reference_bible.ComfyUIImageBackend"), \
+                    patch("feverslop.tools.reference_bible.ReferenceBibleGenerator", generator_factory), \
+                    patch("feverslop.tools.reference_bible.console", record_console):
+                app_config.return_value.comfyui.base_url = "http://localhost:8188"
+                app_config.return_value.comfyui.prompt_timeout_seconds = 1
+                app_config.return_value.comfyui.model_overrides = []
+
+                manifests = run(args)
+
+            printed = record_console.export_text()
+            self.assertEqual(["ravena"], generated_ids)
+            self.assertEqual([temp / "ravena.json"], manifests)
+            self.assertIn("Reusing actor varen", printed)
+            self.assertIn("Actors: 1", printed)
+
+    def test_run_renders_nothing_when_all_sheets_reusable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "input_audio": "song.mp3",
+                        "actors": [{"id": "varen", "name": "Varen", "image_prompt": "varen"}],
+                    },
+                ),
+                encoding="utf-8",
+            )
+            output_dir = temp / "output" / "references"
+            varen_dir = output_dir / "actors" / "varen"
+            varen_dir.mkdir(parents=True)
+            (varen_dir / "sheet.png").write_bytes(b"sheet")
+            (varen_dir / "manifest.json").write_text(
+                json.dumps({"sheet_path": "sheet.png"}),
+                encoding="utf-8",
+            )
+            args = build_arg_parser().parse_args(
+                [
+                    "--project-config",
+                    str(config_path),
+                    "--app-config",
+                    "app_config.json",
+                    "--hero-workflow",
+                    "hero.json",
+                    "--edit-workflow",
+                    "edit.json",
+                    "--output-dir",
+                    str(output_dir),
+                ],
+            )
+            fake_generator = Mock()
+            fake_generator.view_names = ("hero", "front")
+            generator_factory = Mock(return_value=fake_generator)
+            record_console = Console(file=io.StringIO(), record=True, force_terminal=False, width=120)
+
+            with patch("feverslop.tools.reference_bible.AppConfig.load") as app_config, \
+                    patch("feverslop.tools.reference_bible.ComfyUIClient"), \
+                    patch("feverslop.tools.reference_bible.ComfyUIModelResolver"), \
+                    patch("feverslop.tools.reference_bible.ComfyUIImageBackend"), \
+                    patch("feverslop.tools.reference_bible.ReferenceBibleGenerator", generator_factory), \
+                    patch("feverslop.tools.reference_bible.console", record_console):
+                app_config.return_value.comfyui.base_url = "http://localhost:8188"
+                app_config.return_value.comfyui.prompt_timeout_seconds = 1
+                app_config.return_value.comfyui.model_overrides = []
+
+                manifests = run(args)
+
+            printed = record_console.export_text()
+            self.assertEqual([], manifests)
+            self.assertIn("All reference sheets are reusable; nothing to render", printed)
+            fake_generator.generate_subject_bible.assert_not_called()
