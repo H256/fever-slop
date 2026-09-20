@@ -1,4 +1,6 @@
+import json
 import unittest
+from pathlib import Path
 
 from pydantic import ValidationError
 
@@ -9,6 +11,9 @@ from feverslop.domain.semantic_intent import (
     IntentLedger,
     IntentRelation,
     ConstraintProvenance,
+    entity_by_id,
+    entity_constraint_ids,
+    ledger_for_project,
     ledger_from_legacy_cast,
 )
 
@@ -91,6 +96,26 @@ class SemanticIntentLedgerTests(unittest.TestCase):
                     IntentEntity(id="e1", kind="person"),
                     IntentEntity(id="e1", kind="creature"),
                 ]
+            )
+
+    def test_rejects_duplicate_relation_ids(self):
+        with self.assertRaises(ValidationError):
+            IntentLedger(
+                entities=[IntentEntity(id="e1", kind="person")],
+                relations=[
+                    IntentRelation(id="r1", subject_id="e1", relation="a", target_id="e1"),
+                    IntentRelation(id="r1", subject_id="e1", relation="b", target_id="e1"),
+                ],
+            )
+
+    def test_rejects_duplicate_constraint_ids(self):
+        with self.assertRaises(ValidationError):
+            IntentLedger(
+                entities=[IntentEntity(id="e1", kind="person")],
+                constraints=[
+                    IntentConstraint(id="c1", entity_id="e1", kind="identity", statement="x"),
+                    IntentConstraint(id="c1", entity_id="e1", kind="identity", statement="y"),
+                ],
             )
 
     def test_rejects_dangling_relation_subject(self):
@@ -222,6 +247,74 @@ class SemanticIntentFixtureTests(unittest.TestCase):
             ],
         )
         self.assertEqual(len(ledger.constraints), 2)
+
+
+class SemanticIntentPropagationHelpersTests(unittest.TestCase):
+    def test_entity_by_id_returns_matching_entity(self):
+        ledger = IntentLedger(
+            entities=[
+                IntentEntity(id="e1", kind="person"),
+                IntentEntity(id="e2", kind="creature"),
+            ]
+        )
+        self.assertEqual(entity_by_id(ledger, "e2").kind, "creature")
+        self.assertIsNone(entity_by_id(ledger, "missing"))
+
+    def test_entity_constraint_ids_returns_bound_ids_in_order(self):
+        ledger = IntentLedger(
+            entities=[IntentEntity(id="e1", kind="person"), IntentEntity(id="e2", kind="person")],
+            constraints=[
+                IntentConstraint(id="c-for-e2", entity_id="e2", kind="identity", statement="x"),
+                IntentConstraint(id="c1", entity_id="e1", kind="identity", statement="wears red"),
+                IntentConstraint(id="c2", entity_id="e1", kind="scene_obligation", statement="in scene 3"),
+            ],
+        )
+        # Only e1's constraints, in ledger order; e2's constraint is not mixed in.
+        self.assertEqual(entity_constraint_ids(ledger, "e1"), ["c1", "c2"])
+        self.assertEqual(entity_constraint_ids(ledger, "e2"), ["c-for-e2"])
+        self.assertEqual(entity_constraint_ids(ledger, "missing"), [])
+
+    def test_ledger_for_project_prefers_persisted_artifact(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            prompts = project_dir / "output" / "prompts"
+            prompts.mkdir(parents=True)
+            ledger = IntentLedger(
+                entities=[IntentEntity(id="band", kind="group", role="vierkoepfige Band")],
+                constraints=[
+                    IntentConstraint(id="c1", entity_id="band", kind="cardinality", statement="exactly four")
+                ],
+            )
+            (prompts / "semantic_intent_song1.json").write_text(
+                json.dumps(ledger.to_dict()), encoding="utf-8"
+            )
+            # Legacy cast would produce a different (empty) ledger; the artifact wins.
+            resolved = ledger_for_project(project_dir, "song1", actors=[{"id": "a1", "name": "A"}])
+            self.assertEqual(resolved.entity_ids(), frozenset({"band"}))
+            self.assertEqual(entity_constraint_ids(resolved, "band"), ["c1"])
+
+    def test_ledger_for_project_falls_back_to_legacy_cast(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            actors = [{"id": "a1", "name": "Anna", "role": "singer"}]
+            resolved = ledger_for_project(project_dir, "song1", actors=actors)
+            self.assertEqual(resolved.entity_ids(), frozenset({"a1"}))
+
+    def test_ledger_for_project_degrades_on_unreadable_artifact(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            project_dir = Path(tmp)
+            prompts = project_dir / "output" / "prompts"
+            prompts.mkdir(parents=True)
+            (prompts / "semantic_intent_song1.json").write_text("{not-json", encoding="utf-8")
+            actors = [{"id": "a1", "name": "Anna"}]
+            resolved = ledger_for_project(project_dir, "song1", actors=actors)
+            self.assertEqual(resolved.entity_ids(), frozenset({"a1"}))
 
 
 if __name__ == "__main__":
