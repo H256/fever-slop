@@ -417,6 +417,121 @@ class VisualConsistencyPreflightTests(unittest.TestCase):
         self.assertEqual((), result.contracts)
         self.assertEqual((), result.issues)
 
+    def _semantic_ledger(self):
+        from feverslop.domain.semantic_intent import (
+            IntentConstraint,
+            IntentEntity,
+            IntentLedger,
+            IntentRelation,
+        )
+
+        return IntentLedger(
+            entities=[
+                IntentEntity(id="hero", kind="person", recurrence="always"),
+                IntentEntity(id="sidekick", kind="person", recurrence="once"),
+            ],
+            relations=[
+                IntentRelation(
+                    id="rel-1",
+                    subject_id="hero",
+                    relation="with",
+                    target_id="sidekick",
+                ),
+            ],
+            constraints=[
+                IntentConstraint(
+                    id="c-1",
+                    entity_id="hero",
+                    kind="scene_obligation",
+                    statement="hero is always present",
+                ),
+            ],
+        )
+
+    def test_strict_semantic_always_missing_blocks_with_exact_ids(self):
+        result = preflight_visual_consistency(
+            [{
+                "scene": 1,
+                "references": {
+                    "actor_ids": [],
+                    "location_id": "stage",
+                },
+            }],
+            self.snapshot,
+            mode="msr",
+            workflow_profile="msr-default",
+            preflight_mode=PreflightMode.STRICT,
+            semantic_intent_ledger=self._semantic_ledger(),
+        )
+
+        self.assertFalse(result.renderable)
+        codes = [issue.code for issue in result.issues]
+        self.assertIn("semantic_always_missing", codes)
+        always = next(
+            issue for issue in result.issues if issue.code == "semantic_always_missing"
+        )
+        self.assertEqual("error", always.severity)
+        self.assertIn("hero", always.message)
+        self.assertIn("c-1", always.message)
+
+    def test_semantic_co_presence_blocks_when_target_absent(self):
+        result = preflight_visual_consistency(
+            [{
+                "scene": 1,
+                "references": {
+                    "actor_ids": ["hero"],
+                    "location_id": "stage",
+                },
+            }],
+            self.snapshot,
+            mode="msr",
+            workflow_profile="msr-default",
+            preflight_mode=PreflightMode.STRICT,
+            semantic_intent_ledger=self._semantic_ledger(),
+        )
+
+        codes = [issue.code for issue in result.issues]
+        self.assertIn("semantic_co_presence", codes)
+
+    def test_semantic_gate_is_noop_when_ledger_absent(self):
+        result = preflight_visual_consistency(
+            [{
+                "scene": 1,
+                "references": {
+                    "actor_ids": ["hero"],
+                    "location_id": "stage",
+                },
+            }],
+            self.snapshot,
+            mode="msr",
+            workflow_profile="msr-default",
+            preflight_mode=PreflightMode.STRICT,
+        )
+
+        self.assertFalse(
+            any(issue.code.startswith("semantic_") for issue in result.issues)
+        )
+
+    def test_semantic_satisfied_scene_has_no_semantic_issues(self):
+        result = preflight_visual_consistency(
+            [{
+                "scene": 1,
+                "references": {
+                    "actor_ids": ["hero", "sidekick"],
+                    "location_id": "stage",
+                },
+            }],
+            self.snapshot,
+            mode="msr",
+            workflow_profile="msr-default",
+            preflight_mode=PreflightMode.STRICT,
+            semantic_intent_ledger=self._semantic_ledger(),
+        )
+
+        self.assertFalse(
+            any(issue.code.startswith("semantic_") for issue in result.issues)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
