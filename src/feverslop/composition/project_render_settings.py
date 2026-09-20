@@ -11,6 +11,11 @@ from feverslop.domain.project_render_settings import (
     ProjectRenderSettings,
     WorkflowSelection,
 )
+from feverslop.domain.render_profile import (
+    RegisteredRenderProfile,
+    RenderProfile,
+    RenderProfileRegistry,
+)
 from feverslop.domain.workflow_capability_manifest import WorkflowCapabilityManifest
 from feverslop.domain.ltx25_audio_contract import (
     load_ltx25_audio_policy,
@@ -24,6 +29,29 @@ from .config_loader import resolve_runner_path, runner_root
 class ResolvedProjectRenderSettings:
     settings: ProjectRenderSettings
     runner_overrides: dict[str, str]
+
+
+def _load_declared_ltx25_profiles() -> RenderProfileRegistry:
+    """Resolve the canonical LTX 2.5 profile matrix into a registry.
+
+    The profile-matrix.json is the single source of truth for which LTX 2.5
+    profiles are declared. Each entry maps to its materialized workflow file.
+    """
+    matrix_path = runner_root() / "workflows" / "video" / "ltx_25" / "profile-matrix.json"
+    entries = json.loads(matrix_path.read_text(encoding="utf-8"))
+    registered = []
+    for entry in entries:
+        profile = RenderProfile.create(model_family="ltx-2.5", **entry)
+        registered.append(
+            RegisteredRenderProfile(
+                profile=profile,
+                workflow_path=(
+                    "workflows/video/ltx_25/"
+                    f"{profile.mode.value}/{profile.mode.value}_{profile.quality.value}.json"
+                ),
+            )
+        )
+    return RenderProfileRegistry(registered)
 
 
 def resolve_project_render_settings(
@@ -69,28 +97,32 @@ def resolve_project_render_settings(
         video_selection = WorkflowSelection.from_path(profile_path, root=runner_root())
         overrides[video_target] = str(profile_path)
     if config.workflows.video is None and not pipeline_default and config.render_profile.startswith("ltx25-"):
-        profile_parts = config.render_profile.split("-")
-        if len(profile_parts) == 3 and profile_parts[1] in {"t2v", "i2v", "r2v", "msr", "ingredients"} and profile_parts[2] in {"draft", "standard", "final"}:
-            mode, quality = profile_parts[1], profile_parts[2]
-            profile_path = runner_root() / "workflows" / "video" / "ltx_25" / mode / f"{mode}_{quality}.json"
-            if profile_path.exists() and video_target not in explicit:
-                manifest_path = runner_root() / "workflows" / "video" / "ltx_25" / "capabilities.json"
-                manifest = WorkflowCapabilityManifest.create(
-                    **json.loads(manifest_path.read_text(encoding="utf-8"))
+        if video_target not in explicit:
+            registry = _load_declared_ltx25_profiles()
+            entry = registry.resolve(profile_id=config.render_profile)
+            profile_path = runner_root() / entry.workflow_path
+            if not profile_path.is_file():
+                raise ValueError(
+                    f"LTX 2.5 profile {config.render_profile!r} is declared but its "
+                    f"workflow file is missing: {entry.workflow_path}"
                 )
-                validation = manifest.validate_workflow_payload(
-                    json.loads(profile_path.read_text(encoding="utf-8-sig"))
-                )
-                if not validation.ok:
-                    missing = ", ".join((*validation.missing_models, *validation.missing_nodes))
-                    raise ValueError(f"LTX 2.5 workflow capability validation failed: {missing}")
-                audio_policy = load_ltx25_audio_policy(profile_path)
-                validate_ltx25_audio_workflow(
-                    json.loads(profile_path.read_text(encoding="utf-8-sig")),
-                    audio_policy,
-                )
-                video_selection = WorkflowSelection.from_path(profile_path.resolve(), root=runner_root())
-                overrides[video_target] = str(profile_path.resolve())
+            manifest_path = runner_root() / "workflows" / "video" / "ltx_25" / "capabilities.json"
+            manifest = WorkflowCapabilityManifest.create(
+                **json.loads(manifest_path.read_text(encoding="utf-8"))
+            )
+            validation = manifest.validate_workflow_payload(
+                json.loads(profile_path.read_text(encoding="utf-8-sig"))
+            )
+            if not validation.ok:
+                missing = ", ".join((*validation.missing_models, *validation.missing_nodes))
+                raise ValueError(f"LTX 2.5 workflow capability validation failed: {missing}")
+            audio_policy = load_ltx25_audio_policy(profile_path)
+            validate_ltx25_audio_workflow(
+                json.loads(profile_path.read_text(encoding="utf-8-sig")),
+                audio_policy,
+            )
+            video_selection = WorkflowSelection.from_path(profile_path.resolve(), root=runner_root())
+            overrides[video_target] = str(profile_path.resolve())
     if config.workflows.video is not None and video_target not in explicit:
         video_path = resolve_runner_path(config.workflows.video).resolve()
         video_selection = WorkflowSelection.from_path(video_path, root=runner_root())
