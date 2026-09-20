@@ -150,6 +150,39 @@ class SemanticIntentExtractionFailureTests(unittest.TestCase):
 
 
 class SemanticIntentExtractionRepairTests(unittest.TestCase):
+    def test_place_and_location_are_accepted_as_location_entities(self):
+        for input_kind in ("place", "location"):
+            with self.subTest(input_kind=input_kind):
+                extraction = IntentExtractionResult(
+                    entities=[{"id": "forest", "kind": input_kind}]
+                )
+
+                ledger, _warnings = ledger_from_extraction(extraction)
+
+                self.assertEqual(ledger.entities[0].kind, "location")
+
+    def test_common_entity_kind_aliases_are_normalized(self):
+        aliases = {
+            "human": "person",
+            "animal": "creature",
+            "item": "object",
+            "collective": "group",
+            "concept": "abstract",
+        }
+        extraction = IntentExtractionResult(
+            entities=[
+                {"id": f"entity-{index}", "kind": input_kind}
+                for index, input_kind in enumerate(aliases)
+            ]
+        )
+
+        ledger, _warnings = ledger_from_extraction(extraction)
+
+        self.assertEqual(
+            [entity.kind for entity in ledger.entities],
+            list(aliases.values()),
+        )
+
     def test_duplicate_and_missing_ids_are_repaired(self):
         def payload(**kwargs):
             return {"extraction": {
