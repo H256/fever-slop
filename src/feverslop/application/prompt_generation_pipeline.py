@@ -29,6 +29,7 @@ from feverslop.prompting.planning_payload import compact_planning_payload
 from feverslop.prompting.concept_prompt_batcher import (
     validate_and_annotate_concept_chronology,
 )
+from feverslop.prompting.semantic_intent_review import review_and_repair
 from feverslop.utils.sub_step_progress import SubStepProgress
 
 
@@ -299,6 +300,7 @@ class PromptGenerationPipeline:
         concept_batcher_factory: ConceptBatcherFactory,
         scene_prompt_builder_factory: ScenePromptBuilderFactory,
         global_library_factory: Callable[[Any], Any] | None = None,
+        intent_review_factory: Callable[[Any], Any] | None = None,
         intent_extractor_factory: Callable[[Any], Any] | None = None,
     ):
         self.llm_factory = llm_factory
@@ -306,6 +308,7 @@ class PromptGenerationPipeline:
         self.concept_batcher_factory = concept_batcher_factory
         self.scene_prompt_builder_factory = scene_prompt_builder_factory
         self.global_library_factory = global_library_factory
+        self.intent_review_factory = intent_review_factory
         self.intent_extractor_factory = intent_extractor_factory
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
@@ -352,6 +355,17 @@ class PromptGenerationPipeline:
                 log_file=log_file,
                 llm=llm,
                 semantic_intent_json=semantic_intent_json,
+            )
+            self._review_semantic_intent(
+                llm=llm,
+                story_idea=global_context["story_idea"],
+                semantic_intent_json=getattr(context, "semantic_intent_json", None),
+                semantic_intent_review_json=getattr(
+                    context, "semantic_intent_review_json", None
+                ),
+                artifact_store=artifact_store,
+                log_file=log_file,
+                reporter=reporter,
             )
 
         concept_story_input = join_notes(
@@ -597,6 +611,77 @@ class PromptGenerationPipeline:
         log_file("Resolved Context JSON", resolved_context_json)
         self._report_global_context(reporter, global_context)
         return global_context
+
+    def _review_semantic_intent(
+        self,
+        *,
+        llm: Any,
+        story_idea: str,
+        semantic_intent_json: Path | None,
+        semantic_intent_review_json: Path | None,
+        artifact_store: Any,
+        log_file: Callable[[str, Path], None],
+        reporter: Any,
+    ) -> None:
+        """Independently review and repair the extracted semantic intent ledger.
+
+        This is the review/repair stage (#545). It reads the ledger persisted
+        by the extraction stage (#544), runs an independent judge against the
+        original story idea, applies bounded targeted repair, and persists a
+        reviewed artifact. It is tolerant and bounded: with no extraction
+        artifact (tests, non-LLM runs, or before #544 lands) it is a no-op and
+        never invents entities. A review/repair failure is logged as a warning
+        and never blocks the pipeline.
+        """
+        if semantic_intent_json is None or not semantic_intent_json.is_file():
+            return
+        try:
+            from feverslop.prompting.semantic_intent_review import (
+                DspySemanticIntentReviewer,
+                IntentLedger,
+            )
+
+            payload = artifact_store.read_json(semantic_intent_json)
+            ledger = IntentLedger.from_dict(payload.get("ledger", {}))
+            reviewer = (
+                self.intent_review_factory(llm)
+                if self.intent_review_factory is not None
+                else DspySemanticIntentReviewer(llm)
+            )
+            review = reviewer.review(story_idea, ledger)
+            result = review_and_repair(
+                story_idea=story_idea,
+                ledger=ledger,
+                reviewer=reviewer,
+                review=review,
+            )
+        except Exception as exc:  # noqa: BLE001 - bounded, never blocks
+            if reporter is not None:
+                reporter.message(
+                    f"[yellow]Semantic intent review skipped: {exc}[/yellow]"
+                )
+            return
+        out_payload = {
+            "status": result.status,
+            "findings": [f.model_dump() for f in review.findings],
+            "applied": result.applied,
+            "skipped": result.skipped,
+            "warnings": result.warnings,
+            "ledger": result.ledger.to_dict(),
+        }
+        if semantic_intent_review_json is not None and artifact_store is not None:
+            artifact_store.write_json(semantic_intent_review_json, out_payload)
+            if log_file is not None:
+                log_file("Semantic Intent Review JSON", semantic_intent_review_json)
+        if reporter is not None:
+            if review.findings or result.warnings:
+                reporter.message(
+                    f"[yellow]Semantic intent review: {result.status} "
+                    f"({len(review.findings)} findings, "
+                    f"{len(result.warnings)} warnings)[/yellow]"
+                )
+            else:
+                reporter.message("[green]Semantic intent review: clean[/green]")
 
     def _finalize_concept_prompts(
         self,
