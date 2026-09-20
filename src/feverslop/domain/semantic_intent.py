@@ -24,6 +24,8 @@ Non-goals (per #543):
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -260,3 +262,84 @@ def ledger_from_legacy_cast(
             )
         )
     return IntentLedger(entities=entities)
+
+
+def entity_by_id(ledger: IntentLedger, entity_id: str) -> IntentEntity | None:
+    """Return the entity with the given id, or None when absent.
+
+    Stable-ID lookup is the foundation of provenance: a downstream artifact
+    can name the exact entity it retained without re-deriving identity from
+    free text.
+    """
+    for entity in ledger.entities:
+        if entity.id == entity_id:
+            return entity
+    return None
+
+
+def entity_constraint_ids(ledger: IntentLedger, entity_id: str) -> list[str]:
+    """Return the constraint IDs bound to an entity, in ledger order.
+
+    This is the retained-constraint set a reference/scene artifact must carry
+    so a pipeline boundary can prove what it kept. A targeted repair that
+    drops one of these IDs (or binds another entity's constraint) is detectable
+    by comparing against this list.
+    """
+    return [
+        constraint.id
+        for constraint in ledger.constraints
+        if constraint.entity_id == entity_id
+    ]
+
+
+def ledger_for_project(
+    project_dir: str | Path,
+    song_id: str,
+    actors: list[dict[str, Any]] | None = None,
+    locations: list[dict[str, Any]] | None = None,
+) -> IntentLedger:
+    """Resolve the semantic intent ledger for a project.
+
+    Prefers a persisted ledger artifact at
+    ``<project_dir>/output/prompts/semantic_intent_<song_id>.json`` (written by
+    the extraction stage). Falls back to the legacy cast/location compatibility
+    path so existing projects adopt the ledger without a fixed singer/band
+    ontology. A missing or unreadable artifact degrades to the legacy path
+    rather than failing the pipeline.
+    """
+    base = Path(project_dir)
+    candidate = base / "output" / "prompts" / f"semantic_intent_{song_id}.json"
+    if candidate.exists():
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8-sig"))
+            return IntentLedger.from_dict(payload)
+        except (ValueError, OSError):
+            pass
+    return ledger_from_legacy_cast(actors, locations)
+
+
+def persisted_ledger_for_project(
+    project_dir: str | Path,
+    song_id: str,
+) -> IntentLedger | None:
+    """Return the persisted semantic intent ledger, or None when absent.
+
+    The pre-render validation gate should only enforce *explicitly declared*
+    obligations (a ledger written by the extraction stage), not the legacy
+    compatibility bridge. ``ledger_for_project`` falls back to
+    ``ledger_from_legacy_cast`` when no artifact exists; that fallback makes
+    every config actor a ``required``/``once`` entity, which would let the
+    gate flag config actors that are simply absent from a scene. This helper
+    returns the persisted ledger only, so the gate stays a no-op for legacy
+    projects (no declared intent) and enforces real obligations otherwise.
+    """
+    candidate = (
+        Path(project_dir) / "output" / "prompts" / f"semantic_intent_{song_id}.json"
+    )
+    if not candidate.exists():
+        return None
+    try:
+        payload = json.loads(candidate.read_text(encoding="utf-8-sig"))
+        return IntentLedger.from_dict(payload)
+    except (ValueError, OSError):
+        return None

@@ -2781,6 +2781,99 @@ class DspyH3PromptBuilderTests(unittest.TestCase):
                 global_context={},
             )
 
+    def test_planner_autonomously_emits_continuation_intent_from_creative_decision(self):
+        # A 20-second transformation is one uninterrupted semantic shot even
+        # though it exceeds the per-clip capability. No user directive is given.
+        creative = H3CreativePlan(
+            creative_intent="One uninterrupted transformation.",
+            overall_soundscape="Low room tone.",
+            music_intent=MusicIntent.NONE,
+            shots=[H3CreativeShot(
+                description="A twenty-second morph unfolds without a cut.",
+                requires_continuation=True,
+                continuation_rationale="One uninterrupted transformation.",
+                desired_duration_seconds=20.0,
+            )],
+        )
+        generator = object.__new__(CoreVideoPromptGenerator)
+        generator.lm = None
+        generator.last_planner_history = []
+        generator.planner = lambda **kwargs: type("Prediction", (), {"plan": creative})()
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="A transformation.",
+            duration_seconds=20.0,
+            relay_segments=[{"start_seconds": 0, "end_seconds": 20.0}],
+        )
+        result = generator._plan(request, [])
+        self.assertEqual(1, len(result.continuation_intents))
+        intent = result.continuation_intents[0]
+        self.assertTrue(intent.requires_continuation)
+        self.assertEqual(20.0, intent.desired_duration_seconds)
+        self.assertEqual("One uninterrupted transformation.", intent.rationale)
+
+    def test_planner_ordinary_cut_emits_no_continuation_intent(self):
+        creative = H3CreativePlan(
+            creative_intent="A single ordinary shot.",
+            overall_soundscape="Quiet.",
+            music_intent=MusicIntent.NONE,
+            shots=[H3CreativeShot(description="An ordinary five-second shot.")],
+        )
+        generator = object.__new__(CoreVideoPromptGenerator)
+        generator.lm = None
+        generator.last_planner_history = []
+        generator.planner = lambda **kwargs: type("Prediction", (), {"plan": creative})()
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="An ordinary shot.",
+            duration_seconds=5.0,
+            relay_segments=[{"start_seconds": 0, "end_seconds": 5.0}],
+        )
+        result = generator._plan(request, [])
+        self.assertEqual([], result.continuation_intents)
+
+    def test_planner_creative_intent_preserves_explicit_hard_cut(self):
+        # A shot flagged requires_continuation must not erase an explicit hard cut.
+        creative = H3CreativePlan(
+            creative_intent="One shot then a hard cut.",
+            overall_soundscape="Quiet.",
+            music_intent=MusicIntent.NONE,
+            shots=[
+                H3CreativeShot(
+                    description="A continuous morph.",
+                    requires_continuation=True,
+                    continuation_rationale="One uninterrupted morph.",
+                ),
+                H3CreativeShot(description="A hard cut to a new setup."),
+            ],
+        )
+        generator = object.__new__(CoreVideoPromptGenerator)
+        generator.lm = None
+        generator.last_planner_history = []
+        generator.planner = lambda **kwargs: type("Prediction", (), {"plan": creative})()
+        request = VideoPromptRequest(
+            mode=PromptMode.R2V,
+            user_prompt="A morph then a cut.",
+            duration_seconds=10.0,
+            relay_segments=[
+                {"start_seconds": 0, "end_seconds": 5.0, "hard_cut_after": True},
+                {"start_seconds": 5.0, "end_seconds": 10.0},
+            ],
+        )
+        result = generator._plan(request, [])
+        # The creative one-shot intent is present.
+        self.assertTrue(any(i.requires_continuation for i in result.continuation_intents))
+        # The explicit hard cut after the first shot is preserved.
+        self.assertTrue(result.shots[0].hard_cut_after)
+
+    def test_signature_instructs_autonomous_continuity_not_hardware(self):
+        from feverslop.prompting.dspy_h3_signatures import build_h3_signature_bundle
+
+        instructions = build_h3_signature_bundle().build_prompt_plan.__doc__ or ""
+        self.assertIn("Creative continuity (autonomous", instructions)
+        self.assertIn("per-clip hardware duration", instructions)
+        self.assertIn("Never let the per-clip hardware duration create or suppress a cut", instructions)
+
 
 if __name__ == "__main__":
     unittest.main()
