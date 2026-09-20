@@ -57,6 +57,7 @@ def resolve_project_render_settings(
     pipeline_defaults = {
         "minimax-h3-r2v": "workflows/video/minimax_h3/r2v_audio_two_pass.json",
         "minimax-h3-t2v": "workflows/video/minimax_h3/t2v_two_pass.json",
+        "minimax-h3-i2v": "workflows/video/minimax_h3/i2v_two_pass.json",
     }
     pipeline_default = pipeline_defaults.get(video_pipeline)
     if pipeline_default and config.workflows.video is None and video_target not in explicit:
