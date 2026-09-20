@@ -75,9 +75,10 @@ def _probe_duration(path: Path) -> float | None:
             check=True,
             capture_output=True,
             text=True,
+            timeout=FFPROBE_TIMEOUT_SECONDS,
         )
         value = float(result.stdout.strip())
-    except (OSError, ValueError, subprocess.CalledProcessError):
+    except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
     return value if value >= 0 else None
 
