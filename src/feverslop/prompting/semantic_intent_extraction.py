@@ -184,7 +184,7 @@ def _build_entity(
     raw: dict[str, Any], used_ids: set[str], warnings: list[str]
 ) -> IntentEntity | None:
     raw_id = str(raw.get("id") or "").strip()
-    kind = str(raw.get("kind") or "").strip()
+    kind = str(raw.get("kind") or "").strip().casefold()
     kind = _ENTITY_KIND_ALIASES.get(kind, kind)
     if not kind:
         warnings.append(f"entity without kind dropped: {raw_id or '(no id)'}")

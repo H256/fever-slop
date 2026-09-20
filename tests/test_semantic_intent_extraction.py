@@ -183,6 +183,21 @@ class SemanticIntentExtractionRepairTests(unittest.TestCase):
             list(aliases.values()),
         )
 
+    def test_entity_kind_aliases_are_case_insensitive(self):
+        extraction = IntentExtractionResult(
+            entities=[
+                {"id": "forest", "kind": "Place"},
+                {"id": "cat", "kind": "ANIMAL"},
+            ]
+        )
+
+        ledger, _warnings = ledger_from_extraction(extraction)
+
+        self.assertEqual(
+            [entity.kind for entity in ledger.entities],
+            ["location", "creature"],
+        )
+
     def test_duplicate_and_missing_ids_are_repaired(self):
         def payload(**kwargs):
             return {"extraction": {
