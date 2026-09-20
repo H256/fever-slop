@@ -40,12 +40,15 @@ class MusicVideoDspyContractTests(unittest.TestCase):
         bundle = build_music_video_signature_bundle()
 
         self.assertEqual(
-            {"story_idea", "style_block", "subject_locations", "concept_map", "detail", "t2i", "i2v", "summary", "repair_concepts"},
+            {"story_idea", "style_block", "subject_locations", "narrative_contract", "concept_map", "detail", "t2i", "i2v", "summary", "repair_concepts"},
             set(bundle),
         )
         self.assertIn("guide", bundle["story_idea"].input_fields)
         self.assertIn("result", bundle["subject_locations"].output_fields)
         self.assertIn("concepts", bundle["concept_map"].output_fields)
+        self.assertIn("locations", bundle["narrative_contract"].input_fields)
+        self.assertIn("actors", bundle["narrative_contract"].input_fields)
+        self.assertIn("contract", bundle["narrative_contract"].output_fields)
 
     def test_injected_predictor_receives_markdown_guide_and_structured_data(self):
         calls = []

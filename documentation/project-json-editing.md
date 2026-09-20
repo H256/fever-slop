@@ -59,6 +59,39 @@ uv run python run_pipeline.py projects/well-of-youth --skip-tests
 
 This will regenerate downstream files.
 
+### `narrative_contract` (story arch)
+
+The narrative contract is the structured story arch the concept stage is
+constrained by: the ordered locations and milestones the story visits, and
+per-actor constraints. By default it is empty, in which case the prompt
+pipeline derives it from the story idea and the resolved cast/locations
+(`narrative_contract_source` in the resolved context is `llm`). If you set a
+non-empty `narrative_contract` in `config.json`, it wins unchanged and the LLM
+is not called (`narrative_contract_source` is `config`). A derivation that
+fails or references unknown canonical ids falls back to an empty contract
+(`narrative_contract_source` is `empty`), which is a valid weaker mode.
+
+The contract may use these keys (all optional; omit what the story does not
+need):
+
+- `location_order`: ordered list of canonical location ids (each entry
+  `{"id", "source"}` or a plain string).
+- `milestone_order`: ordered list of narrative milestone ids (each entry
+  `{"id", "source"}` or a plain string).
+- `terminal_states`: object keyed by canonical actor id, each value
+  `{"milestone", "state", "reset_event", "source"}`.
+- `actor_allowed_locations`: object keyed by canonical actor id, each value a
+  list of canonical location ids.
+- `chronology_exceptions`: object keyed by an event name, each value
+  `{"allows", "source"}` where `allows` is a list of `milestone_order` or
+  `location_order`.
+- `one_shot_milestones`: list of milestone ids that must appear in exactly
+  one scene.
+
+Only the canonical location and actor ids from the resolved cast/locations may
+be referenced; the pipeline validates the derived contract against them and
+falls back to an empty contract when it invents an unknown id.
+
 ### `output/timeline/*.json`
 
 These files describe audio timing, beats, vocal/instrumental ranges, and initial scene segments.

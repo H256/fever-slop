@@ -76,6 +76,7 @@ result.
 | Guide(s) | Module / signature | Main call site | Contract |
 | --- | --- | --- | --- |
 | `music-video-story-idea.md`, `music-video-style.md`, `music-video-subject-locations.md` | `music_video_modules.py` / `music_video_signatures.py` | `prompt_pipeline.py` | Story idea, style block, actors and locations |
+| `narrative-contract.md` | `music_video_modules.py` / `music_video_signatures.py` | `prompt_pipeline.py`, `application/prompt_generation_pipeline.py` | Narrative contract (story arch) derived from the story idea and canonical cast/locations |
 | `music-video-concepts.md`, `music-video-concept-repair.md`, `music-video-summary.md` | `music_video_modules.py` / `music_video_signatures.py` | `concept_prompt_batcher.py`, `prompt_pipeline.py` | Timed concept map, missing-key repair, continuity summary |
 | `music-video-detail.md`, `music-video-t2i.md`, `music-video-i2v.md` | `music_video_modules.py` / `music_video_signatures.py` | `music_video_prompt_style.py`, `prompt_pipeline.py` | Detail, text-to-image and image-to-video prompts |
 | `movie-story-arch.md`, `movie-bible.md`, `movie-refine-actors.md`, `movie-refine-locations.md` | `movie_planning_modules.py` / `movie_planning_signatures.py` | `adapters/movie_planning.py` | Story arch, bible, actor and location refinement |
