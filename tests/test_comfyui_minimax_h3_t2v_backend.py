@@ -561,7 +561,10 @@ class LatentUpscalerDeviceTests(unittest.TestCase):
             workflow=self._template("t2v_two_pass.json"),
             latent_upscaler_device="rocm",
         )
-        result = backend.build_workflow({"scene": 1}, prompt="test")
+        # I2V requires a start frame before ComfyUI submission (issue #761).
+        result = backend.build_workflow(
+            {"scene": 1, "keyframes": {"startframe_path": "a.png"}}, prompt="test"
+        )
         node = self._latent_upscale_node(result)
         self.assertEqual("rocm", node["inputs"]["device"])
 
@@ -599,7 +602,10 @@ class LatentUpscalerDeviceTests(unittest.TestCase):
             workflow=self._template("t2v_two_pass.json"),
             latent_upscaler_device="auto",
         )
-        result = backend.build_workflow({"scene": 1}, prompt="test")
+        # I2V requires a start frame before ComfyUI submission (issue #761).
+        result = backend.build_workflow(
+            {"scene": 1, "keyframes": {"startframe_path": "a.png"}}, prompt="test"
+        )
         node = self._latent_upscale_node(result)
         self.assertEqual("rocm", node["inputs"]["device"])
         self.assertEqual(1, client.system_stats_calls)
