@@ -260,6 +260,65 @@ class TestFacePipeline(unittest.TestCase):
         result = FrameResult.unchanged(frame, RejectReason.NO_DETECTION)
         self.assertIsNone(result.identity_actor_id)
 
+    def test_mask_gate_fails_fast_without_expensive_mask_work(self):
+        """A candidate whose expanded box clamps to a sliver fails the size/
+        quality gate before generate_mask is called (fail fast)."""
+        box = BoundingBox(x1=560.0, y1=465.0, x2=584.0, y2=541.0)
+        det = FaceDetection(
+            box=box, score=0.9,
+            landmarks=FaceLandmarks(points=[
+                (565.0, 470.0), (580.0, 470.0), (572.0, 500.0),
+                (566.0, 530.0), (579.0, 530.0),
+            ]),
+            embedding=np.random.rand(512),
+        )
+        detector = FakeDetectorPort(detections=[det])
+        mask_port = FakeMaskPort()
+        pipeline = FacePipeline(
+            detector=detector,
+            identity_port=FakeIdentityPort(),
+            mask_port=mask_port,
+            debug_port=None,
+            policy=FaceProcessingPolicy(
+                track_confirmation_frames=2, debug_output=False,
+            ),
+        )
+        frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
+        pipeline.process_frame(frame, 0)  # confirm track
+        result = pipeline.process_frame(frame, 1)
+
+        self.assertFalse(result.processed)
+        self.assertEqual(result.reject_reason, RejectReason.PROCESSING_FAILED)
+        self.assertTrue(np.array_equal(result.frame, frame))
+        # The expensive mask generation was skipped by the fail-fast gate.
+        self.assertEqual(mask_port.call_count, 0)
+
+    def test_mask_gate_allows_normal_candidate(self):
+        """A normal candidate passes the fail-fast gate and generate_mask runs."""
+        det = self._make_detection()
+        det_with_emb = FaceDetection(
+            box=det.box, score=det.score, landmarks=det.landmarks,
+            embedding=np.random.rand(512),
+        )
+        detector = FakeDetectorPort(detections=[det_with_emb])
+        mask_port = FakeMaskPort()
+        pipeline = FacePipeline(
+            detector=detector,
+            identity_port=FakeIdentityPort(),
+            mask_port=mask_port,
+            debug_port=None,
+            policy=FaceProcessingPolicy(
+                track_confirmation_frames=2, debug_output=False,
+            ),
+        )
+        frame = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
+        pipeline.process_frame(frame, 0)  # confirm track
+        result = pipeline.process_frame(frame, 1)
+
+        self.assertTrue(result.processed)
+        # The normal candidate paid the mask cost (gate did not trigger).
+        self.assertEqual(mask_port.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
