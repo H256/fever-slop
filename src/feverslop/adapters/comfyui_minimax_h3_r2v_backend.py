@@ -23,7 +23,7 @@ from feverslop.domain.h3_audio_delivery import (
 )
 from feverslop.domain.postprocessing import TrimSpec
 from feverslop.domain.artifact_hash import sha256_file
-from feverslop.domain.continuity import BoundaryFrameManifest
+from feverslop.domain.continuity import BoundaryFrameManifest, ascended_absent_instructions
 from feverslop.errors import FeverSlopValidationError
 from feverslop.prompting.h3_user_messages import render_reference_contract_message
 from feverslop.ports.rendering import VideoRenderRequest
@@ -288,11 +288,8 @@ class ComfyUIMiniMaxH3R2VBackend(ComfyUIMiniMaxH3VideoRenderBackend):
         )
         continuity = manifest.continuity_state or {}
         cast_states = (continuity.get("incoming") or {}).get("cast_states") or {}
-        if cast_states.get("ravena") == "ascended_absent":
-            instruction += (
-                " Ravena remains ascended and absent; do not depict a corporeal "
-                "Ravena unless the authored ravena_returns event occurs."
-            )
+        for text in ascended_absent_instructions(cast_states):
+            instruction += text
         return instruction
 
     def _continuity_manifest(self, scene: dict) -> BoundaryFrameManifest | None:

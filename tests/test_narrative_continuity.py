@@ -446,6 +446,49 @@ class NarrativeContinuityTests(unittest.TestCase):
         )
         self.assertIn("Ravena remains ascended and absent", instruction)
 
+    def test_boundary_manifest_without_ravena_does_not_carry_ravena(self):
+        continuity = {
+            "schema": "feverslop.narrative-continuity/v1",
+            "incoming": {"cast_states": {"varen": "corporeal"}},
+        }
+        manifest = BoundaryFrameManifest.create(
+            source_clip_path="output/scene_0020/final.mp4",
+            source_clip_sha256="a" * 64,
+            frame_index=47,
+            extractor_revision="last-frame-v1",
+            frame_path="output/keyframes/scene_0020_to_0021_start.png",
+            frame_sha256="b" * 64,
+            continuity_state=continuity,
+        )
+        instruction = ComfyUIMiniMaxH3R2VBackend._compile_continuity_start_state(
+            manifest,
+            picture_slot=3,
+        )
+        self.assertNotIn("ravena", instruction.lower())
+        self.assertNotIn("Ravena", instruction)
+
+    def test_boundary_manifest_honors_any_ascended_absent_actor(self):
+        continuity = {
+            "schema": "feverslop.narrative-continuity/v1",
+            "incoming": {"cast_states": {"lyra": "ascended_absent"}},
+        }
+        manifest = BoundaryFrameManifest.create(
+            source_clip_path="output/scene_0020/final.mp4",
+            source_clip_sha256="a" * 64,
+            frame_index=47,
+            extractor_revision="last-frame-v1",
+            frame_path="output/keyframes/scene_0020_to_0021_start.png",
+            frame_sha256="b" * 64,
+            continuity_state=continuity,
+        )
+        instruction = ComfyUIMiniMaxH3R2VBackend._compile_continuity_start_state(
+            manifest,
+            picture_slot=3,
+        )
+        self.assertIn("Lyra remains ascended and absent", instruction)
+        self.assertIn("lyra_returns", instruction)
+        self.assertNotIn("Ravena", instruction)
+
     def test_h3_result_carries_continuity_plan_and_terminal_absence(self):
         continuity = {
             "schema": "feverslop.narrative-continuity/v1",

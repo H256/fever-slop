@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from feverslop.adapters.api_observability import api_observability_context
+from feverslop.domain.continuity import ascended_absent_instructions
 from feverslop.domain.performance_sync import select_performance_audio_paths
 from feverslop.domain.h3_audio_delivery import H3AudioDelivery
 from feverslop.domain.h3_prompt_checkpoint import H3PromptCheckpointInput
@@ -96,12 +97,11 @@ def apply_narrative_continuity_to_h3(
         f"{state_json}. Do not materialize, remove, or transform narrative "
         "entities without an authored transition event."
     )
-    if (incoming.get("cast_states") or {}).get("ravena") == "ascended_absent":
-        instruction += (
-            " Ravena remains ascended and absent; do not depict a corporeal "
-            "Ravena unless the authored ravena_returns event occurs. Any "
-            "continuing Ravena vocal is off-screen."
-        )
+    for text in ascended_absent_instructions(
+        (incoming.get("cast_states") or {}),
+        include_vocal_offscreen=True,
+    ):
+        instruction += text
     prompt = str(applied.get("prompt") or "").strip()
     if instruction not in prompt:
         applied["prompt"] = f"{prompt}\n\n{instruction}".strip()
