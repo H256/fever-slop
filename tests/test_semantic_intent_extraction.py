@@ -243,6 +243,25 @@ class SemanticIntentExtractionRepairTests(unittest.TestCase):
         self.assertTrue(result.warnings)
         self.assertEqual(EXTRACTION_REPAIRED, result.status)
 
+    def test_invalid_constraint_kind_is_defaulted_to_identity(self):
+        def payload(**kwargs):
+            return {"extraction": {
+                "language": "en",
+                "entities": [{"id": "a", "kind": "person"}],
+                "relations": [],
+                "constraints": [
+                    {"entity_id": "a", "kind": "spatial", "statement": "a is left of b"}
+                ],
+            }}
+
+        result = _extractor_returning(payload()).extract("story")
+        self.assertEqual(len(result.ledger.constraints), 1)
+        self.assertEqual(result.ledger.constraints[0].kind, "identity")
+        self.assertTrue(
+            any("kind 'spatial'" in warning for warning in result.warnings)
+        )
+        self.assertEqual(EXTRACTION_REPAIRED, result.status)
+
 
 if __name__ == "__main__":
     unittest.main()

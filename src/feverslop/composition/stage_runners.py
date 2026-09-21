@@ -80,7 +80,6 @@ from .stages.render_stages import (  # noqa: F401
     _run_ltx_prepare_workflows_stage,
     _run_ltx_render_scenes_stage,
     _run_visual_consistency_preflight,
-    _selected_render_scenes,
     _select_render_scenes,
     _specialized_video_use_case,
     _stored_consistency_contract,
