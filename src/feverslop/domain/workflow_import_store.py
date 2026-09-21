@@ -75,9 +75,8 @@ def _analysis_from_dict(data: dict[str, Any]) -> WorkflowAnalysis:
 class WorkflowImportStore:
     """Persists imported workflow snapshots and their lifecycle state."""
 
-    def __init__(self, *, projects_root: Path, project_id: str | None = None):
+    def __init__(self, *, projects_root: Path):
         self.projects_root = projects_root
-        self.project_id = project_id
 
     def _profile_dir(self, project_id: str, profile_id: str) -> Path:
         return self.projects_root / project_id / "workflows" / profile_id
