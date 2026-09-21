@@ -226,6 +226,18 @@ class CastPolicyConfig:
             raise ValueError("cast_policy.target_size must be a positive integer")
 
 
+def _parse_enforcement(value: Any) -> str | None:
+    """Parse an optional enforcement policy override from project config."""
+    if value is None:
+        return None
+    policy = str(value).strip().lower()
+    if policy not in ("warn", "block"):
+        raise ValueError(
+            "narrative_contract_enforcement must be 'warn' or 'block'"
+        )
+    return policy
+
+
 def _load_cast_policy(raw) -> CastPolicyConfig:
     if raw is None:
         return CastPolicyConfig()
@@ -432,6 +444,9 @@ class ProjectConfig:
     max_scene_actors: int = 4
     ensembles: tuple[EnsembleConfig, ...] = field(default_factory=tuple)
     narrative_contract: dict[str, Any] = field(default_factory=dict)
+    # Optional project-level override for the narrative-contract enforcement
+    # policy. When set, this overrides the global llm.narrative_contract_enforcement.
+    narrative_contract_enforcement: str | None = None
 
     steering: SteeringConfig = field(default_factory=SteeringConfig)
     prompt_guidance: PromptGuidanceConfig = field(default_factory=PromptGuidanceConfig)
@@ -687,6 +702,9 @@ class ProjectConfig:
             max_scene_actors=max_scene_actors,
             ensembles=ensembles,
             narrative_contract=narrative_contract,
+            narrative_contract_enforcement=_parse_enforcement(
+                raw.get("narrative_contract_enforcement")
+            ),
 
             steering=SteeringConfig(
                 global_=steering_raw.get("global", ""),

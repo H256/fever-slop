@@ -37,6 +37,10 @@ class LLMConfig:
     # H3 planner output budget.  0 = auto-scale by project shot count (default).
     # When set, this explicit ceiling overrides the auto-scaler.
     prompt_planner_max_tokens: int = 0
+    # Enforcement policy for inferred narrative-contract violations after
+    # bounded repair: "warn" (default) preserves structurally valid concepts
+    # and continues with a diagnostic warning; "block" raises and aborts.
+    narrative_contract_enforcement: str = "warn"
     chat_template_kwargs: dict[str, Any] = field(default_factory=dict)
     models: dict[str, str] = field(default_factory=dict)
     # Per-task DSPy temperatures (planner, renderer, judge, analyzer). Always
@@ -374,6 +378,13 @@ class AppConfig:
         llm_prompt_planner_max_tokens = int(llm_raw.get("prompt_planner_max_tokens", 0))
         if llm_prompt_planner_max_tokens < 0:
             raise ValueError("llm.prompt_planner_max_tokens must be >= 0")
+        llm_narrative_enforcement = str(
+            llm_raw.get("narrative_contract_enforcement", "warn")
+        ).strip().lower()
+        if llm_narrative_enforcement not in ("warn", "block"):
+            raise ValueError(
+                "llm.narrative_contract_enforcement must be 'warn' or 'block'"
+            )
         llm_chat_template_kwargs_raw = llm_raw.get("chat_template_kwargs", {})
         if not isinstance(llm_chat_template_kwargs_raw, dict):
             raise ValueError("llm.chat_template_kwargs must be an object")
@@ -447,6 +458,7 @@ class AppConfig:
                 prompt_judge_enabled=llm_prompt_judge_enabled,
                 prompt_judge_blocking=llm_prompt_judge_blocking,
                 prompt_planner_max_tokens=llm_prompt_planner_max_tokens,
+                narrative_contract_enforcement=llm_narrative_enforcement,
                 chat_template_kwargs=llm_chat_template_kwargs,
                 models=llm_models,
                 task_temperatures=llm_task_temperatures,

@@ -542,10 +542,16 @@ class PromptGenerationPipeline:
             f"[cyan]Using batched concept generation: "
             f"{request.concept_batch_size} segments per batch[/cyan]",
         )
+        enforcement = (
+            config.narrative_contract_enforcement
+            if config.narrative_contract_enforcement is not None
+            else app_config.llm.narrative_contract_enforcement
+        )
         concept_batcher = self.concept_batcher_factory(
             llm,
             request.concept_batch_size,
             request_timeout_seconds=app_config.llm.request_timeout_seconds,
+            semantic_enforcement=enforcement,
         )
         # Optional seam: capable batchers checkpoint accepted concepts per
         # batch so a mid-stage failure does not discard the whole stage.

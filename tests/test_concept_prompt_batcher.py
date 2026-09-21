@@ -872,6 +872,7 @@ class ConceptPromptBatcherTests(unittest.TestCase):
         ):
             ConceptPromptBatcher(
                 object(), prompt_modules=modules, batch_size=2,
+                semantic_enforcement="block",
             ).create_concept_prompts_batched(
                 stage1_segments=[
                     {"segment_id": "seg_1", "scene": 10},
@@ -1278,7 +1279,7 @@ class CollateralContinuityRepairTests(unittest.TestCase):
         )
         return predecessor, repaired, paraphrased
 
-    def _run(self, shape, final_successor):
+    def _run(self, shape, final_successor, *, semantic_enforcement="block"):
         predecessor, repaired, paraphrased = self._scenes(shape)
         modules = FakeConceptModules([
             {shape["predecessor"]: predecessor, shape["successor"]: paraphrased},
@@ -1292,6 +1293,7 @@ class CollateralContinuityRepairTests(unittest.TestCase):
             prompt_modules=modules,
             batch_size=3,
             progress_callback=progress.append,
+            semantic_enforcement=semantic_enforcement,
         )
         result = batcher.create_concept_prompts_batched(
             stage1_segments=[
@@ -1522,6 +1524,7 @@ class CollateralContinuityRepairTests(unittest.TestCase):
                 prompt_modules=modules,
                 batch_size=3,
                 progress_callback=progress.append,
+                semantic_enforcement="block",
             ).create_concept_prompts_batched(
                 stage1_segments=[
                     {"segment_id": "segment_001", "scene": 1},
@@ -1608,7 +1611,7 @@ class RepairContextCompletenessTests(unittest.TestCase):
             "summary",
         ])
         with self.assertRaisesRegex(ValueError, "semantic scene duplicates s2"):
-            ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=3).create_concept_prompts_batched(
+            ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=3, semantic_enforcement="block").create_concept_prompts_batched(
                 stage1_segments=[{"segment_id": f"s{i}", "scene": i} for i in range(1, 4)],
                 story_idea="Ravena crosses the lair.",
                 global_context={},
@@ -2113,6 +2116,7 @@ class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
                 object(),
                 prompt_modules=modules,
                 batch_size=2,
+                semantic_enforcement="block",
             ).create_concept_prompts_batched(
                 stage1_segments=[
                     {"segment_id": "seg_1", "scene": 10},
@@ -2165,6 +2169,240 @@ class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
         self.assertEqual("scene_obligation", _KIND_ALIASES["action"])
         self.assertEqual("scene_obligation", _KIND_ALIASES["sequence"])
         self.assertEqual("identity", _KIND_ALIASES["attribute"])
+
+    def test_warn_mode_returns_concepts_with_warning_annotation(self):
+        """Warn mode preserves structurally valid concepts and marks them
+        with a warning outcome instead of raising."""
+        first = semantic_concept(
+            "Ravena drinks from the silver cup.",
+            story_beat="drink_silver_water",
+            action="drink",
+            action_phase="completed",
+            milestone="drink_silver_water",
+            prop_state="drunk",
+        )
+        duplicate = semantic_concept(
+            "Ravena drinks from the silver cup again.",
+            story_beat="drink_silver_water",
+            action="drink",
+            action_phase="completed",
+            milestone="drink_silver_water",
+            prop_state="drunk",
+        )
+        modules = FakeConceptModules([
+            {"seg_1": first, "seg_2": duplicate},
+            {"seg_2": duplicate},  # repair returns the same invalid concept
+            "summary",
+        ])
+        warnings: list[str] = []
+        result = ConceptPromptBatcher(
+            object(),
+            prompt_modules=modules,
+            batch_size=2,
+            semantic_enforcement="warn",
+            progress_callback=warnings.append,
+        ).create_concept_prompts_batched(
+            stage1_segments=[
+                {"segment_id": "seg_1", "scene": 10},
+                {"segment_id": "seg_2", "scene": 11},
+            ],
+            story_idea="Ravena drinks once from the well.",
+            global_context={
+                "actors": [{"id": "ravena", "name": "Ravena"}],
+                "narrative_contract": {"one_shot_milestones": ["drink_silver_water"]},
+            },
+        )
+        # Both concepts are returned (not raised).
+        self.assertIn("seg_1", result)
+        self.assertIn("seg_2", result)
+        # The invalid segment is marked with a warning outcome.
+        self.assertEqual("warning", result["seg_2"]["semantic_validation"]["outcome"])
+        self.assertIsNotNone(result["seg_2"]["semantic_validation"]["unresolved_diagnostic"])
+        # The valid segment is marked as accepted.
+        self.assertEqual("accepted", result["seg_1"]["semantic_validation"]["outcome"])
+        # A warning was reported.
+        self.assertTrue(
+            any("semantic validation issue" in w for w in warnings),
+            "expected a semantic validation warning",
+        )
+
+    def test_block_mode_raises_on_unrepaired_violation(self):
+        """Block mode raises ValueError on unrepaired semantic violations."""
+        first = semantic_concept(
+            "Ravena drinks from the silver cup.",
+            story_beat="drink_silver_water",
+            action="drink",
+            action_phase="completed",
+            milestone="drink_silver_water",
+            prop_state="drunk",
+        )
+        duplicate = semantic_concept(
+            "Ravena drinks from the silver cup again.",
+            story_beat="drink_silver_water",
+            action="drink",
+            action_phase="completed",
+            milestone="drink_silver_water",
+            prop_state="drunk",
+        )
+        modules = FakeConceptModules([
+            {"seg_1": first, "seg_2": duplicate},
+            {"seg_2": duplicate},  # repair returns the same invalid concept
+            "summary",
+        ])
+        with self.assertRaisesRegex(
+            ValueError,
+            "Concept semantic validation failed after repair",
+        ):
+            ConceptPromptBatcher(
+                object(),
+                prompt_modules=modules,
+                batch_size=2,
+                semantic_enforcement="block",
+            ).create_concept_prompts_batched(
+                stage1_segments=[
+                    {"segment_id": "seg_1", "scene": 10},
+                    {"segment_id": "seg_2", "scene": 11},
+                ],
+                story_idea="Ravena drinks once from the well.",
+                global_context={
+                    "actors": [{"id": "ravena", "name": "Ravena"}],
+                    "narrative_contract": {"one_shot_milestones": ["drink_silver_water"]},
+                },
+            )
+
+    def test_invalid_enforcement_value_raises(self):
+        """An invalid enforcement value raises ValueError at construction."""
+        with self.assertRaisesRegex(
+            ValueError,
+            "semantic_enforcement must be 'warn' or 'block'",
+        ):
+            ConceptPromptBatcher(
+                object(),
+                batch_size=2,
+                semantic_enforcement="invalid",
+            )
+
+    def test_sequence_aware_repair_expands_window(self):
+        """When a conflict cites a prior segment, the repair window expands
+        to include the contiguous sequence between them."""
+        from feverslop.prompting.concept_prompt_batcher import (
+            _sequence_aware_repair_ids,
+        )
+        invalid = [
+            {"segment_id": "seg_3", "prior_segment_id": "seg_1", "reason": "x"},
+        ]
+        expected_ids = ["seg_1", "seg_2", "seg_3", "seg_4"]
+        result = _sequence_aware_repair_ids([], invalid, expected_ids)
+        # seg_1 is the cited predecessor and is not itself invalid, so it
+        # is not included. The window is just seg_3.
+        self.assertEqual(["seg_3"], result)
+
+    def test_sequence_aware_repair_includes_invalid_predecessor(self):
+        """When the cited predecessor is also invalid, it is included in
+        the window."""
+        from feverslop.prompting.concept_prompt_batcher import (
+            _sequence_aware_repair_ids,
+        )
+        invalid = [
+            {"segment_id": "seg_1", "reason": "x"},
+            {"segment_id": "seg_3", "prior_segment_id": "seg_1", "reason": "y"},
+        ]
+        expected_ids = ["seg_1", "seg_2", "seg_3", "seg_4"]
+        result = _sequence_aware_repair_ids([], invalid, expected_ids)
+        # seg_1 is invalid, so it's included. The window spans seg_1 to seg_3.
+        self.assertEqual(["seg_1", "seg_2", "seg_3"], result)
+
+    def test_sequence_allocation_includes_window_structure(self):
+        """The sequence allocation describes preparation, irreversible event,
+        completion, and aftermath for the repair prompt."""
+        from feverslop.prompting.concept_prompt_batcher import (
+            _sequence_allocation,
+        )
+        invalid = [
+            {
+                "segment_id": "seg_2",
+                "prior_segment_id": "seg_1",
+                "reason": "milestone 'drink' repeats seg_1 without reset_events authorization",
+            },
+            {
+                "segment_id": "seg_1",
+                "reason": "x",
+            },
+        ]
+        expected_ids = ["seg_1", "seg_2", "seg_3"]
+        contract = {"one_shot_milestones": ["drink"]}
+        allocation = _sequence_allocation(invalid, expected_ids, contract)
+        self.assertIsNotNone(allocation)
+        # The window spans the contiguous range of affected segments.
+        self.assertEqual(["seg_1", "seg_2"], allocation["window"])
+        self.assertEqual(["drink"], allocation["one_shot_milestones"])
+
+    def test_sequence_allocation_prefers_original_over_duplicate(self):
+        """Regression: when segment_033 repeats a milestone first accepted
+        in segment_031, the allocation window includes both, and the
+        irreversible event is segment_031 (the original), not segment_033
+        (the duplicate)."""
+        from feverslop.prompting.concept_prompt_batcher import (
+            _sequence_allocation,
+        )
+        # Only segment_033 is invalid; segment_031 is valid.
+        invalid = [
+            {
+                "segment_id": "segment_033",
+                "prior_segment_id": "segment_031",
+                "reason": "milestone 'drink' repeats segment_031 without reset_events authorization",
+            },
+        ]
+        expected_ids = ["segment_031", "segment_032", "segment_033"]
+        contract = {"one_shot_milestones": ["drink"]}
+        allocation = _sequence_allocation(invalid, expected_ids, contract)
+        self.assertIsNotNone(allocation)
+        # The allocation window includes the valid cited predecessor.
+        self.assertEqual(["segment_031", "segment_032", "segment_033"], allocation["window"])
+        # The irreversible event is the original accepted occurrence.
+        self.assertEqual(["segment_031"], allocation["irreversible_event"])
+        # The duplicate is in the aftermath, not the event.
+        self.assertIn("segment_033", allocation.get("aftermath", []))
+        self.assertEqual(["drink"], allocation["one_shot_milestones"])
+
+    def test_sequence_allocation_cross_batch_predecessor(self):
+        """Regression: when a scene in batch N repeats a milestone first
+        accepted in batch N-1, the allocation window uses the full ordered
+        sequence (accepted + current batch) so the predecessor is found
+        and classified as the irreversible event."""
+        from feverslop.prompting.concept_prompt_batcher import (
+            _sequence_allocation,
+        )
+        # segment_010 is from a previous batch (accepted);
+        # segment_015 is in the current batch and repeats the milestone.
+        invalid = [
+            {
+                "segment_id": "segment_015",
+                "prior_segment_id": "segment_010",
+                "reason": "milestone 'drink' repeats segment_010 without reset_events authorization",
+            },
+        ]
+        # Full ordered sequence: accepted IDs followed by current batch IDs.
+        full_sequence_ids = [
+            "segment_010",  # accepted (previous batch)
+            "segment_011",
+            "segment_012",
+            "segment_015",  # current batch (invalid)
+            "segment_016",
+        ]
+        contract = {"one_shot_milestones": ["drink"]}
+        allocation = _sequence_allocation(invalid, full_sequence_ids, contract)
+        self.assertIsNotNone(allocation)
+        # The window spans from the accepted predecessor through the duplicate.
+        self.assertEqual(
+            ["segment_010", "segment_011", "segment_012", "segment_015"],
+            allocation["window"],
+        )
+        # The irreversible event is the original accepted occurrence.
+        self.assertEqual(["segment_010"], allocation["irreversible_event"])
+        # The duplicate is in the aftermath.
+        self.assertIn("segment_015", allocation.get("aftermath", []))
+        self.assertEqual(["drink"], allocation["one_shot_milestones"])
 
 
 if __name__ == "__main__":

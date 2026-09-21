@@ -476,7 +476,7 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             prompt_pipeline = FakePromptPipeline(llm)
             concept_batcher = FakeConceptBatcher(llm, 2)
             scene_prompt_builder = FakeScenePromptBuilder(llm)
-            def concept_batcher_factory(llm_arg, batch_size, request_timeout_seconds=None):
+            def concept_batcher_factory(llm_arg, batch_size, request_timeout_seconds=None, semantic_enforcement=None):
                 concept_batcher.batch_size = batch_size
                 concept_batcher.request_timeout_seconds = request_timeout_seconds
                 return concept_batcher
@@ -516,7 +516,7 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
             batcher = CheckpointCapableBatcher(llm, 2)
             context = _prompt_context(temp, concept_batch_size=2)
 
-            def concept_batcher_factory(llm_arg, batch_size, request_timeout_seconds=None):
+            def concept_batcher_factory(llm_arg, batch_size, request_timeout_seconds=None, semantic_enforcement=None):
                 batcher.batch_size = batch_size
                 return batcher
 
@@ -545,7 +545,7 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
                 llm_factory=lambda app_config: llm,
                 prompt_pipeline_factory=lambda llm_arg: FakePromptPipeline(llm_arg),
                 concept_batcher_factory=(
-                    lambda llm_arg, size, request_timeout_seconds=None: batcher
+                    lambda llm_arg, size, request_timeout_seconds=None, semantic_enforcement=None: batcher
                 ),
                 scene_prompt_builder_factory=lambda llm_arg: FakeScenePromptBuilder(llm_arg),
             )
@@ -578,6 +578,7 @@ def _prompt_context(temp: Path, concept_batch_size: int) -> GenerateRenderPlanCo
             ),
             prompt_guidance=SimpleNamespace(as_prompt_context=dict),
             narrative_contract={"one_shot_milestones": ["cup_raised"]},
+            narrative_contract_enforcement=None,
         ),
         app_config=SimpleNamespace(llm=SimpleNamespace(
             base_url="http://fake",
@@ -585,6 +586,7 @@ def _prompt_context(temp: Path, concept_batch_size: int) -> GenerateRenderPlanCo
             temperature=0,
             max_tokens=100,
             request_timeout_seconds=180.0,
+            narrative_contract_enforcement="warn",
         )),
         stage1_segments=[
             {
