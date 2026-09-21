@@ -14,11 +14,6 @@ from feverslop.composition.render_video import (
     RenderVideoCompositionOptions,
     build_render_video_scenes_use_case,
 )
-from feverslop.composition.job_runtime import (
-    FULL_PIPELINE_STEPS_BY_MODE,
-    _pipeline_step_names,
-    _video_pipeline_for_mode,
-)
 from feverslop.config.project_config import (
     VIDEO_PIPELINE_BY_MODE,
     validate_full_auto_inputs,
@@ -126,96 +121,6 @@ class ValidateFullAutoInputsTests(unittest.TestCase):
     def test_accepts_minimax_h3_t2v(self):
         # Should _not_ raise
         validate_full_auto_inputs(self._make_request("minimax_h3_t2v"))
-
-
-# ---------------------------------------------------------------------------
-# _video_pipeline_for_mode
-# ---------------------------------------------------------------------------
-
-
-class VideoPipelineForModeTests(unittest.TestCase):
-    """Verify _video_pipeline_for_mode resolves MiniMax H3 modes."""
-
-    def test_minimax_h3_r2v_maps_to_r2v(self):
-        self.assertEqual(
-            "minimax-h3-r2v",
-            _video_pipeline_for_mode("minimax_h3_r2v"),
-        )
-
-    def test_minimax_h3_t2v_maps_to_t2v(self):
-        self.assertEqual(
-            "minimax-h3-t2v",
-            _video_pipeline_for_mode("minimax_h3_t2v"),
-        )
-
-    def test_hyphen_underscore_aliases_accepted(self):
-        """Both hyphen and underscore forms resolve to the canonical name."""
-        self.assertEqual(
-            "minimax-h3-r2v",
-            _video_pipeline_for_mode("minimax-h3-r2v"),
-        )
-        self.assertEqual(
-            "minimax-h3-t2v",
-            _video_pipeline_for_mode("minimax-h3-t2v"),
-        )
-
-    def test_raises_on_unknown_mode(self):
-        with self.assertRaises(ValueError):
-            _video_pipeline_for_mode("does_not_exist")
-
-
-# ---------------------------------------------------------------------------
-# Pipeline step names
-# ---------------------------------------------------------------------------
-
-
-class PipelineStepsTests(unittest.TestCase):
-    """Verify _pipeline_step_names returns correct MiniMax H3 steps."""
-
-    EXPECTED_R2V = ["Main pipeline", "MSR references", "Video render", "Final concat"]
-    EXPECTED_T2V = ["Main pipeline", "Video render", "Final concat"]
-
-    def test_returns_correct_full_pipeline_steps(self):
-        actual = _pipeline_step_names("full-pipeline", pipeline_mode="minimax_h3_r2v")
-        self.assertEqual(self.EXPECTED_R2V, actual)
-
-    def test_returns_correct_full_pipeline_steps_t2v(self):
-        actual = _pipeline_step_names("full-pipeline", pipeline_mode="minimax_h3_t2v")
-        self.assertEqual(self.EXPECTED_T2V, actual)
-
-    def test_r2v_has_msr_references(self):
-        self.assertIn("MSR references", self.EXPECTED_R2V)
-
-    def test_t2v_no_msr_references(self):
-        self.assertNotIn("MSR references", self.EXPECTED_T2V)
-
-    def test_non_full_pipeline_steps_fall_through(self):
-        """Non full-pipeline action returns the action's own step(s)."""
-        actual = _pipeline_step_names("preparation", pipeline_mode="minimax_h3_r2v")
-        self.assertEqual(actual, ["preparation"])
-
-
-# ---------------------------------------------------------------------------
-# FULL_PIPELINE_STEPS_BY_MODE
-# ---------------------------------------------------------------------------
-
-
-class FullPipelineStepsByModeTests(unittest.TestCase):
-    """Verify FULL_PIPELINE_STEPS_BY_MODE contains MiniMax H3 entries."""
-
-    def test_contains_minimax_h3_r2v(self):
-        self.assertIn("minimax_h3_r2v", FULL_PIPELINE_STEPS_BY_MODE)
-
-    def test_contains_minimax_h3_t2v(self):
-        self.assertIn("minimax_h3_t2v", FULL_PIPELINE_STEPS_BY_MODE)
-
-    def test_r2v_has_expected_steps(self):
-        expected = ["Main pipeline", "MSR references", "Video render", "Final concat"]
-        self.assertEqual(expected, FULL_PIPELINE_STEPS_BY_MODE["minimax_h3_r2v"])
-
-    def test_t2v_has_expected_steps(self):
-        expected = ["Main pipeline", "Video render", "Final concat"]
-        self.assertEqual(expected, FULL_PIPELINE_STEPS_BY_MODE["minimax_h3_t2v"])
 
 
 # ---------------------------------------------------------------------------

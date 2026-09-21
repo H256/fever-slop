@@ -265,7 +265,6 @@ class AppConfig:
 
         self.import_store = WorkflowImportStore(
             projects_root=project_dir.parent,
-            project_id=project_dir.name,
         ).for_project(project_dir.name)
 
     def attach_import_store(self, project_dir: Path | None) -> None:

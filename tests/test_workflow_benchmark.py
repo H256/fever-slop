@@ -1124,6 +1124,73 @@ class VisualConsistencyBenchmarkFixtureTests(unittest.TestCase):
             self.assertFalse(review_path.exists())
             self.assertFalse(mapping_path.exists())
 
+    def test_cli_matrix_mode_includes_promotion_decision(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            environment_path = _write_environment(root)
+            baseline = [
+                VisualConsistencyBenchmarkResult.from_dict(
+                    _result(label="baseline", scene=scene),
+                )
+                for scene in range(1, 7)
+            ]
+            candidate = [
+                VisualConsistencyBenchmarkResult.from_dict(
+                    _result(
+                        scene=scene,
+                        scores={
+                            "identity": 5,
+                            "wardrobe": 4,
+                            "location": 4,
+                            "palette": 3,
+                            "transition": 3,
+                        },
+                    ),
+                )
+                for scene in range(1, 7)
+            ]
+            evidenced, review, mapping = _evidenced(
+                [*baseline, *candidate],
+            )
+            results_path = root / "results.json"
+            results_path.write_text(
+                json.dumps(
+                    {"results": [item.to_dict() for item in evidenced]},
+                ),
+                encoding="utf-8",
+            )
+            review_path = root / "review.json"
+            review_path.write_text(
+                json.dumps(review), encoding="utf-8",
+            )
+            mapping_path = root / "sealed.json"
+            mapping_path.write_text(
+                json.dumps(mapping), encoding="utf-8",
+            )
+            output = io.StringIO()
+
+            with redirect_stdout(output):
+                status = run([
+                    str(results_path),
+                    "--review",
+                    str(review_path),
+                    "--sealed-mapping",
+                    str(mapping_path),
+                    "--environment",
+                    str(environment_path),
+                    "--json",
+                ])
+
+            self.assertEqual(0, status)
+            payload = json.loads(output.getvalue())
+            self.assertTrue(payload["valid"])
+            self.assertIn("promotion", payload)
+            self.assertTrue(payload["promotion"]["promote"])
+            self.assertEqual((), tuple(payload["promotion"]["failures"]))
+            self.assertIn("baseline_medians", payload["promotion"])
+            self.assertIn("candidate_medians", payload["promotion"])
+            self.assertIn("wall_time_reduction", payload["promotion"])
+
 
 if __name__ == "__main__":
     unittest.main()
