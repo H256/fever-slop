@@ -82,6 +82,7 @@ the operator's responsibility.
 | `dspy_cache` | boolean | `false` | Whether DSPy may reuse cached LM responses. Set to `true` only when that behavior is wanted. |
 | `max_concurrent_requests` | integer | `1` | Process-local ceiling shared by direct OpenAI-compatible calls and DSPy/LiteLLM calls. Different values in one Python process are rejected so the shared budget stays explicit. |
 | `prompt_judge_attempts` | integer | `3` | Maximum number of final-prompt composer attempts after DSPy judge feedback. After the last bad result, the prompt and judge history are saved and rendering continues. |
+| `prompt_planner_max_tokens` | integer | `0` | H3 planner output token budget. `0` auto-scales the budget to the project shot count (overhead plus a per-shot estimate), floored at the safe base of 8192. Set an explicit value to override the auto-scaler, for example when `truncation_suspected` appears in scene diagnostics. |
 
 The API-key precedence is: process environment, `llm.api_key`, then
 `LLM_API_KEY` from the `.env` file next to `app_config.json`.
