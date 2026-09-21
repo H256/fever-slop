@@ -193,6 +193,8 @@ UNIT_MODULES = (
     "sequence_to_sheet",
     "sqlite_revision_store",
     "startframe_engine",
+    "story_plan",
+    "story_plan_artifacts",
     "storyboard_page",
     "storyboard_prompt_transformer",
     "structured_h3_builder",
