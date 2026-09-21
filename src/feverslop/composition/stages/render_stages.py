@@ -106,10 +106,6 @@ def _specialized_video_use_case(state: PipelineRunState):
     )
 
 
-def _selected_render_scenes(state: PipelineRunState) -> tuple[RenderScene, ...]:
-    return _select_render_scenes(state, _all_render_scenes(state))
-
-
 def _all_render_scenes(state: PipelineRunState) -> tuple[RenderScene, ...]:
     payload = json.loads(state.plan_for_next_step.read_text(encoding="utf-8-sig"))
     canonical_path = _canonical_plan_path(state)
