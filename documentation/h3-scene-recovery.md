@@ -15,7 +15,8 @@ manual overrides, must pass the same final contract checks.
 ### Planner retries reduce flaky hard-blocks
 
 The DSPy planner call is retried automatically (total attempts = `1 + planner_retries`,
-default 2) when it returns an unparseable typed plan or throws. This absorbs a
+`planner_retries` defaults to 2, so 3 attempts by default) when it returns an
+unparseable typed plan or throws. This absorbs a
 transient bad output from a quantized/verbose serving model instead of hard-blocking
 the scene on the first attempt. The repair pass and the deterministic fallback are
 unaffected and still run after retries are exhausted. Set `planner_retries=0` to
@@ -28,7 +29,9 @@ usable structured creative plan at all — it is not an input-validation error. 
 most common cause on a local/quantized model is the plan output being truncated
 before the typed JSON is complete, which surfaces the plan as missing. The planner's
 response token budget is configurable per LLM via `prompt_planner_max_tokens`
-(default `H3_PLANNER_MAX_TOKENS = 8192`); raise it if `truncation_suspected` is set
+(default `0` = auto-scale: `PLANNER_TOKEN_OVERHEAD + shots *
+PLANNER_TOKEN_PER_SHOT`, floored at `H3_PLANNER_MAX_TOKENS = 8192`); set an
+explicit value above the floor if `truncation_suspected` is set
 in the diagnostics below. A stronger or more capable serving model is the most
 effective fix for persistent recurrence.
 

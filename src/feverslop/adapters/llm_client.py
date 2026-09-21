@@ -172,7 +172,13 @@ class LocalOpenAIClient:
         self.prompt_judge_enabled = bool(prompt_judge_enabled)
         self.prompt_planner_max_tokens = int(prompt_planner_max_tokens)
         self.chat_template_kwargs = dict(chat_template_kwargs or {})
-        self.task_temperatures = dict(task_temperatures or {})
+        # Per-task sampling overrides; keys normalized to lowercase so task
+        # lookups are case-insensitive. None = runtime applies defaults.
+        self.task_temperatures: dict[str, float] | None = (
+            {str(k).strip().lower(): float(v) for k, v in task_temperatures.items()}
+            if task_temperatures
+            else None
+        )
         self.request_rate_limiter = RequestRateLimiter(min_request_interval_seconds)
         self.llm_limiter = get_shared_llm_concurrency_limiter(self.max_concurrent_requests)
         self.metrics = metrics or default_api_metrics

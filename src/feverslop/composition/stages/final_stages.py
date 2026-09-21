@@ -8,10 +8,10 @@ Moved mechanically from ``feverslop.composition.stage_runners`` (P5).
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from feverslop.adapters.cutless_assembly import CutlessAssemblyService
+from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.adapters.video_postprocessor import (
     VideoPostProcessor,
@@ -106,7 +106,7 @@ def _run_concat_video_only_stage(state: PipelineRunState) -> None:
         write_concat_list,
     )
     layout = state.context.artifact_layout
-    render_plan = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
+    render_plan = JsonArtifactStore().read_json(state.plan_for_next_step)
     args = getattr(state, "args", None)
     selected_scenes = parse_scene_list(getattr(args, "scenes", None))
     if selected_scenes is None and getattr(args, "smoke_only", False):
@@ -209,7 +209,7 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
     from feverslop.domain.scene_recovery import require_ready_scenes
     if getattr(state, "plan_for_next_step", None):
         require_ready_scenes(
-            json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig")),
+            JsonArtifactStore().read_json(state.plan_for_next_step),
             project_path=getattr(getattr(state, "context", None), "project_config_dir", None),
         )
     layout = getattr(state.context, "artifact_layout", None)
@@ -218,7 +218,7 @@ def _run_mux_original_audio_stage(state: PipelineRunState) -> None:
         variants = {}
         if layout.video_only.is_file():
             variants["base"] = layout.video_only
-        render_plan = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
+        render_plan = JsonArtifactStore().read_json(state.plan_for_next_step)
         scene_numbers = [int(entry["scene"]) for entry in render_plan]
         optional_variants = (
             ("facefix", layout.scene_final_facefix_video, layout.video_only_facefix),
@@ -323,7 +323,7 @@ def _run_timeline_export_stage(state: PipelineRunState) -> None:
     requested_format = "openshot" if legacy_openshot_stage else getattr(state.args, "timeline_format", "both")
     export_formats = [requested_format] if requested_format != "both" else ["mlt", "openshot"]
     layout = state.context.artifact_layout
-    plan_entries = json.loads(Path(state.plan_for_next_step).read_text(encoding="utf-8-sig"))
+    plan_entries = JsonArtifactStore().read_json(state.plan_for_next_step)
     has_facefix = any(
         layout.scene_final_facefix_video(int(entry.get("scene") or entry.get("scene_number"))).is_file()
         for entry in plan_entries

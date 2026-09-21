@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from feverslop.adapters.canonical_plan_store import CanonicalPlanStore
+from feverslop.adapters.local_artifacts import JsonArtifactStore
 from feverslop.application.canonical_plan_migration import analyze_canonical_plan_migration
 from feverslop.application.effective_render_plan import project_effective_plan
 from feverslop.application.msr_prompt_enrichment import msr_prompt_input_fingerprint
@@ -330,7 +331,7 @@ def _active_plan(layout: SceneArtifactLayout, pipeline: str) -> Path:
 
 
 def _read_plan(path: Path) -> list[dict[str, Any]]:
-    payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    payload = JsonArtifactStore().read_json(path)
     if not isinstance(payload, list) or any(not isinstance(scene, dict) for scene in payload):
         raise ValueError(f"Render plan must be a list of objects: {path}")
     return payload
@@ -395,7 +396,7 @@ def _reference_manifest_reusable(references_dir: Path, kind: str, identifier: st
     if not manifest_path.is_file():
         return False
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+        manifest = JsonArtifactStore().read_json(manifest_path)
     except (OSError, UnicodeError, TypeError, ValueError):
         return False
     if not isinstance(manifest, Mapping):
@@ -462,7 +463,7 @@ def _h3_state(
     checkpoint = layout.scene_h3_prompt(number)
     if not checkpoint.is_file():
         return PlanAction.RUN, "judged H3 checkpoint missing"
-    payload = json.loads(checkpoint.read_text(encoding="utf-8-sig"))
+    payload = JsonArtifactStore().read_json(checkpoint)
     checkpoint_compiler_version = (payload.get("provenance") or {}).get("compiler_version")
     if checkpoint_compiler_version != H3_COMPILER_VERSION:
         return PlanAction.RUN, "H3 compiler version changed"

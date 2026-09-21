@@ -123,6 +123,25 @@ class ArtifactStorePipelineIoTests(unittest.TestCase):
 
             self.assertEqual("hello", store.read_text(path))
 
+    def test_local_artifact_store_read_text_is_bom_tolerant(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "doc.txt"
+            path.write_text("hello", encoding="utf-8-sig")
+            store = JsonArtifactStore()
+
+            self.assertEqual("hello", store.read_text(path))
+
+    def test_local_artifact_store_reads_bom_prefixed_render_plan(self):
+        import json
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "plan.json"
+            path.write_text(json.dumps([{"scene": 1}]), encoding="utf-8-sig")
+            store = JsonArtifactStore()
+
+            self.assertEqual([{"scene": 1}], store.read_render_plan(path))
+            self.assertEqual([{"scene": 1}], store.read_json(path))
+
     def test_stage1_relay_and_render_plan_write_json_through_artifact_store(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
