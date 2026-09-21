@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
+
 from pydantic import ValidationError as PydanticValidationError
 
 from feverslop.domain.story_plan import StoryPlan
@@ -505,6 +507,8 @@ class StoryPlanService:
             raise StoryPlanError(f"{job} job returned no output", diagnostics=[
                 {"code": "empty_output", "job": job, "message": "job returned no output"},
             ])
+        if isinstance(raw, BaseModel):
+            raw = raw.model_dump(mode="json")
         if isinstance(raw, Mapping):
             payload = dict(raw)
         else:
