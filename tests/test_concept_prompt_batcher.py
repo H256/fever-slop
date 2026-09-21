@@ -2337,6 +2337,34 @@ class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
         self.assertEqual(["seg_1", "seg_2"], allocation["window"])
         self.assertEqual(["drink"], allocation["one_shot_milestones"])
 
+    def test_sequence_allocation_prefers_original_over_duplicate(self):
+        """Regression: when segment_033 repeats a milestone first accepted
+        in segment_031, the allocation window includes both, and the
+        irreversible event is segment_031 (the original), not segment_033
+        (the duplicate)."""
+        from feverslop.prompting.concept_prompt_batcher import (
+            _sequence_allocation,
+        )
+        # Only segment_033 is invalid; segment_031 is valid.
+        invalid = [
+            {
+                "segment_id": "segment_033",
+                "prior_segment_id": "segment_031",
+                "reason": "milestone 'drink' repeats segment_031 without reset_events authorization",
+            },
+        ]
+        expected_ids = ["segment_031", "segment_032", "segment_033"]
+        contract = {"one_shot_milestones": ["drink"]}
+        allocation = _sequence_allocation(invalid, expected_ids, contract)
+        self.assertIsNotNone(allocation)
+        # The allocation window includes the valid cited predecessor.
+        self.assertEqual(["segment_031", "segment_032", "segment_033"], allocation["window"])
+        # The irreversible event is the original accepted occurrence.
+        self.assertEqual(["segment_031"], allocation["irreversible_event"])
+        # The duplicate is in the aftermath, not the event.
+        self.assertIn("segment_033", allocation.get("aftermath", []))
+        self.assertEqual(["drink"], allocation["one_shot_milestones"])
+
 
 if __name__ == "__main__":
     unittest.main()

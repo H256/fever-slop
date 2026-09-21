@@ -322,6 +322,31 @@ def _sequence_aware_repair_ids(
     return sorted(window, key=expected_ids.index)
 
 
+def _sequence_allocation_window(
+    invalid: list[dict[str, Any]],
+    expected_ids: list[str],
+) -> list[str]:
+    """Compute the read-only allocation window.
+
+    Unlike the repair window, this includes valid cited predecessors so
+    the model can see the original accepted occurrence.  The predecessor
+    need not be regenerated; it is included for context only.
+    """
+    affected: set[str] = set()
+    for item in invalid:
+        affected.add(item["segment_id"])
+        prior = item.get("prior_segment_id")
+        if prior:
+            affected.add(prior)
+    if not affected:
+        return []
+    indices = [expected_ids.index(seg) for seg in affected if seg in expected_ids]
+    if not indices:
+        return sorted(affected, key=expected_ids.index)
+    lo, hi = min(indices), max(indices)
+    return expected_ids[lo:hi + 1]
+
+
 def _sequence_allocation(
     invalid: list[dict[str, Any]],
     expected_ids: list[str],
@@ -334,6 +359,11 @@ def _sequence_allocation(
     structure: which scene is the preparation, which is the irreversible
     event, which is the completion, and which are the aftermath.  This
     allocation is immutable and given to every repair call in the window.
+
+    The allocation window includes valid cited predecessors (read-only
+    context) so the model can see the original accepted occurrence.  The
+    irreversible event is the original accepted milestone occurrence, not
+    the duplicate that triggered the conflict.
     """
     one_shot = set(
         str(_normalize_semantic_value(item))
@@ -359,19 +389,16 @@ def _sequence_allocation(
                 conflicted_actors.add(str(_normalize_semantic_value(actor)))
     if not conflicted_milestones and not conflicted_actors:
         return None
-    # Build the allocation: use the same contiguous window as the repair
-    # set, divided into preparation, irreversible event, completion,
-    # and aftermath.
-    window_ids = _sequence_aware_repair_ids(
-        [],
-        invalid,
-        expected_ids,
-    )
+    # Build the allocation window: includes valid cited predecessors for
+    # read-only context, so the model can see the original accepted
+    # occurrence.
+    window_ids = _sequence_allocation_window(invalid, expected_ids)
     if not window_ids:
         return None
-    # The irreversible event is the scene with the one-shot milestone;
-    # completion is the scene with the terminal state; everything before
-    # is preparation, everything after is aftermath.
+    # The irreversible event is the original accepted milestone occurrence
+    # (the cited predecessor), not the duplicate that triggered the
+    # conflict.  Completion is the scene with the terminal state;
+    # everything before is preparation, everything after is aftermath.
     event_index = None
     completion_index = None
     for i, seg_id in enumerate(window_ids):
@@ -382,12 +409,26 @@ def _sequence_allocation(
         if not item:
             continue
         reason = item.get("reason", "")
+        # If the reason says "milestone X repeats segment_Y", then
+        # segment_Y (the cited predecessor) is the irreversible event.
         if event_index is None and any(
             f"milestone '{m}' repeats" in reason for m in conflicted_milestones
         ):
-            event_index = i
+            prior = item.get("prior_segment_id")
+            if prior and prior in window_ids:
+                event_index = window_ids.index(prior)
+            else:
+                event_index = i
         if completion_index is None and "requires terminal state" in reason:
             completion_index = i
+    # Aftermath: everything after the completion, or after the event if
+    # there is no completion.
+    if completion_index is not None:
+        aftermath = window_ids[completion_index + 1:]
+    elif event_index is not None:
+        aftermath = window_ids[event_index + 1:]
+    else:
+        aftermath = []
     allocation: dict[str, Any] = {
         "window": window_ids,
         "preparation": window_ids[:event_index] if event_index is not None else [],
@@ -397,9 +438,7 @@ def _sequence_allocation(
         "completion": (
             [window_ids[completion_index]] if completion_index is not None else []
         ),
-        "aftermath": (
-            window_ids[completion_index + 1:] if completion_index is not None else []
-        ),
+        "aftermath": aftermath,
     }
     if conflicted_milestones:
         allocation["one_shot_milestones"] = sorted(conflicted_milestones)
