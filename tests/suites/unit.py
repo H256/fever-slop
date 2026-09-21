@@ -111,6 +111,7 @@ UNIT_MODULES = (
     "lyric_alignment",
     "minimax_h3_frames",
     "minimax_h3_prompt_builder",
+    "movie_continuity",
     "movie_h3_preparation",
     "movie_input_validation",
     "movie_msr_enrichment",
