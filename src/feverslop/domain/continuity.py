@@ -106,3 +106,32 @@ class BoundaryFrameManifest:
             str(source_clip_sha256).strip().lower() == self.source_clip_sha256
             and str(frame_sha256).strip().lower() == self.frame_sha256
         )
+
+
+def ascended_absent_instructions(
+    cast_states: dict[str, Any] | None,
+    *,
+    include_vocal_offscreen: bool = False,
+) -> list[str]:
+    """Generic continuity instructions for ascended-and-absent cast members.
+
+    Replaces the previously hardcoded ``ravena`` check: the actor name and its
+    reset event are read from the actual cast state, so any project's terminal
+    absence is honored without code edits.
+    """
+    if not isinstance(cast_states, dict):
+        return []
+    instructions: list[str] = []
+    for actor, state in cast_states.items():
+        if state != "ascended_absent":
+            continue
+        key = str(actor)
+        name = key.capitalize()
+        text = (
+            f" {name} remains ascended and absent; do not depict a corporeal "
+            f"{name} unless the authored {key}_returns event occurs."
+        )
+        if include_vocal_offscreen:
+            text += f" Any continuing {name} vocal is off-screen."
+        instructions.append(text)
+    return instructions
