@@ -191,7 +191,12 @@ class ComfyUIClient:
                 )
                 self._raise_for_status(response, "get object info")
                 return response.json()
-            except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError) as exc:
+            except (
+                requests.exceptions.ChunkedEncodingError,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                TimeoutError,
+            ) as exc:
                 last_error = exc
                 if attempt == 2:
                     raise
