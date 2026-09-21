@@ -21,6 +21,10 @@ REPAIR_CONCEPTS = "repair_concepts"
 SONG_BRIEF = "song_brief"
 STORYBOARD_TRANSFORM = "storyboard_transform"
 STORY_IDEA = "story_idea"
+STORY_PLAN_ACTING = "story_plan_acting"
+STORY_PLAN_BEAT_ALLOCATION = "story_plan_beat_allocation"
+STORY_PLAN_BIBLE = "story_plan_bible"
+STORY_PLAN_REPAIR = "story_plan_repair"
 STYLE_BLOCK = "style_block"
 SUBJECT_LOCATIONS = "subject_locations"
 SUMMARY = "summary"
@@ -30,6 +34,15 @@ ZIMAGE_PROMPT = "zimage_prompt"
 # set some limits for structured and creative tasks
 _STRUCTURED = LLMTaskPolicy("structured", max_tokens=2048)
 _CREATIVE = LLMTaskPolicy("creative", max_tokens=2048)
+
+# Story-plan jobs return typed planning output. The bible carries notes for
+# many entities and the beat allocation carries per-brief constraints for
+# ~10-20 segments; 2048 truncates verbose small models (same reasoning as
+# the H3 planner comment). The repair must emit the complete plan, so it
+# mirrors H3_PLANNER_MAX_TOKENS.
+_STORY_PLAN_STRUCTURED = LLMTaskPolicy("structured", max_tokens=4096)
+_STORY_PLAN_CREATIVE = LLMTaskPolicy("creative", max_tokens=4096)
+_STORY_PLAN_REPAIR = LLMTaskPolicy("structured", max_tokens=8192)
 
 # Concept batches return one structured value per scene. The per-scene budget
 # must be multiplied by the batch size because max_tokens limits the complete
@@ -74,6 +87,10 @@ _POLICIES = {
     SONG_BRIEF: _CREATIVE,
     STORYBOARD_TRANSFORM: _STRUCTURED,
     STORY_IDEA: _CREATIVE,
+    STORY_PLAN_ACTING: _STORY_PLAN_CREATIVE,
+    STORY_PLAN_BEAT_ALLOCATION: _STORY_PLAN_STRUCTURED,
+    STORY_PLAN_BIBLE: _STORY_PLAN_STRUCTURED,
+    STORY_PLAN_REPAIR: _STORY_PLAN_REPAIR,
     STYLE_BLOCK: _CREATIVE,
     SUBJECT_LOCATIONS: _STRUCTURED,
     SUMMARY: _STRUCTURED,
