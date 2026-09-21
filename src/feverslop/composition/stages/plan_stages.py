@@ -500,7 +500,7 @@ def _preserve_enriched_reference_paths(
 def _run_relay_compact_stage(state: PipelineRunState) -> None:
     if state.args.render_mode == "single_prompt":
         raise ValueError("relay_compact requires render_mode relay or auto")
-    resolved_context = json.loads(state.context.resolved_context.read_text(encoding="utf-8-sig"))
+    resolved_context = JsonArtifactStore().read_json(state.context.resolved_context)
     subject_anchor = str(resolved_context.get("subject", "")).strip()
     if not subject_anchor:
         raise ValueError(f"No subject anchor found in {state.context.resolved_context}")
@@ -528,7 +528,7 @@ def _run_relay_compact_stage(state: PipelineRunState) -> None:
 
 def _run_anchor_fix_stage(state: PipelineRunState) -> None:
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
-    resolved_context = json.loads(state.context.resolved_context.read_text(encoding="utf-8-sig"))
+    resolved_context = JsonArtifactStore().read_json(state.context.resolved_context)
     subject_anchor = str(resolved_context.get("subject", "")).strip()
     if not subject_anchor:
         raise ValueError(f"No subject anchor found in {state.context.resolved_context}")

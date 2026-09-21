@@ -18,6 +18,7 @@
     "max_concurrent_requests": 1,
     "prompt_judge_attempts": 3,
     "prompt_judge_max_tokens": 8192,
+    "prompt_planner_max_tokens": 0,
     "prompt_judge_blocking": true
   },
   "comfyui": {

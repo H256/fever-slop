@@ -21,7 +21,7 @@ uv run python run_pipeline.py ./projects/my-song --skip-tests
 ```
 
 The configuration contains the audio/video settings, visual direction, and
-selected pipeline. See `config/config.example.json` for the complete shape.
+selected pipeline. See `config.example.json` for the complete shape.
 
 ## Full-Auto projects
 

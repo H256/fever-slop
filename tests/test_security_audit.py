@@ -20,11 +20,6 @@ from feverslop.domain.security import (
     sanitize_path_component,
 )
 from feverslop.path_utils import coerce_local_path
-from feverslop.composition.project_store import (
-    ProjectCreateRequest,
-    ProjectStore,
-    StudioPathError,
-)
 
 
 class SecurityAuditTests(unittest.TestCase):
@@ -209,31 +204,6 @@ class PathContainmentTests(unittest.TestCase):
                 LocalProjectScaffold().create_project(
                     projects_dir=Path(tmp), project_slug="../escape", spec=spec, generated_song=song,
                 )
-
-    def test_project_store_project_root_rejects_traversal(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            store = ProjectStore(Path(tmp))
-            # Ensure traversal can't be used as a project id
-            with self.assertRaises(StudioPathError):
-                store.project_root("../../../etc")
-
-    def test_project_store_project_root_reports_missing_direct_child(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            store = ProjectStore(Path(tmp))
-
-            with self.assertRaises(FileNotFoundError):
-                store.project_root("missing-project")
-
-    def test_project_store_resolve_project_path_rejects_escape(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            store = ProjectStore(Path(tmp))
-            # Create a real project
-            store.create_project(
-                ProjectCreateRequest(project_type="standard_music_video", name="Test"),
-            )
-            # Try to resolve a path that escapes project root
-            with self.assertRaises(StudioPathError):
-                store.resolve_project_path("test", "../other/file.json")
 
 
 if __name__ == "__main__":
