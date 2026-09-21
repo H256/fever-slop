@@ -642,6 +642,7 @@ class StoryPlanServiceTests(unittest.TestCase):
         self.assertEqual(
             sorted(dict(modules.calls[0][1])),
             [
+                "characters",
                 "guide",
                 "lyrics",
                 "sections",

@@ -16,10 +16,12 @@ import hashlib
 import inspect
 import tempfile
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from feverslop.composition import generate_render_plan as composition
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 from feverslop.application.story_plan_service import (
     SegmentDescriptor,
@@ -29,6 +31,7 @@ from feverslop.application.story_plan_service import (
     compute_source_fingerprint,
 )
 from feverslop.prompting.story_plan_service_adapter import StoryPlanServiceAdapter
+from feverslop.prompting.dspy_runtime import DspyRuntime, H3SignatureBundle
 from feverslop.domain.story_plan import (
     PLANNER_REVISION,
     STORY_PLAN_SCHEMA_VERSION,
@@ -125,6 +128,77 @@ class _RecordingReporter:
 
     def warning(self, *args: Any, **kwargs: Any) -> None:
         pass
+
+
+class _FactoryFakeClient:
+    base_url = "http://fake.local/v1"
+    api_key = "fake-key"
+
+
+class _FactoryFakeLLM:
+    """Minimal DSPy-compatible LLM without a network-backed predictor."""
+
+    model = "fake-model"
+    client = _FactoryFakeClient()
+    max_tokens = 2048
+    dspy_temperature = 0.4
+    dspy_cache = False
+    max_retries = 1
+    request_timeout_seconds = None
+    llm_limiter = None
+    metrics = None
+
+
+class _FactoryPredictor:
+    def __init__(self, signature: Any) -> None:
+        self._name = signature.__name__
+
+    def __call__(self, **_kwargs: Any) -> dict[str, Any]:
+        if self._name == "StoryPlanBible":
+            return {"bible": {"premise": "A singer leaves home.", "theme": "release"}}
+        if self._name == "BeatAllocation":
+            return {
+                "allocation": {
+                    "beats": [
+                        {"phase": "opening", "description": "Departure"},
+                        {"phase": "resolution", "description": "Release"},
+                    ],
+                    "brief_allocations": [
+                        {"target": "seg-1", "beat_index": 0},
+                        {"target": "seg-2", "beat_index": 1},
+                    ],
+                }
+            }
+        if self._name == "Acting":
+            return {
+                "result": {
+                    "arcs": [],
+                    "briefs": [
+                        {
+                            "target": "seg-1",
+                            "objective": "Leave the familiar world.",
+                            "emotional_turn": "hesitant to committed",
+                            "actor_states": [{"character_id": "char-1", "inner_state": "hesitant", "physical_state": "walking"}],
+                        },
+                        {
+                            "target": "seg-2",
+                            "objective": "Accept the new future.",
+                            "emotional_turn": "guarded to free",
+                            "actor_states": [{"character_id": "char-1", "inner_state": "free", "physical_state": "standing"}],
+                        },
+                    ],
+                }
+            }
+        raise AssertionError(f"unexpected DSPy signature: {self._name}")
+
+
+def _factory_fake_dspy_runtime() -> DspyRuntime:
+    return DspyRuntime(
+        signatures=H3SignatureBundle(object(), object(), object(), object()),
+        lm_factory=lambda _name, **_kwargs: "fake-lm",
+        predict_factory=_FactoryPredictor,
+        context_factory=lambda **_kwargs: nullcontext(),
+    )
 
 
 def _build_pipeline(
@@ -857,6 +931,25 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             # The plan must be reused (build_plan NOT called).
             self.assertEqual(len(recording.build_plan_calls), 0,
                             "stable inputs must preserve the plan")
+
+    def test_composition_factory_runs_typed_dspy_plan_end_to_end(self) -> None:
+        """The production factory must bridge real typed DSPy modules to a plan."""
+        factory = getattr(composition, "build_story_plan_service", None)
+        self.assertIsNotNone(factory, "composition must expose the production factory")
+
+        service = factory(
+            _FactoryFakeLLM(),
+            dspy_runtime=_factory_fake_dspy_runtime(),
+        )
+
+        result = service.build_plan(make_request())
+
+        self.assertEqual([brief.target for brief in result.plan.segments], ["seg-1", "seg-2"])
+        self.assertEqual([brief.beat_id for brief in result.plan.segments], ["beat-001", "beat-002"])
+        self.assertEqual(
+            [brief["target"] for brief in result.acting["briefs"]],
+            ["brief-seg-1", "brief-seg-2"],
+        )
 
 
 if __name__ == "__main__":
