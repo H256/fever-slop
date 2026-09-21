@@ -98,6 +98,14 @@ def _stage1_segments() -> list[dict]:
     ]
 
 
+def _legacy_stage1_segments() -> list[dict]:
+    """The persisted Stage 1 schema used by existing projects."""
+    return [
+        {"segment_id": "seg-1", "start": 0.0, "end": 30.0, "lyrics": "first line"},
+        {"segment_id": "seg-2", "start": 30.0, "end": 60.0, "lyrics": "last line"},
+    ]
+
+
 class _RecordingReporter:
     def __init__(self) -> None:
         self.messages: list[str] = []
@@ -235,6 +243,40 @@ def _persist_plan(
 
 class MusicVideoStoryPlanWiringTests(unittest.TestCase):
     """Wiring tests for the music-video StoryPlan pipeline (issue #1386)."""
+
+    def test_resume_accepts_existing_stage1_start_end_schema(self) -> None:
+        """Existing Stage 1 artifacts reach planning without being mutated."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prompts_dir = Path(tmp)
+            modules = FakePromptModules()
+            service = StoryPlanService(prompt_modules=modules)
+            factory, recording = _make_recording_factory(service)
+            pipeline = _build_pipeline(story_plan_service_factory=factory)
+            segments = _legacy_stage1_segments()
+            original = [dict(segment) for segment in segments]
+
+            segment_briefs, gate_stopped = pipeline._resolve_story_plan(
+                config=_make_config(),
+                app_config=_make_app_config(),
+                request=_make_request(),
+                resume=True,
+                stage1_segments=segments,
+                paths=_make_paths(prompts_dir),
+                reporter=_RecordingReporter(),
+                artifact_store=None,
+                log_file=lambda _name, _path: None,
+            )
+
+            self.assertFalse(gate_stopped)
+            self.assertIsNotNone(segment_briefs)
+            self.assertEqual(len(recording.build_plan_calls), 1)
+            request = recording.build_plan_calls[0]
+            self.assertEqual(
+                [(segment.segment_id, segment.start_seconds, segment.end_seconds, segment.lyric_text)
+                 for segment in request.segments],
+                [("seg-1", 0.0, 30.0, "first line"), ("seg-2", 30.0, 60.0, "last line")],
+            )
+            self.assertEqual(segments, original)
 
     # -- (a) direction provenance ------------------------------------------
 

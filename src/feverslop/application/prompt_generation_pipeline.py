@@ -566,8 +566,15 @@ class PromptGenerationPipeline:
         segments = tuple(
             SegmentDescriptor.from_mapping(seg)
             for seg in stage1_segments
-            if "segment_id" in seg and "start_seconds" in seg and "end_seconds" in seg
+            if "segment_id" in seg and SegmentDescriptor.has_stage1_timing(seg)
         )
+        if stage1_segments and not segments:
+            sample_keys = sorted({key for segment in stage1_segments[:3] for key in segment})
+            raise StoryPlanError(
+                "no usable Stage 1 segments for story planning; expected "
+                "segment_id plus start/end or start_seconds/end_seconds, found keys: "
+                f"{', '.join(sample_keys) or '(none)'}"
+            )
 
         max_end = max((seg.end_seconds for seg in segments), default=0.0)
         terminal_window_seconds = max_end * 0.9 if max_end > 0 else 0.0
