@@ -24,7 +24,7 @@ from feverslop.domain.workflow_import import (
     TestRunResult,
     WorkflowAnalysis,
 )
-from feverslop.utils.io import atomic_write_json
+from feverslop.utils.io import atomic_write_bytes, atomic_write_json
 
 #: Legal state transitions for an imported workflow profile.
 #: draft/validated may only advance via record_validation/record_test_run;
@@ -89,8 +89,11 @@ class WorkflowImportStore:
         directory = self._profile_dir(project_id, profile_id)
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / _snapshot_name(sha)
-        if not path.exists():
-            path.write_bytes(payload)
+        # Self-heal: re-write if the file is missing or no longer hashes to its
+        # content-addressed name (e.g. a previously interrupted non-atomic write
+        # left a truncated payload). The atomic write then restores it verifiably.
+        if not path.exists() or _sha256(path.read_bytes()) != sha:
+            atomic_write_bytes(path, payload)
         return sha
 
     def _read_snapshot(self, project_id: str, profile_id: str, sha: str) -> bytes:
