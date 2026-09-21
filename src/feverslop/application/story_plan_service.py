@@ -388,6 +388,7 @@ class StoryPlanService:
             "song_style": request.song_style,
             "lyrics": request.lyrics,
             "sections": [dict(section) for section in request.sections],
+            "characters": [dict(character) for character in request.characters],
             "source_evidence": dict(request.source_evidence),
             "guide": request.guide,
         }

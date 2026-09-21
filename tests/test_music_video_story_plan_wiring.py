@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import hashlib
 import inspect
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,6 +28,7 @@ from feverslop.application.story_plan_service import (
     StoryPlanService,
     compute_source_fingerprint,
 )
+from feverslop.prompting.story_plan_service_adapter import StoryPlanServiceAdapter
 from feverslop.domain.story_plan import (
     PLANNER_REVISION,
     STORY_PLAN_SCHEMA_VERSION,
@@ -39,6 +39,7 @@ from feverslop.domain.story_plan_artifacts import (
     StoryPlanArtifactManifest,
     read_manifest,
     read_story_plan,
+    story_plan_fingerprint,
     write_manifest,
     write_story_plan,
 )
@@ -228,9 +229,7 @@ def _persist_plan(
     plan_path = prompts_dir / f"story_plan_{song_id}.json"
     manifest_path = prompts_dir / f"story_plan_{song_id}.manifest.json"
     write_story_plan(plan_path, plan)
-    plan_fingerprint = hashlib.sha256(
-        json.dumps(plan.model_dump(mode="json"), sort_keys=True).encode("utf-8")
-    ).hexdigest()
+    plan_fingerprint = story_plan_fingerprint(plan)
     manifest = StoryPlanArtifactManifest(
         artifact_class=ArtifactClass.authoritative,
         regeneration_policy=RegenerationPolicy.on_input_change,
@@ -277,6 +276,30 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
                 [("seg-1", 0.0, 30.0, "first line"), ("seg-2", 30.0, 60.0, "last line")],
             )
             self.assertEqual(segments, original)
+
+    def test_story_plan_adapter_passes_canonical_characters_to_bible(self) -> None:
+        """The bible receives the resolved cast instead of an empty list."""
+        class Modules:
+            def __init__(self) -> None:
+                self.received: dict[str, Any] = {}
+
+            def bible(self, **kwargs: Any) -> dict[str, Any]:
+                self.received = kwargs
+                return {"premise": "p"}
+
+        modules = Modules()
+        adapter = StoryPlanServiceAdapter(modules)
+        adapter.bible(
+            song_title="Song",
+            song_language="en",
+            song_style="gothic",
+            lyrics="line",
+            sections=[],
+            source_evidence={},
+            guide="",
+            characters=[{"id": "ravena", "name": "Ravena"}],
+        )
+        self.assertEqual(modules.received["characters"], [{"id": "ravena", "name": "Ravena"}])
 
     # -- (a) direction provenance ------------------------------------------
 

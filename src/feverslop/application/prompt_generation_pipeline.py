@@ -1,6 +1,5 @@
 ﻿from __future__ import annotations
 
-import hashlib
 import inspect
 import json
 import re
@@ -27,8 +26,10 @@ from feverslop.domain.story_plan_artifacts import (
     RegenerationPolicy,
     StoryPlanArtifactManifest,
     manifest_is_stale,
+    manifest_matches_story_plan,
     read_manifest,
     read_story_plan,
+    story_plan_fingerprint,
     write_manifest,
     write_story_plan,
 )
@@ -610,6 +611,8 @@ class PromptGenerationPipeline:
                 if manifest.artifact_class == ArtifactClass.authoritative:
                     plan = read_story_plan(plan_path)
                     if (
+                        manifest_matches_story_plan(manifest, plan)
+                        and
                         plan.schema_version in SUPPORTED_SCHEMA_VERSIONS
                         and plan.planner_revision == expected_revision
                     ):
@@ -646,14 +649,11 @@ class PromptGenerationPipeline:
                 )
 
             write_story_plan(plan_path, plan)
-            plan_fingerprint = hashlib.sha256(
-                json.dumps(plan.model_dump(mode="json"), sort_keys=True).encode("utf-8")
-            ).hexdigest()
             manifest = StoryPlanArtifactManifest(
                 artifact_class=ArtifactClass.authoritative,
                 regeneration_policy=RegenerationPolicy.on_input_change,
                 input_fingerprint=fingerprint,
-                plan_fingerprint=plan_fingerprint,
+                plan_fingerprint=story_plan_fingerprint(plan),
             )
             write_manifest(manifest_path, manifest)
             log_file("Story Plan JSON", plan_path)
