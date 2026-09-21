@@ -137,13 +137,6 @@ def _read_h3_input(path: Path, label: str):
     return JsonArtifactStore().read_json(path)
 
 
-def _select_pipeline_scenes(scenes: list[dict], scene_spec: str | None) -> list[dict]:
-    selected = parse_scene_list(scene_spec)
-    if selected is None:
-        return scenes
-    return [scene for scene in scenes if int(scene.get("scene") or scene.get("scene_number")) in selected]
-
-
 def _report_reference_fallbacks(warnings: list[str]) -> None:
     for warning in warnings:
         _report(f"[yellow]Reference fallback:[/yellow] {warning}")

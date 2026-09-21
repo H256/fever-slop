@@ -17,7 +17,6 @@ from .stages.plan_stages import (  # noqa: F401
     _run_tests_stage,
     _run_main_pipeline_stage,
     _read_h3_input,
-    _select_pipeline_scenes,
     _report_reference_fallbacks,
     _seed_reference_bindings,
     _discover_stem_files,
