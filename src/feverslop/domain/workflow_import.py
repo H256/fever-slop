@@ -28,10 +28,6 @@ class WorkflowFamilySpec:
     output_class_types: tuple[str, ...]
     seed_class_type: str | None = None
     seed_input: str | None = None
-    output_type_hints: tuple[str, ...] = ("video", "vhs", "movie", "mp4", "webm")
-
-    def has_core(self, class_type: str) -> bool:
-        return class_type in self.core_class_types
 
 
 @dataclass(frozen=True)
@@ -41,10 +37,6 @@ class NodeCandidate:
     title: str = ""
     terminal: bool = False
     output_types: tuple[str, ...] = ()
-
-    @property
-    def display_name(self) -> str:
-        return self.title or self.class_type or f"Node {self.node_id}"
 
     def to_dict(self) -> dict[str, Any]:
         return {
