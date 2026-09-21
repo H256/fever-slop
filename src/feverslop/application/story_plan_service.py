@@ -242,6 +242,7 @@ class StoryPlanService:
         allocation = self._normalize_job_output(
             "beat_allocation", allocation_raw, diagnostics, _FORBIDDEN_RENDER_KEYS
         )
+        allocation = self._coerce_typed_allocation(request, allocation)
         self._validate_allocation(request, allocation, diagnostics)
         self._reporter.message("story-plan-beat-allocation complete")
 
@@ -250,6 +251,7 @@ class StoryPlanService:
         acting = self._normalize_job_output(
             "acting", acting_raw, diagnostics, _FORBIDDEN_AUDIO_DATA_KEYS
         )
+        acting = self._coerce_typed_acting(allocation, acting)
         self._validate_acting(allocation, acting, diagnostics)
         self._reporter.message("story-plan-acting complete")
 
@@ -419,6 +421,62 @@ class StoryPlanService:
         }
 
     # -- normalization and validation ---------------------------------------
+
+    @staticmethod
+    def _coerce_typed_allocation(
+        request: StoryPlanRequest, allocation: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Map the public typed allocation DTO to service-owned bindings."""
+        if "briefs" in allocation:
+            return allocation
+        raw_beats = allocation.get("beats")
+        raw_allocations = allocation.get("brief_allocations")
+        if not isinstance(raw_beats, list) or not isinstance(raw_allocations, list):
+            return allocation
+        segments = {segment.segment_id: segment for segment in request.segments}
+        briefs: list[dict[str, Any]] = []
+        for item in raw_allocations:
+            if not isinstance(item, Mapping):
+                continue
+            target = str(item.get("target", ""))
+            segment = segments.get(target)
+            if segment is None:
+                continue
+            index = item.get("beat_index")
+            if not isinstance(index, int) or isinstance(index, bool):
+                continue
+            briefs.append({
+                "brief_id": f"brief-{target}", "segment_id": target,
+                "start_seconds": segment.start_seconds, "end_seconds": segment.end_seconds,
+                "beat_indices": [index],
+                "required": [f"beat-{value + 1:03d}" for value in item.get("required_beat_indices", [])],
+                "forbidden": [f"beat-{value + 1:03d}" for value in item.get("forbidden_beat_indices", [])],
+            })
+        return {"briefs": briefs, "typed_beats": raw_beats}
+
+    @staticmethod
+    def _coerce_typed_acting(allocation: Mapping[str, Any], acting: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Bind typed acting briefs to service-owned brief ids by target."""
+        if "briefs" not in acting or not isinstance(acting.get("briefs"), list):
+            return acting
+        by_target = {
+            str(item.get("segment_id")): str(item.get("brief_id"))
+            for item in allocation.get("briefs", []) if isinstance(item, Mapping)
+        }
+        if not any(isinstance(item, Mapping) and "target" in item for item in acting["briefs"]):
+            return acting
+        briefs = []
+        for item in acting["briefs"]:
+            if not isinstance(item, Mapping):
+                continue
+            target = str(item.get("target", ""))
+            briefs.append({
+                "brief_id": by_target.get(target, target),
+                "objective": item.get("objective", ""),
+                "emotional_turn": item.get("emotional_turn", ""),
+                "actor_states": list(item.get("actor_states", [])),
+            })
+        return {**dict(acting), "briefs": briefs}
 
     @staticmethod
     def _normalize_job_output(
@@ -843,6 +901,18 @@ class StoryPlanService:
                 }
             )
         segments: list[dict[str, Any]] = []
+        beats = [
+            {
+                "id": f"beat-{index:03d}",
+                "phase": str(item.get("phase", "development")),
+                "description": str(item.get("description", "")),
+                "character_ids": list(item.get("character_ids", [])),
+                "location_id": item.get("location_id"),
+                "prop_ids": list(item.get("prop_ids", [])),
+            }
+            for index, item in enumerate(allocation.get("typed_beats", []), start=1)
+            if isinstance(item, Mapping)
+        ]
         raw_briefs = allocation.get("briefs")
         if not isinstance(raw_briefs, list):
             raw_briefs = []
@@ -860,7 +930,11 @@ class StoryPlanService:
                 {
                     "id": brief_id,
                     "target": target,
-                    "beat_id": None,
+                    "beat_id": (
+                        f"beat-{raw['beat_indices'][0] + 1:03d}"
+                        if beats and raw.get("beat_indices")
+                        else None
+                    ),
                     "character_ids": [],
                     "vocal_presentation": "offscreen",
                     "visual_direction": "",
@@ -878,7 +952,7 @@ class StoryPlanService:
                 "notes": creative_direction,
             },
             "characters": characters,
-            "beats": [],
+            "beats": beats,
             "arcs": [],
             "segments": segments,
         }

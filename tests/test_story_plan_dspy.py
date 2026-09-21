@@ -590,6 +590,46 @@ class StoryPlanTypedContractTests(unittest.TestCase):
 
 
 class StoryPlanServiceTests(unittest.TestCase):
+    def test_typed_dspy_outputs_produce_beats_and_segment_briefs(self) -> None:
+        """The service consumes the public typed planning DTOs directly."""
+        modules = FakePromptModules(
+            allocation={
+                "beats": [
+                    {"phase": "opening", "description": "The journey begins."},
+                    {"phase": "resolution", "description": "The journey resolves."},
+                ],
+                "brief_allocations": [
+                    {"target": "seg-1", "beat_index": 0},
+                    {"target": "seg-2", "beat_index": 1},
+                ],
+            },
+            acting={
+                "arcs": [],
+                "briefs": [
+                    {
+                        "target": "seg-1",
+                        "vocal_presentation": "on_screen",
+                        "objective": "Invite the audience into the journey.",
+                        "emotional_turn": "Guarded to hopeful.",
+                        "actor_states": [{"character_id": "char-1", "state": "guarded"}],
+                    },
+                    {
+                        "target": "seg-2",
+                        "vocal_presentation": "offscreen",
+                        "objective": "Release the tension.",
+                        "emotional_turn": "Hopeful to free.",
+                        "actor_states": [{"character_id": "char-1", "state": "free"}],
+                    },
+                ],
+            },
+        )
+
+        result = StoryPlanService(prompt_modules=modules).build_plan(make_request())
+
+        self.assertEqual([beat.id for beat in result.plan.beats], ["beat-001", "beat-002"])
+        self.assertEqual([brief.target for brief in result.plan.segments], ["seg-1", "seg-2"])
+        self.assertEqual(result.plan.segments[0].audio_ref.segment_id, "seg-1")
+
     def test_valid_plan_skips_repair(self) -> None:
         modules = FakePromptModules()
         service = StoryPlanService(prompt_modules=modules)
