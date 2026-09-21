@@ -195,6 +195,7 @@ UNIT_MODULES = (
     "startframe_engine",
     "story_plan",
     "story_plan_artifacts",
+    "story_plan_dspy",
     "storyboard_page",
     "storyboard_prompt_transformer",
     "structured_h3_builder",
