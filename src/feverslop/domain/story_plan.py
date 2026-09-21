@@ -334,6 +334,10 @@ class StoryPlan(BaseModel):
             for brief in self.segments:
                 if brief.audio_ref is None:
                     raise ValueError(f"music video brief {brief.id} requires an audio_ref")
+                if brief.audio_ref.segment_id != brief.target:
+                    raise ValueError(
+                        f"music video brief {brief.id} audio_ref.segment_id must match target"
+                    )
         return self
 
     def to_dict(self) -> dict[str, Any]:
@@ -341,7 +345,7 @@ class StoryPlan(BaseModel):
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "StoryPlan":
-        return cls.model_validate(payload, strict=False)
+        return cls.model_validate(payload, strict=True)
 
     def to_json(self) -> str:
         return self.model_dump_json()
@@ -354,7 +358,10 @@ class StoryPlan(BaseModel):
             raise FeverSlopDataError(f"story plan is not valid JSON: {exc}") from exc
         if not isinstance(payload, dict):
             raise FeverSlopDataError("story plan must be a JSON object")
-        return cls.model_validate(payload, strict=False)
+        try:
+            return cls.model_validate_json(text, strict=True)
+        except ValidationError as exc:
+            raise FeverSlopDataError("story plan does not match the strict contract") from exc
 
 
 @dataclass(frozen=True, slots=True)

@@ -16,6 +16,8 @@ Non-goals (per #1384):
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping
 from enum import Enum
 from pathlib import Path
@@ -115,7 +117,7 @@ def write_manifest(
 ) -> Path:
     """Persist a manifest atomically (accepts a model or a raw payload)."""
     if isinstance(manifest, dict):
-        manifest = StoryPlanArtifactManifest.model_validate(manifest, strict=False)
+        manifest = _strict_manifest_from_data(manifest)
     return atomic_write_json(Path(path), manifest.model_dump(mode="json"))
 
 
@@ -125,7 +127,7 @@ def read_manifest(path: str | Path) -> StoryPlanArtifactManifest:
     if not isinstance(data, dict):
         raise FeverSlopDataError(f"story plan artifact manifest must be a JSON object: {path}")
     try:
-        return StoryPlanArtifactManifest.model_validate(data, strict=False)
+        return _strict_manifest_from_data(data)
     except ValidationError as exc:
         raise FeverSlopDataError(f"malformed story plan artifact manifest: {path}") from exc
 
@@ -133,7 +135,7 @@ def read_manifest(path: str | Path) -> StoryPlanArtifactManifest:
 def write_story_plan(path: str | Path, plan: StoryPlan | dict) -> Path:
     """Persist a story plan atomically (accepts a model or a raw payload)."""
     if isinstance(plan, dict):
-        plan = StoryPlan.model_validate(plan, strict=False)
+        plan = StoryPlan.from_json(json.dumps(plan))
     return atomic_write_json(Path(path), plan.model_dump(mode="json"))
 
 
@@ -143,9 +145,33 @@ def read_story_plan(path: str | Path) -> StoryPlan:
     if not isinstance(data, dict):
         raise FeverSlopDataError(f"story plan must be a JSON object: {path}")
     try:
-        return StoryPlan.model_validate(data, strict=False)
-    except ValidationError as exc:
+        return StoryPlan.from_json(json.dumps(data))
+    except (FeverSlopDataError, ValidationError) as exc:
         raise FeverSlopDataError(f"malformed story plan: {path}") from exc
+
+
+def story_plan_fingerprint(plan: StoryPlan) -> str:
+    """Digest canonical plan content for its adjacent manifest."""
+    payload = json.dumps(
+        plan.model_dump(mode="json"),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def manifest_matches_story_plan(
+    manifest: StoryPlanArtifactManifest,
+    plan: StoryPlan,
+) -> bool:
+    """Whether a manifest records the exact canonical plan it accompanies."""
+    return manifest.plan_fingerprint == story_plan_fingerprint(plan)
+
+
+def _strict_manifest_from_data(data: object) -> StoryPlanArtifactManifest:
+    """Validate parsed JSON with JSON strictness, including enum values."""
+    return StoryPlanArtifactManifest.model_validate_json(json.dumps(data), strict=True)
 
 
 def manifest_is_stale(
