@@ -120,6 +120,7 @@ UNIT_MODULES = (
     "movie_pipeline_modes",
     "movie_scene_cards",
     "movie_planning_dspy_contracts",
+    "movie_story_plan_wiring",
     "movie_visual_local",
     "movie_workflow_audio_strip",
     "msr_prompt_enrichment",

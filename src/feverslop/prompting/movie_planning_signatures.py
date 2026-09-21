@@ -12,6 +12,7 @@ from feverslop.domain.movie import (
     MovieScreenplayArtifact,
     StoryArch,
 )
+from feverslop.domain.story_plan import SegmentBrief
 
 
 class MoviePlanningResult(BaseModel):
@@ -54,6 +55,7 @@ class ContinuityPlanPayload(MoviePlanningPayload):
     desired_length: float = 0.0
     bible: MovieBible | None = None
     shots: tuple[CinematicShot, ...] = ()
+    canonical_briefs: list[SegmentBrief] = Field(default_factory=list)
     config: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -64,6 +66,7 @@ class StoryDesignPayload(MoviePlanningPayload):
     desired_length: float = 0.0
     bible: MovieBible | None = None
     story_arch: StoryArch | None = None
+    canonical_briefs: list[SegmentBrief] = Field(default_factory=list)
     config: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -77,6 +80,7 @@ class NarrativePlanPayload(MoviePlanningPayload):
     desired_length: float = 0.0
     bible: MovieBible | None = None
     screenplay: MovieScreenplayArtifact | None = None
+    canonical_briefs: list[SegmentBrief] = Field(default_factory=list)
     config: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -88,6 +92,7 @@ class ShotPlanFromBiblePayload(MoviePlanningPayload):
     height: int = 0
     min_duration: float = 4.0
     max_duration: float = 20.0
+    canonical_briefs: list[SegmentBrief] = Field(default_factory=list)
 
 
 class ShotPlanPayload(MoviePlanningPayload):
@@ -97,6 +102,7 @@ class ShotPlanPayload(MoviePlanningPayload):
     height: int = 0
     min_duration: float = 4.0
     max_duration: float = 20.0
+    canonical_briefs: list[SegmentBrief] = Field(default_factory=list)
 
 
 class MovieActorResult(MoviePlanningResult):
