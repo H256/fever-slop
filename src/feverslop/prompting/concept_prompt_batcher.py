@@ -1041,7 +1041,7 @@ class ConceptPromptBatcher:
             # aftermath) to reallocate the window coherently.
             allocation = _sequence_allocation(
                 invalid_items,
-                expected_ids,
+                sequence_ids,
                 _narrative_contract(global_context),
             )
             if allocation:

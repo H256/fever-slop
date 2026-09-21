@@ -2365,6 +2365,45 @@ class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
         self.assertIn("segment_033", allocation.get("aftermath", []))
         self.assertEqual(["drink"], allocation["one_shot_milestones"])
 
+    def test_sequence_allocation_cross_batch_predecessor(self):
+        """Regression: when a scene in batch N repeats a milestone first
+        accepted in batch N-1, the allocation window uses the full ordered
+        sequence (accepted + current batch) so the predecessor is found
+        and classified as the irreversible event."""
+        from feverslop.prompting.concept_prompt_batcher import (
+            _sequence_allocation,
+        )
+        # segment_010 is from a previous batch (accepted);
+        # segment_015 is in the current batch and repeats the milestone.
+        invalid = [
+            {
+                "segment_id": "segment_015",
+                "prior_segment_id": "segment_010",
+                "reason": "milestone 'drink' repeats segment_010 without reset_events authorization",
+            },
+        ]
+        # Full ordered sequence: accepted IDs followed by current batch IDs.
+        full_sequence_ids = [
+            "segment_010",  # accepted (previous batch)
+            "segment_011",
+            "segment_012",
+            "segment_015",  # current batch (invalid)
+            "segment_016",
+        ]
+        contract = {"one_shot_milestones": ["drink"]}
+        allocation = _sequence_allocation(invalid, full_sequence_ids, contract)
+        self.assertIsNotNone(allocation)
+        # The window spans from the accepted predecessor through the duplicate.
+        self.assertEqual(
+            ["segment_010", "segment_011", "segment_012", "segment_015"],
+            allocation["window"],
+        )
+        # The irreversible event is the original accepted occurrence.
+        self.assertEqual(["segment_010"], allocation["irreversible_event"])
+        # The duplicate is in the aftermath.
+        self.assertIn("segment_015", allocation.get("aftermath", []))
+        self.assertEqual(["drink"], allocation["one_shot_milestones"])
+
 
 if __name__ == "__main__":
     unittest.main()
