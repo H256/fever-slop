@@ -92,6 +92,13 @@ Only the canonical location and actor ids from the resolved cast/locations may
 be referenced; the pipeline validates the derived contract against them and
 falls back to an empty contract when it invents an unknown id.
 
+When the contract configures `one_shot_milestones` or `terminal_states`,
+the concept stage conveys those constraints explicitly to the LLM (as a
+`NARRATIVE_CONSTRAINTS` block in the batch and repair prompts) and attaches
+concrete fix instructions to each semantic-validation finding, so the model
+knows which milestones must not repeat and which require an explicit cast
+state instead of discovering them only through repair.
+
 ### `output/timeline/*.json`
 
 These files describe audio timing, beats, vocal/instrumental ranges, and initial scene segments.
