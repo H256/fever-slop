@@ -73,8 +73,10 @@ from feverslop.domain.story_plan_artifacts import (
     RegenerationPolicy,
     StoryPlanArtifactManifest,
     manifest_is_stale,
+    manifest_matches_story_plan,
     read_manifest,
     read_story_plan,
+    story_plan_fingerprint,
     write_manifest,
 )
 from feverslop.errors import FeverSlopDataError
@@ -250,6 +252,7 @@ def movie_artifact_migration_report(project_dir: Path) -> dict[str, Any]:
     project_dir = Path(project_dir)
     loaded = _load_authoritative_plan(project_dir)
     plan_present = loaded is not None
+    plan = loaded[0] if loaded is not None else None
     plan_fingerprint: str | None = None
     if plan_present:
         plan_path, _ = _plan_paths(project_dir)
@@ -269,7 +272,7 @@ def movie_artifact_migration_report(project_dir: Path) -> dict[str, Any]:
             legacy_names.append(spec.name)
         elif not plan_present:
             status = "fresh"
-        elif _projection_is_stale(manifest, project_dir=project_dir, spec=spec):
+        elif _projection_is_stale(manifest, project_dir=project_dir, spec=spec, plan=plan):
             status = "stale"
             stale_names.append(spec.name)
         else:
@@ -318,19 +321,18 @@ def _ensure_projection(
     if loaded is None:
         build_legacy(project_dir)
         return artifact_path
-    plan, plan_manifest = loaded
+    plan, _plan_manifest = loaded
     existed = artifact_path.exists()
     if existed and not force:
         manifest = _read_projection_manifest(_projection_manifest_path(artifact_path))
         if manifest is None:
             return artifact_path
-        if not _projection_is_stale(manifest, project_dir=project_dir, spec=spec):
+        if not _projection_is_stale(manifest, project_dir=project_dir, spec=spec, plan=plan):
             return artifact_path
     _write_plan_projection(
         project_dir,
         spec=spec,
         plan=plan,
-        plan_manifest=plan_manifest,
         build_plan=build_plan,
         extra_names=extra_names,
         overwrite=existed,
@@ -343,18 +345,17 @@ def _write_plan_projection(
     *,
     spec: _MovieProjection,
     plan: StoryPlan,
-    plan_manifest: StoryPlanArtifactManifest | None,
     build_plan: Callable[[Path, StoryPlan], None],
     extra_names: tuple[str, ...],
     overwrite: bool,
 ) -> None:
     build_plan(project_dir, plan)
-    _write_projection_manifest(project_dir, spec=spec, plan_manifest=plan_manifest)
+    _write_projection_manifest(project_dir, spec=spec, plan=plan)
     for extra_name in extra_names:
         extra_spec = _MOVIE_PROJECTIONS[extra_name]
         extra_path = project_dir / "movie" / extra_spec.filename
         if extra_path.exists():
-            _write_projection_manifest(project_dir, spec=extra_spec, plan_manifest=plan_manifest)
+            _write_projection_manifest(project_dir, spec=extra_spec, plan=plan)
     if overwrite:
         _REGENERATED_PROJECTIONS.add(spec.name)
 
@@ -363,7 +364,7 @@ def _write_projection_manifest(
     project_dir: Path,
     *,
     spec: _MovieProjection,
-    plan_manifest: StoryPlanArtifactManifest | None,
+    plan: StoryPlan,
 ) -> None:
     plan_path, _ = _plan_paths(project_dir)
     manifest = StoryPlanArtifactManifest(
@@ -374,7 +375,7 @@ def _write_projection_manifest(
             ArtifactDependency(path=relative, sha256=digest)
             for relative, digest in sorted(_dependency_digests(project_dir, spec.dependency_paths).items())
         ],
-        plan_fingerprint=plan_manifest.input_fingerprint if plan_manifest is not None else None,
+        plan_fingerprint=story_plan_fingerprint(plan),
     )
     write_manifest(_projection_manifest_path(project_dir / "movie" / spec.filename), manifest)
 
@@ -384,7 +385,10 @@ def _projection_is_stale(
     *,
     project_dir: Path,
     spec: _MovieProjection,
+    plan: StoryPlan | None,
 ) -> bool:
+    if plan is None or not manifest_matches_story_plan(manifest, plan):
+        return True
     plan_path, _ = _plan_paths(project_dir)
     return manifest_is_stale(
         manifest,
@@ -414,6 +418,12 @@ def _load_authoritative_plan(project_dir: Path) -> tuple[StoryPlan, StoryPlanArt
             manifest = read_manifest(manifest_path)
         except (FeverSlopDataError, OSError, ValueError):
             manifest = None
+    if (
+        manifest is None
+        or manifest.artifact_class is not ArtifactClass.authoritative
+        or not manifest_matches_story_plan(manifest, plan)
+    ):
+        return None
     return plan, manifest
 
 

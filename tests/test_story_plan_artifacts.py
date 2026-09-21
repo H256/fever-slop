@@ -16,10 +16,12 @@ from feverslop.domain.story_plan_artifacts import (
     RegenerationPolicy,
     StoryPlanArtifactManifest,
     manifest_is_stale,
+    manifest_matches_story_plan,
     read_manifest,
     read_story_plan,
     write_manifest,
     write_story_plan,
+    story_plan_fingerprint,
 )
 from feverslop.errors import FeverSlopDataError
 
@@ -169,6 +171,27 @@ class ManifestIoTests(unittest.TestCase):
         path.write_text(json.dumps(payload), encoding="utf-8")
         with self.assertRaises(FeverSlopDataError):
             read_story_plan(path)
+
+    def test_read_story_plan_rejects_coercible_non_strict_values(self):
+        payload = _make_plan().model_dump(mode="json")
+        payload["characters"] = [{"id": "char-1", "name": "Singer", "is_singer": "true"}]
+        path = self.root / "story_plan.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaises(FeverSlopDataError):
+            read_story_plan(path)
+
+    def test_manifest_rejects_a_plan_with_a_different_fingerprint(self):
+        plan = _make_plan()
+        manifest = _make_manifest(plan_fingerprint=_sha("different-plan"))
+        self.assertFalse(manifest_matches_story_plan(manifest, plan))
+
+    def test_manifest_matches_its_canonical_plan_fingerprint(self):
+        plan = _make_plan()
+        manifest = _make_manifest(plan_fingerprint=_sha("placeholder"))
+        manifest = manifest.model_copy(update={"plan_fingerprint": None})
+        self.assertFalse(manifest_matches_story_plan(manifest, plan))
+        manifest = _make_manifest(plan_fingerprint=story_plan_fingerprint(plan))
+        self.assertTrue(manifest_matches_story_plan(manifest, plan))
 
 
 class StaleManifestTests(unittest.TestCase):

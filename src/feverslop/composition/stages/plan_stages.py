@@ -139,13 +139,6 @@ def _read_h3_input(path: Path, label: str):
     return JsonArtifactStore().read_json(path)
 
 
-def _select_pipeline_scenes(scenes: list[dict], scene_spec: str | None) -> list[dict]:
-    selected = parse_scene_list(scene_spec)
-    if selected is None:
-        return scenes
-    return [scene for scene in scenes if int(scene.get("scene") or scene.get("scene_number")) in selected]
-
-
 def _report_reference_fallbacks(warnings: list[str]) -> None:
     for warning in warnings:
         _report(f"[yellow]Reference fallback:[/yellow] {warning}")
@@ -509,7 +502,7 @@ def _preserve_enriched_reference_paths(
 def _run_relay_compact_stage(state: PipelineRunState) -> None:
     if state.args.render_mode == "single_prompt":
         raise ValueError("relay_compact requires render_mode relay or auto")
-    resolved_context = json.loads(state.context.resolved_context.read_text(encoding="utf-8-sig"))
+    resolved_context = JsonArtifactStore().read_json(state.context.resolved_context)
     subject_anchor = str(resolved_context.get("subject", "")).strip()
     if not subject_anchor:
         raise ValueError(f"No subject anchor found in {state.context.resolved_context}")
@@ -537,7 +530,7 @@ def _run_relay_compact_stage(state: PipelineRunState) -> None:
 
 def _run_anchor_fix_stage(state: PipelineRunState) -> None:
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
-    resolved_context = json.loads(state.context.resolved_context.read_text(encoding="utf-8-sig"))
+    resolved_context = JsonArtifactStore().read_json(state.context.resolved_context)
     subject_anchor = str(resolved_context.get("subject", "")).strip()
     if not subject_anchor:
         raise ValueError(f"No subject anchor found in {state.context.resolved_context}")

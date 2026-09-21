@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from feverslop.application.movie_artifacts import ensure_movie_bible
 from feverslop.composition.movie_pipeline import _resolve_movie_story_plan
 from feverslop.domain.movie import (
     story_plan_shot_durations,
@@ -14,8 +15,10 @@ from feverslop.domain.movie import (
 from feverslop.domain.story_plan import StoryMode
 from feverslop.domain.story_plan_artifacts import (
     ArtifactClass,
+    manifest_matches_story_plan,
     read_manifest,
     read_story_plan,
+    story_plan_fingerprint,
 )
 
 
@@ -90,6 +93,73 @@ class TestMovieStoryPlanWiring(unittest.TestCase):
 
             manifest = read_manifest(project / "movie" / "plan.manifest.json")
             self.assertIs(ArtifactClass.authoritative, manifest.artifact_class)
+            self.assertTrue(manifest_matches_story_plan(manifest, plan))
+
+    def test_tampered_plan_is_not_reused_when_manifest_fingerprint_differs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = self._make_project(temp_dir)
+            render_plan_path = project / "movie" / "render_plan.json"
+            plan_path = _resolve_movie_story_plan(project, render_plan_path)
+
+            payload = json.loads(plan_path.read_text(encoding="utf-8"))
+            payload["segments"][0]["visual_direction"] = "Tampered direction."
+            plan_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            _resolve_movie_story_plan(project, render_plan_path)
+
+            restored = read_story_plan(plan_path)
+            self.assertEqual("A witch watches the sky.", restored.segments[0].visual_direction)
+
+    def test_projection_manifest_records_the_canonical_plan_fingerprint(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = self._make_project(temp_dir)
+            plan_path = _resolve_movie_story_plan(project, project / "movie" / "render_plan.json")
+            plan = read_story_plan(plan_path)
+
+            ensure_movie_bible(project)
+
+            projection_manifest = read_manifest(project / "movie" / "bible.json.manifest.json")
+            self.assertEqual(story_plan_fingerprint(plan), projection_manifest.plan_fingerprint)
+
+    def test_legacy_shot_without_id_or_flat_references_remains_plannable(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            _write_render_plan(project / "movie" / "render_plan.json", [
+                {
+                    "description": "The witch enters the tower.",
+                    "reference_ids": {"actors": ["witch"], "location": "tower"},
+                }
+            ])
+            _write_config(
+                project / "config.json",
+                actors=[{"id": "witch", "name": "The Witch"}],
+                locations=[{"id": "tower", "name": "The Tower"}],
+            )
+
+            plan = read_story_plan(
+                _resolve_movie_story_plan(project, project / "movie" / "render_plan.json")
+            )
+
+            self.assertEqual("shot_0001", plan.segments[0].target)
+            self.assertEqual(["witch"], plan.segments[0].character_ids)
+            self.assertEqual("tower", plan.segments[0].location_id)
+
+    def test_stale_projection_manifest_is_not_reused(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = self._make_project(temp_dir)
+            plan_path = _resolve_movie_story_plan(project, project / "movie" / "render_plan.json")
+            plan = read_story_plan(plan_path)
+            ensure_movie_bible(project)
+            manifest_path = project / "movie" / "bible.json.manifest.json"
+
+            manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest_payload["plan_fingerprint"] = "0" * 64
+            manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
+
+            ensure_movie_bible(project)
+
+            restored_manifest = read_manifest(manifest_path)
+            self.assertEqual(story_plan_fingerprint(plan), restored_manifest.plan_fingerprint)
 
     def test_plan_is_reused_on_fingerprint_match(self):
         with tempfile.TemporaryDirectory() as temp_dir:

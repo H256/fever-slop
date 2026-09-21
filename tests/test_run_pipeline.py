@@ -302,14 +302,6 @@ class RunPipelinePathTests(unittest.TestCase):
 
         self.assertEqual([], scene["references"]["actor_ids"])
 
-    def test_selected_pipeline_scenes_filters_render_plan(self):
-        from feverslop.composition.stage_runners import _select_pipeline_scenes
-
-        scenes = [{"scene": 1}, {"scene": 3}, {"scene": 5}]
-
-        self.assertEqual([{"scene": 3}], _select_pipeline_scenes(scenes, "3"))
-        self.assertEqual(scenes, _select_pipeline_scenes(scenes, None))
-
     @patch("feverslop.composition.stages.final_stages.final_video_postprocessor")
     def test_original_audio_mux_still_uses_video_only_concat(self, postprocessor_class):
         with TemporaryDirectory() as temp_dir:

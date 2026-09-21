@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -430,6 +431,20 @@ class FacePipeline:
             frame_width, frame_height,
         )
 
+        # Fail-fast size/quality gate: estimate the mask's nonzero ratio from
+        # the (clamped) expanded-box geometry before paying the mask cost.
+        # If the estimate is below the validation threshold, the mask would
+        # fail validation, so skip the expensive generation and fail here.
+        threshold = self._mask_validation_ratio(box, frame_width, frame_height)
+        estimated = self._estimated_mask_nonzero_ratio(
+            expanded_box, frame_width, frame_height,
+        )
+        if estimated < threshold:
+            raise ValueError(
+                f"Mask would fail validation (est. nonzero ratio "
+                f"{estimated:.4f} < threshold {threshold:.4f})"
+            )
+
         # Generate mask
         mask = self.mask_port.generate_mask(
             frame,
@@ -438,12 +453,8 @@ class FacePipeline:
             feather_radius=self.policy.mask_feather_radius,
         )
 
-        # Validate mask: threshold scales with box area relative to frame
-        box = state.candidate.box
-        box_area = box.width * box.height
-        frame_area = frame_height * frame_width
-        effective_ratio = max(0.0001, box_area / frame_area * 0.5)
-        validation = self.mask_port.validate_mask(mask, min_nonzero_ratio=effective_ratio)
+        # Validate mask (authoritative check after generation)
+        validation = self.mask_port.validate_mask(mask, min_nonzero_ratio=threshold)
         if not validation.valid:
             raise ValueError(f"Invalid mask generated: {validation.message}")
 
@@ -461,6 +472,34 @@ class FacePipeline:
         # For now, return the frame unchanged with the mask applied.
 
         return frame
+
+    @staticmethod
+    def _mask_validation_ratio(
+        box: BoundingBox, frame_width: int, frame_height: int,
+    ) -> float:
+        """Validation threshold: scales with box area relative to frame."""
+        box_area = box.width * box.height
+        frame_area = frame_height * frame_width
+        return max(0.0001, box_area / frame_area * 0.5)
+
+    @staticmethod
+    def _estimated_mask_nonzero_ratio(
+        box: BoundingBox, frame_width: int, frame_height: int,
+    ) -> float:
+        """Estimate the generated mask's nonzero ratio from box geometry.
+
+        The mask is a radial gradient with radius = max(box.width,
+        box.height) / 2, so its nonzero region is a disk of that radius.
+        This is a cheap geometric stand-in for the actual mask, used to
+        fail fast before the expensive mask generation.
+        """
+        radius = max(box.width, box.height) / 2.0
+        if radius <= 0:
+            return 0.0
+        # Disk area, clamped to the frame (the mask is drawn inside it).
+        disk_area = math.pi * radius * radius
+        frame_area = frame_width * frame_height
+        return min(1.0, disk_area / frame_area)
 
     def _write_debug(self, state: FramePipelineState) -> None:
         """Step 8: Write debug artifacts with full pipeline context."""

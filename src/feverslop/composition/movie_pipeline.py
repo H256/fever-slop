@@ -57,9 +57,11 @@ from feverslop.domain.story_plan_artifacts import (
     ArtifactClass,
     RegenerationPolicy,
     StoryPlanArtifactManifest,
+    manifest_matches_story_plan,
     manifest_is_stale,
     read_manifest,
     read_story_plan,
+    story_plan_fingerprint,
     write_manifest,
     write_story_plan,
 )
@@ -1029,12 +1031,12 @@ def _movie_plan_inputs(project_dir: Path, render_plan: Mapping[str, Any], config
         "locations": _configured_location_items(config),
         "shots": [
             {
-                "shot_id": str(shot.get("shot_id") or ""),
+                "shot_id": _movie_shot_id(shot, index),
                 "description": str(shot.get("description") or shot.get("action") or ""),
-                "actor_ids": [str(item) for item in shot.get("actor_ids") or []],
-                "location_id": str(shot.get("location_id") or ""),
+                "actor_ids": [str(item) for item in _movie_shot_actor_ids(shot)],
+                "location_id": _movie_shot_location_id(shot),
             }
-            for shot in render_plan.get("shots") or []
+            for index, shot in enumerate(render_plan.get("shots") or [], start=1)
             if isinstance(shot, Mapping)
         ],
     }
@@ -1060,9 +1062,7 @@ def _beat_phase(index: int, total: int) -> StoryPhase:
 
 
 def _shot_character_ids(shot: Mapping[str, Any], known: set[str]) -> list[str]:
-    raw = shot.get("actor_ids")
-    if not isinstance(raw, list):
-        raw = []
+    raw = _movie_shot_actor_ids(shot)
     result: list[str] = []
     for value in raw:
         actor_id = str(value).strip()
@@ -1072,8 +1072,27 @@ def _shot_character_ids(shot: Mapping[str, Any], known: set[str]) -> list[str]:
 
 
 def _shot_location_id(shot: Mapping[str, Any], known: set[str]) -> str:
-    location_id = str(shot.get("location_id") or "").strip()
+    location_id = _movie_shot_location_id(shot)
     return location_id if location_id in known else ""
+
+
+def _movie_shot_id(shot: Mapping[str, Any], index: int) -> str:
+    return str(shot.get("shot_id") or f"shot_{index:04d}").strip()
+
+
+def _movie_shot_actor_ids(shot: Mapping[str, Any]) -> list[Any]:
+    references = shot.get("reference_ids")
+    if not isinstance(references, Mapping):
+        references = {}
+    raw = shot.get("actor_ids") or references.get("actors") or []
+    return raw if isinstance(raw, list) else []
+
+
+def _movie_shot_location_id(shot: Mapping[str, Any]) -> str:
+    references = shot.get("reference_ids")
+    if not isinstance(references, Mapping):
+        references = {}
+    return str(shot.get("location_id") or references.get("location") or "").strip()
 
 
 def _plan_cast_and_locations(
@@ -1092,7 +1111,7 @@ def _plan_cast_and_locations(
         seen_characters.add(actor_id)
         characters.append({"id": actor_id, "name": str(actor.get("name") or actor.get("id") or actor_id).strip()})
     for shot in shots:
-        for value in shot.get("actor_ids") or []:
+        for value in _movie_shot_actor_ids(shot):
             actor_id = str(value).strip()
             if actor_id and actor_id not in seen_characters:
                 seen_characters.add(actor_id)
@@ -1111,7 +1130,7 @@ def _plan_cast_and_locations(
         seen_locations.add(location_id)
         locations.append({"id": location_id, "name": name or location_id})
     for shot in shots:
-        location_id = str(shot.get("location_id") or "").strip()
+        location_id = _movie_shot_location_id(shot)
         if location_id and location_id not in seen_locations:
             seen_locations.add(location_id)
             locations.append({"id": location_id, "name": location_id})
@@ -1138,7 +1157,7 @@ def _build_movie_story_plan(
     groups: list[tuple[str, list[Mapping[str, Any]]]] = []
     group_index: dict[str, int] = {}
     for index, shot in enumerate(shots, start=1):
-        shot_id = str(shot.get("shot_id") or f"shot_{index:04d}").strip()
+        shot_id = _movie_shot_id(shot, index)
         if not shot_id:
             continue
         location_id = _shot_location_id(shot, location_ids)
@@ -1174,7 +1193,7 @@ def _build_movie_story_plan(
             )
         )
         for shot in group_shots:
-            shot_id = str(shot.get("shot_id") or "").strip()
+            shot_id = _movie_shot_id(shot, len(segments) + 1)
             visual_direction = str(shot.get("description") or shot.get("action") or "").strip() or f"Shot {len(segments) + 1}"
             segments.append(
                 SegmentBrief(
@@ -1250,6 +1269,7 @@ def _resolve_movie_story_plan(project_dir: Path, render_plan_path: Path) -> Path
                 and plan.mode is StoryMode.narrative_film
                 and plan.schema_version in SUPPORTED_SCHEMA_VERSIONS
                 and plan.planner_revision == PLANNER_REVISION
+                and manifest_matches_story_plan(manifest, plan)
             ):
                 _log_stage("Movie planning", "reusing canonical story plan (fingerprint match)")
                 return plan_path
@@ -1264,16 +1284,13 @@ def _resolve_movie_story_plan(project_dir: Path, render_plan_path: Path) -> Path
     if plan.planner_revision != PLANNER_REVISION:
         raise FeverSlopDataError(f"planner revision mismatch: {plan.planner_revision}")
     write_story_plan(plan_path, plan)
-    plan_fingerprint = hashlib.sha256(
-        json.dumps(plan.model_dump(mode="json"), sort_keys=True).encode("utf-8")
-    ).hexdigest()
     write_manifest(
         manifest_path,
         StoryPlanArtifactManifest(
             artifact_class=ArtifactClass.authoritative,
             regeneration_policy=RegenerationPolicy.on_input_change,
             input_fingerprint=fingerprint,
-            plan_fingerprint=plan_fingerprint,
+            plan_fingerprint=story_plan_fingerprint(plan),
         ),
     )
     _log_stage("Movie planning", f"canonical story plan persisted to movie/plan.json ({len(plan.segments)} shots, {len(plan.beats)} beats)")

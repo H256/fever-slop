@@ -834,6 +834,29 @@ def run(argv: list[str] | None = None) -> int:
         if not validation.valid:
             _emit_result(output, json_output=args.json, human_output="; ".join(validation.failures))
             return 2
+        baseline = tuple(
+            item for item in results
+            if isinstance(item, VisualConsistencyBenchmarkResult)
+            and item.workflow_profile == FIXED_WORKFLOW_PROFILES[0]
+        )
+        candidate = tuple(
+            item for item in results
+            if isinstance(item, VisualConsistencyBenchmarkResult)
+            and item.workflow_profile == FIXED_WORKFLOW_PROFILES[1]
+        )
+        decision = evaluate_promotion(
+            baseline, candidate,
+            review=review,
+            sealed_mapping=sealed_mapping,
+            environment=environment,
+        )
+        output["promotion"] = {
+            "promote": decision.promote,
+            "failures": list(decision.failures),
+            "wall_time_reduction": decision.wall_time_reduction,
+            "baseline_medians": dict(decision.baseline_medians),
+            "candidate_medians": dict(decision.candidate_medians),
+        }
     _emit_result(output, json_output=args.json, human_output=_human_success(output))
     return 0
 
@@ -1195,6 +1218,14 @@ def _write_json_pair_atomic(
 def _human_success(output: Mapping[str, Any]) -> str:
     if output["mode"] == "review":
         return f"Wrote blinded review with {output['entry_count']} entries."
+    if output["mode"] == "matrix" and "promotion" in output:
+        promotion = output["promotion"]
+        verdict = "PROMOTE" if promotion["promote"] else "HOLD"
+        return (
+            f"Validated {output['result_count']} benchmark result(s) in matrix mode. "
+            f"Promotion decision: {verdict}"
+            + (f" (failures: {', '.join(promotion['failures'])})" if promotion["failures"] else "")
+        )
     return (
         f"Validated {output['result_count']} benchmark result(s) "
         f"in {output['mode']} mode."

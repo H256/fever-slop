@@ -52,6 +52,7 @@ class StoryPlanServiceAdapter:
         song_style: str,
         lyrics: str,
         sections: list[Mapping[str, Any]],
+        characters: list[Mapping[str, Any]],
         source_evidence: Mapping[str, Any],
         guide: str,
         **_extra: Any,
@@ -68,7 +69,7 @@ class StoryPlanServiceAdapter:
                 sections=list(sections),
             ),
             creative_direction=self._creative_direction,
-            characters=[],
+            characters=[dict(character) for character in characters],
             locations=[],
             props=[],
         )

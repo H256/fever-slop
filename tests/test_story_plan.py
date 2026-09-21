@@ -2,6 +2,7 @@
 
 import copy
 import hashlib
+import json
 import unittest
 
 from pydantic import ValidationError
@@ -223,6 +224,13 @@ class MusicVideoAuthorityTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             _build(payload)
 
+    def test_music_video_brief_audio_reference_must_match_its_target(self):
+        payload = _music_video_plan()
+        payload["segments"][0]["audio_ref"]["segment_id"] = "seg-2"
+        with self.assertRaises(ValidationError) as ctx:
+            _build(payload)
+        self.assertIn("must match target", str(ctx.exception))
+
     def test_music_video_brief_rejects_carried_lyrics(self):
         payload = _music_video_plan()
         payload["segments"][0]["lyrics"] = ["hello"]
@@ -267,6 +275,12 @@ class StoryPlanSerializationTests(unittest.TestCase):
     def test_from_json_rejects_non_object(self):
         with self.assertRaises(FeverSlopDataError):
             StoryPlan.from_json("[1]")
+
+    def test_from_json_rejects_coercible_non_strict_values(self):
+        payload = _music_video_plan()
+        payload["characters"][0]["is_singer"] = "true"
+        with self.assertRaises(FeverSlopDataError):
+            StoryPlan.from_json(json.dumps(payload))
 
 
 class CreativeOverrideTests(unittest.TestCase):

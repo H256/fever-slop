@@ -107,10 +107,10 @@ def _specialized_video_use_case(state: PipelineRunState):
 
 
 def _all_render_scenes(state: PipelineRunState) -> tuple[RenderScene, ...]:
-    payload = json.loads(state.plan_for_next_step.read_text(encoding="utf-8-sig"))
+    payload = JsonArtifactStore().read_json(state.plan_for_next_step)
     canonical_path = _canonical_plan_path(state)
     canonical_payload = (
-        json.loads(canonical_path.read_text(encoding="utf-8-sig"))
+        JsonArtifactStore().read_json(canonical_path)
         if canonical_path is not None
         else None
     )

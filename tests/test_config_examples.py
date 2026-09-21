@@ -74,6 +74,7 @@ class ConfigExampleTests(unittest.TestCase):
                 "task_temperatures",
                 "max_tokens", "request_timeout_seconds", "dspy_cache", "max_concurrent_requests",
                 "prompt_judge_attempts", "prompt_judge_max_tokens",
+                "prompt_planner_max_tokens",
                 "prompt_judge_blocking",
             },
             set(raw["llm"]),
