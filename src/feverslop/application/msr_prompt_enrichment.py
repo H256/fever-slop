@@ -438,13 +438,6 @@ def _describe_reference_item(item: dict) -> str:
     return ", ".join(chunk for chunk in (name, role, visual or image_prompt) if chunk)
 
 
-# Backwards-compatible aliases: the canonical implementations live in
-# ``msr_validation`` (shared leaf module). Kept here because other modules
-# (``msr_validation`` callers, legacy imports) reference the underscore names.
-_clean_segment_prompt = clean_segment_prompt
-_is_valid_segment_prompt = is_valid_segment_prompt
-
-
 def _scene_silent_mode(scene: dict) -> bool:
     metadata = scene.get("metadata") or {}
     return bool(metadata.get("silent_mode") or scene.get("silent_mode"))

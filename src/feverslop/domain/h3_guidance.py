@@ -7,20 +7,6 @@ with concrete next actions so a blocked scene stops being an opaque
 
 from __future__ import annotations
 
-# Subset of known H3 reason codes the guidance decoder handles explicitly.
-_KNOWN_CODES: set[str] = frozenset({
-    "h3.fallback.plan_missing",
-    "h3.recovery.exhausted",
-    "h3.plan.missing",
-    "h3.plan.malformed",
-    "h3.fact.missing",
-    "h3.fact.conflict",
-    "h3.prompt.truncated",
-    "h3.contract.invalid",
-    "h3.performance.lyrics_mismatch",
-    "h3.fallback.plan_invalid",
-})
-
 
 def h3_block_guide(
     reason_codes: list[str],
