@@ -7,7 +7,7 @@ from typing import Any
 
 class JsonArtifactStore:
     def read_text(self, path: str | Path) -> str:
-        return Path(path).read_text(encoding="utf-8")
+        return Path(path).read_text(encoding="utf-8-sig")
 
     def write_text(self, path: str | Path, text: str) -> Path:
         path = Path(path)
