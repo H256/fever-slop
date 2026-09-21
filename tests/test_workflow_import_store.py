@@ -134,6 +134,39 @@ class StoreLifecycleTests(unittest.TestCase):
         snapshot.write_bytes(b"tampered")
         self.assertFalse(self.store.verify_snapshot("p", "h3"))
 
+    def test_reimport_self_heals_corrupted_snapshot(self) -> None:
+        self.store.import_workflow(
+            project_id="p", profile_id="h3", pipeline="minimax_h3", purpose="final",
+            graph=_GOOD_GRAPH,
+        )
+        snapshot = (
+            Path(self._tmp.name) / "p" / "workflows" / "h3"
+            / f"{self.store.get_profile('p', 'h3').workflow_sha256[:16]}.json"
+        )
+        # Simulate an interrupted write leaving a truncated payload.
+        snapshot.write_bytes(snapshot.read_bytes()[:5])
+        self.assertFalse(self.store.verify_snapshot("p", "h3"))
+        # Re-importing the same graph must restore a verifiable snapshot.
+        self.store.import_workflow(
+            project_id="p", profile_id="h3", pipeline="minimax_h3", purpose="final",
+            graph=_GOOD_GRAPH,
+        )
+        self.assertTrue(self.store.verify_snapshot("p", "h3"))
+        self.assertEqual(
+            self.store.snapshot_bytes("p", "h3"),
+            snapshot.read_bytes(),
+        )
+
+    def test_snapshot_write_is_atomic(self) -> None:
+        self.store.import_workflow(
+            project_id="p", profile_id="h3", pipeline="minimax_h3", purpose="final",
+            graph=_GOOD_GRAPH,
+        )
+        # No stray temp files may be left behind by the atomic write.
+        directory = Path(self._tmp.name) / "p" / "workflows" / "h3"
+        leftovers = [p.name for p in directory.iterdir() if p.name.endswith(".tmp")]
+        self.assertEqual(leftovers, [])
+
 
 class StoreWithInspectorTests(unittest.TestCase):
     def test_validation_records_mapping_and_analysis(self) -> None:
