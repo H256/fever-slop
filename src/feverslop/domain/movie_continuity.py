@@ -231,7 +231,7 @@ class MovieContinuityPlan:
         fallback = self.fallback(bible, shots)
         shot_ids = [shot.shot_id for shot in shots]
         return MovieContinuityPlan(
-            continuity_ledger=self.continuity_ledger or fallback.continuity_ledger,
+            continuity_ledger=_merge_ledger(self.continuity_ledger, fallback.continuity_ledger),
             scene_continuity={
                 shot_id: self.scene_continuity.get(shot_id) or fallback.scene_continuity[shot_id] for shot_id in shot_ids
             },
@@ -304,4 +304,35 @@ def narrative_for_shot(
         conflict_or_tension=candidate.conflict_or_tension or base.conflict_or_tension,
         turning_point=candidate.turning_point or base.turning_point,
         sets_up_next=candidate.sets_up_next or base.sets_up_next,
+    )
+
+
+def _merge_ledger(
+    planned: MovieContinuityLedger,
+    fallback: MovieContinuityLedger,
+) -> MovieContinuityLedger:
+    """Merge *planned* ledger sections over *fallback*, filling empty sections.
+
+    Present (non-empty) sections take priority; empty sections are filled from
+    the fallback, so a partial plan never silently discards bible-derived
+    continuity data. The style bible is merged per-field.
+    """
+    return MovieContinuityLedger(
+        style_bible=_merge_style_bible(planned.style_bible, fallback.style_bible),
+        characters=dict(planned.characters) or dict(fallback.characters),
+        locations=dict(planned.locations) or dict(fallback.locations),
+        scene_order=tuple(planned.scene_order) or tuple(fallback.scene_order),
+    )
+
+
+def _merge_style_bible(
+    planned: MovieContinuityStyleBible,
+    fallback: MovieContinuityStyleBible,
+) -> MovieContinuityStyleBible:
+    return MovieContinuityStyleBible(
+        visual_style=planned.visual_style or fallback.visual_style,
+        palette=planned.palette or fallback.palette,
+        lighting=planned.lighting or fallback.lighting,
+        camera=planned.camera or fallback.camera,
+        negative_constraints=tuple(planned.negative_constraints) or tuple(fallback.negative_constraints),
     )
