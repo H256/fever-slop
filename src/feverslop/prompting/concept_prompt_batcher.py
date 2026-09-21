@@ -130,11 +130,18 @@ def _narrative_constraints(contract: dict[str, Any]) -> dict[str, Any]:
         for actor, rule in terminal_states.items():
             if not isinstance(rule, dict):
                 continue
-            normalized[str(_normalize_semantic_value(actor))] = {
-                "milestone": str(_normalize_semantic_value(rule.get("milestone"))),
-                "state": str(_normalize_semantic_value(rule.get("state"))),
-                "reset_event": str(_normalize_semantic_value(rule.get("reset_event"))),
-            }
+            entry: dict[str, Any] = {}
+            milestone = _normalize_semantic_value(rule.get("milestone"))
+            if milestone is not None:
+                entry["milestone"] = str(milestone)
+            state = _normalize_semantic_value(rule.get("state"))
+            if state is not None:
+                entry["state"] = str(state)
+            reset_event = _normalize_semantic_value(rule.get("reset_event"))
+            if reset_event is not None:
+                entry["reset_event"] = str(reset_event)
+            if entry:
+                normalized[str(_normalize_semantic_value(actor))] = entry
         if normalized:
             constraints["terminal_states"] = dict(
                 list(normalized.items())[:_VOCAB_MAX_PER_FIELD]
@@ -341,9 +348,14 @@ class ConceptPromptBatcher:
         request_timeout_seconds: float | None = None,
         progress_callback: Callable[[str], None] | None = None,
         prompt_modules: MusicVideoPromptModules | None = None,
+        semantic_enforcement: str = "warn",
     ):
         if batch_size < 1:
             raise ValueError("batch_size must be >= 1")
+        if semantic_enforcement not in ("warn", "strict"):
+            raise ValueError(
+                f"semantic_enforcement must be 'warn' or 'strict', got {semantic_enforcement!r}"
+            )
 
         self.llm = llm
         self.batch_size = batch_size
@@ -351,6 +363,7 @@ class ConceptPromptBatcher:
         self.request_timeout_seconds = request_timeout_seconds
         self.progress_callback = progress_callback
         self.prompt_modules = prompt_modules or MusicVideoPromptModules(llm)
+        self.semantic_enforcement = semantic_enforcement
         self._checkpoint_path: Path | None = None
         self._checkpoint_store: ArtifactStore | None = None
 
@@ -755,7 +768,14 @@ class ConceptPromptBatcher:
                 f"{item['segment_id']}: {item['reason']}"
                 for item in remaining_invalid
             )
-            raise ValueError(f"Concept semantic validation failed after repair: {details}")
+            if self.semantic_enforcement == "strict":
+                raise ValueError(
+                    f"Concept semantic validation failed after repair: {details}"
+                )
+            self._report(
+                f"Concept semantic validation warnings after repair: {details}",
+                progress_callback,
+            )
         return self._annotate_semantic_validation(
             ordered,
             previous_concepts=previous_accepted_concepts,

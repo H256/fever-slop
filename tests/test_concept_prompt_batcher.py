@@ -872,6 +872,7 @@ class ConceptPromptBatcherTests(unittest.TestCase):
         ):
             ConceptPromptBatcher(
                 object(), prompt_modules=modules, batch_size=2,
+                semantic_enforcement="strict",
             ).create_concept_prompts_batched(
                 stage1_segments=[
                     {"segment_id": "seg_1", "scene": 10},
@@ -1278,7 +1279,7 @@ class CollateralContinuityRepairTests(unittest.TestCase):
         )
         return predecessor, repaired, paraphrased
 
-    def _run(self, shape, final_successor):
+    def _run(self, shape, final_successor, *, semantic_enforcement="warn"):
         predecessor, repaired, paraphrased = self._scenes(shape)
         modules = FakeConceptModules([
             {shape["predecessor"]: predecessor, shape["successor"]: paraphrased},
@@ -1292,6 +1293,7 @@ class CollateralContinuityRepairTests(unittest.TestCase):
             prompt_modules=modules,
             batch_size=3,
             progress_callback=progress.append,
+            semantic_enforcement=semantic_enforcement,
         )
         result = batcher.create_concept_prompts_batched(
             stage1_segments=[
@@ -1412,7 +1414,7 @@ class CollateralContinuityRepairTests(unittest.TestCase):
             ValueError,
             r"segment_006\.incoming\.location: 'dragon_s_lair' is incompatible",
         ):
-            self._run(shape, worse)
+            self._run(shape, worse, semantic_enforcement="strict")
 
     def test_repair_boundary_context_follows_explicit_outgoing_block(self):
         # The smoke-run shape: the predecessor's explicit `outgoing` block
@@ -1522,6 +1524,7 @@ class CollateralContinuityRepairTests(unittest.TestCase):
                 prompt_modules=modules,
                 batch_size=3,
                 progress_callback=progress.append,
+                semantic_enforcement="strict",
             ).create_concept_prompts_batched(
                 stage1_segments=[
                     {"segment_id": "segment_001", "scene": 1},
@@ -1608,7 +1611,10 @@ class RepairContextCompletenessTests(unittest.TestCase):
             "summary",
         ])
         with self.assertRaisesRegex(ValueError, "semantic scene duplicates s2"):
-            ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=3).create_concept_prompts_batched(
+            ConceptPromptBatcher(
+                object(), prompt_modules=modules, batch_size=3,
+                semantic_enforcement="strict",
+            ).create_concept_prompts_batched(
                 stage1_segments=[{"segment_id": f"s{i}", "scene": i} for i in range(1, 4)],
                 story_idea="Ravena crosses the lair.",
                 global_context={},
@@ -2079,6 +2085,146 @@ class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
         instructions = _derive_fix_instructions(reasons)
         self.assertEqual(1, len(instructions))
         self.assertIn("some unknown reason", instructions[0])
+
+    def test_repair_payload_contains_narrative_constraints_and_fix_instructions(self):
+        """End-to-end: a one-shot violation produces NARRATIVE_CONSTRAINTS and
+        actionable fix_instructions in the actual repair payload."""
+        first = semantic_concept(
+            "Ravena drinks from the silver cup.",
+            story_beat="drink_silver_water",
+            action="drink",
+            action_phase="completed",
+            milestone="drink_silver_water",
+            prop_state="drunk",
+        )
+        duplicate = semantic_concept(
+            "Ravena drinks from the silver cup again.",
+            story_beat="drink_silver_water",
+            action="drink",
+            action_phase="completed",
+            milestone="drink_silver_water",
+            prop_state="drunk",
+        )
+        # The repair response is still invalid (same duplicate), so the
+        # validation fails after repair and the batcher must surface the
+        # NARRATIVE_CONSTRAINTS and fix_instructions in the repair payload.
+        modules = FakeConceptModules([
+            {"seg_1": first, "seg_2": duplicate},
+            {"seg_2": duplicate},  # repair returns the same invalid concept
+            "summary",
+        ])
+        warnings: list[str] = []
+        batcher = ConceptPromptBatcher(
+            object(),
+            prompt_modules=modules,
+            batch_size=2,
+            semantic_enforcement="warn",
+            progress_callback=warnings.append,
+        )
+        result = batcher.create_concept_prompts_batched(
+            stage1_segments=[
+                {"segment_id": "seg_1", "scene": 10},
+                {"segment_id": "seg_2", "scene": 11},
+            ],
+            story_idea="Ravena drinks once from the well.",
+            global_context={
+                "actors": [{"id": "ravena", "name": "Ravena"}],
+                "narrative_contract": {
+                    "one_shot_milestones": ["drink_silver_water"],
+                    "terminal_states": {
+                        "ravena": {
+                            "milestone": "drink_silver_water",
+                            "state": "transfigured",
+                            "reset_event": "return_rite",
+                        },
+                    },
+                },
+            },
+        )
+        # The warn policy returns the concepts without raising.
+        self.assertIn("seg_1", result)
+        self.assertIn("seg_2", result)
+        # The repair payload must contain NARRATIVE_CONSTRAINTS.
+        repair_calls = [c for c in modules.calls if c[0] == "repair_concepts"]
+        self.assertTrue(repair_calls, "expected a repair call")
+        repair_payload = repair_calls[0][1]
+        self.assertIn("NARRATIVE_CONSTRAINTS", repair_payload)
+        self.assertEqual(
+            ["drink_silver_water"],
+            repair_payload["NARRATIVE_CONSTRAINTS"]["one_shot_milestones"],
+        )
+        # The repair payload must contain fix_instructions in INVALID_SEGMENTS.
+        invalid = repair_payload["INVALID_SEGMENTS"]
+        self.assertTrue(invalid, "expected invalid segments in repair payload")
+        self.assertTrue(
+            all("fix_instructions" in item for item in invalid),
+            "expected fix_instructions in every invalid segment",
+        )
+        # The warning must be reported.
+        self.assertTrue(
+            any("semantic validation warnings" in w for w in warnings),
+            "expected a semantic validation warning",
+        )
+
+    def test_strict_policy_raises_on_semantic_validation_failure(self):
+        """Strict enforcement raises ValueError on unrepaired semantic violations."""
+        first = semantic_concept(
+            "Ravena drinks from the silver cup.",
+            story_beat="drink_silver_water",
+            action="drink",
+            action_phase="completed",
+            milestone="drink_silver_water",
+            prop_state="drunk",
+        )
+        duplicate = semantic_concept(
+            "Ravena drinks from the silver cup again.",
+            story_beat="drink_silver_water",
+            action="drink",
+            action_phase="completed",
+            milestone="drink_silver_water",
+            prop_state="drunk",
+        )
+        modules = FakeConceptModules([
+            {"seg_1": first, "seg_2": duplicate},
+            {"seg_2": duplicate},  # repair returns the same invalid concept
+            "summary",
+        ])
+        with self.assertRaisesRegex(
+            ValueError,
+            "Concept semantic validation failed after repair",
+        ):
+            ConceptPromptBatcher(
+                object(),
+                prompt_modules=modules,
+                batch_size=2,
+                semantic_enforcement="strict",
+            ).create_concept_prompts_batched(
+                stage1_segments=[
+                    {"segment_id": "seg_1", "scene": 10},
+                    {"segment_id": "seg_2", "scene": 11},
+                ],
+                story_idea="Ravena drinks once from the well.",
+                global_context={
+                    "actors": [{"id": "ravena", "name": "Ravena"}],
+                    "narrative_contract": {"one_shot_milestones": ["drink_silver_water"]},
+                },
+            )
+
+    def test_narrative_constraints_omits_empty_reset_event(self):
+        from feverslop.prompting.concept_prompt_batcher import _narrative_constraints
+        contract = {
+            "terminal_states": {
+                "a1": {"milestone": "m1", "state": "ascended"},
+            },
+        }
+        constraints = _narrative_constraints(contract)
+        self.assertNotIn("reset_event", constraints["terminal_states"]["a1"])
+
+    def test_kind_aliases_map_to_supported_taxonomy(self):
+        from feverslop.prompting.semantic_intent_extraction import _KIND_ALIASES
+        self.assertEqual("scene_obligation", _KIND_ALIASES["action"])
+        self.assertEqual("scene_obligation", _KIND_ALIASES["sequence"])
+        self.assertEqual("identity", _KIND_ALIASES["attribute"])
 
 
 if __name__ == "__main__":
