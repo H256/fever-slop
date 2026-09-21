@@ -128,7 +128,6 @@ def resolve_pipeline_stages(args: argparse.Namespace) -> list[PipelineStage]:
             PipelineStage.REFERENCE_SHEETS.value: PipelineStage.MSR_REFERENCE_SHEETS,
             PipelineStage.PREPARE_WORKFLOWS.value: PipelineStage.LTX_PREPARE_WORKFLOWS,
             PipelineStage.RENDER_SCENES.value: PipelineStage.LTX_RENDER_SCENES,
-            PipelineStage.EXPORT_TIMELINE.value: PipelineStage.EXPORT_TIMELINE,
         }
         return [aliases.get(stage, PipelineStage(stage)) for stage in selected]
 
