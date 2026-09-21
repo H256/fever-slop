@@ -131,7 +131,7 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         characters: list[dict[str, Any]] = dspy_module.InputField()
         locations: list[dict[str, Any]] = dspy_module.InputField()
         props: list[dict[str, Any]] = dspy_module.InputField()
-        bible: StoryBibleResult = dspy_module.OutputField()
+        bible: dict[str, Any] = dspy_module.OutputField()
 
     class BeatAllocation(dspy_module.Signature):
         """Allocate beats across the supplied segments in narrative order.
@@ -146,14 +146,14 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         creative_direction: str = dspy_module.InputField(
             desc="Explicit user direction; highest-priority input.",
         )
-        bible: StoryBibleResult = dspy_module.InputField()
+        bible: dict[str, Any] = dspy_module.InputField()
         characters: list[dict[str, Any]] = dspy_module.InputField()
         locations: list[dict[str, Any]] = dspy_module.InputField()
         props: list[dict[str, Any]] = dspy_module.InputField()
         segments: list[dict[str, Any]] = dspy_module.InputField(
             desc="Compact segment/shot descriptors: id, fingerprint, duration only.",
         )
-        allocation: BeatAllocationResult = dspy_module.OutputField()
+        allocation: dict[str, Any] = dspy_module.OutputField()
 
     class Acting(dspy_module.Signature):
         """Write structured per-brief acting direction.
@@ -167,7 +167,7 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         creative_direction: str = dspy_module.InputField(
             desc="Explicit user direction; highest-priority input.",
         )
-        bible: StoryBibleResult = dspy_module.InputField()
+        bible: dict[str, Any] = dspy_module.InputField()
         beats: list[dict[str, Any]] = dspy_module.InputField(
             desc="Service-assigned beat ids, phase, description, and per-brief allocation.",
         )
@@ -177,7 +177,7 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         characters: list[dict[str, Any]] = dspy_module.InputField()
         locations: list[dict[str, Any]] = dspy_module.InputField()
         props: list[dict[str, Any]] = dspy_module.InputField()
-        result: ActingResult = dspy_module.OutputField()
+        result: dict[str, Any] = dspy_module.OutputField()
 
     class StoryPlanRepair(dspy_module.Signature):
         """Fix ONLY the named diagnostics in the prior typed plan.

@@ -532,6 +532,15 @@ class StoryPlanModuleTests(unittest.TestCase):
 
 
 class StoryPlanSignatureBundleTests(unittest.TestCase):
+    def test_dspy_structured_transport_uses_json_objects(self) -> None:
+        """DSPy transports model JSON; the service owns Pydantic validation."""
+        bundle = build_story_plan_signature_bundle()
+        self.assertEqual(dict[str, Any], bundle["bible"].output_fields["bible"].annotation)
+        self.assertEqual(dict[str, Any], bundle["beat_allocation"].input_fields["bible"].annotation)
+        self.assertEqual(dict[str, Any], bundle["beat_allocation"].output_fields["allocation"].annotation)
+        self.assertEqual(dict[str, Any], bundle["acting"].input_fields["bible"].annotation)
+        self.assertEqual(dict[str, Any], bundle["acting"].output_fields["result"].annotation)
+
     def test_signature_bundle_covers_four_jobs(self) -> None:
         bundle = build_story_plan_signature_bundle()
         self.assertEqual(sorted(bundle), ["acting", "beat_allocation", "bible", "repair"])
