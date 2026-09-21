@@ -220,10 +220,7 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
         h3_service = _RecordingService()
         render_service = _RecordingService()
         validator = _ConceptValidationService(
-            ConceptPromptBatcher(
-                object(), prompt_modules=modules, batch_size=3,
-                semantic_enforcement="strict",
-            ),
+            ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=3),
             segments=segments,
             global_context={
                 "actors": [{"id": "ravena", "name": "Ravena"}],

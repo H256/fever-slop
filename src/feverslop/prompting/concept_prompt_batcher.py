@@ -348,14 +348,9 @@ class ConceptPromptBatcher:
         request_timeout_seconds: float | None = None,
         progress_callback: Callable[[str], None] | None = None,
         prompt_modules: MusicVideoPromptModules | None = None,
-        semantic_enforcement: str = "warn",
     ):
         if batch_size < 1:
             raise ValueError("batch_size must be >= 1")
-        if semantic_enforcement not in ("warn", "strict"):
-            raise ValueError(
-                f"semantic_enforcement must be 'warn' or 'strict', got {semantic_enforcement!r}"
-            )
 
         self.llm = llm
         self.batch_size = batch_size
@@ -363,7 +358,6 @@ class ConceptPromptBatcher:
         self.request_timeout_seconds = request_timeout_seconds
         self.progress_callback = progress_callback
         self.prompt_modules = prompt_modules or MusicVideoPromptModules(llm)
-        self.semantic_enforcement = semantic_enforcement
         self._checkpoint_path: Path | None = None
         self._checkpoint_store: ArtifactStore | None = None
 
@@ -768,13 +762,8 @@ class ConceptPromptBatcher:
                 f"{item['segment_id']}: {item['reason']}"
                 for item in remaining_invalid
             )
-            if self.semantic_enforcement == "strict":
-                raise ValueError(
-                    f"Concept semantic validation failed after repair: {details}"
-                )
-            self._report(
-                f"Concept semantic validation warnings after repair: {details}",
-                progress_callback,
+            raise ValueError(
+                f"Concept semantic validation failed after repair: {details}"
             )
         return self._annotate_semantic_validation(
             ordered,
