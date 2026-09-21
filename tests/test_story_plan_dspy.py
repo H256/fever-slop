@@ -590,6 +590,19 @@ class StoryPlanTypedContractTests(unittest.TestCase):
 
 
 class StoryPlanServiceTests(unittest.TestCase):
+    def test_pydantic_bible_output_is_accepted_from_typed_dspy(self) -> None:
+        """DSPy may deserialize an annotated output before the service sees it."""
+        modules = FakePromptModules(
+            bible=StoryBibleResult(
+                premise="A singer leaves home.",
+                theme="release",
+            )
+        )
+
+        result = StoryPlanService(prompt_modules=modules).build_plan(make_request())
+
+        self.assertEqual([brief.target for brief in result.plan.segments], ["seg-1", "seg-2"])
+
     def test_typed_dspy_outputs_produce_beats_and_segment_briefs(self) -> None:
         """The service consumes the public typed planning DTOs directly."""
         modules = FakePromptModules(
