@@ -139,7 +139,6 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
     )
     if state.args.video_pipeline != "ltx_ingredients":
         raise ValueError("ingredients_sheets requires --video-pipeline ltx_ingredients")
-    from feverslop.config.project_config import ProjectConfig
     project_config = ProjectConfig.load(state.context.project_config_path)
     resolution = _get_resolution(state.args)
     if resolution is not None:
