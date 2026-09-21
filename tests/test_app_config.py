@@ -360,6 +360,56 @@ class AppConfigTests(unittest.TestCase):
             config = AppConfig.load(config_path)
             self.assertEqual(2, config.llm.max_concurrent_requests)
 
+    def test_story_planning_defaults_to_non_gating_planner_revision(self):
+        from feverslop.config.app_config import AppConfig
+        from feverslop.domain.story_plan import PLANNER_REVISION
+
+        config = AppConfig.load(Path("does-not-exist.json"))
+
+        self.assertFalse(config.llm.story_planning.require_approval)
+        self.assertEqual(PLANNER_REVISION, config.llm.story_planning.planner_revision)
+
+    def test_loads_story_planning_settings(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                json.dumps({"llm": {"story_planning": {"require_approval": True}}}),
+                encoding="utf-8",
+            )
+            config = AppConfig.load(config_path)
+
+        self.assertTrue(config.llm.story_planning.require_approval)
+        # planner_revision falls back to the default when unset.
+        self.assertEqual("planner/v1", config.llm.story_planning.planner_revision)
+
+    def test_loads_top_level_story_planning_settings(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                json.dumps({"story_planning": {"require_approval": True, "planner_revision": "planner/v2"}}),
+                encoding="utf-8",
+            )
+            config = AppConfig.load(config_path)
+
+        self.assertTrue(config.llm.story_planning.require_approval)
+        self.assertEqual("planner/v2", config.llm.story_planning.planner_revision)
+
+    def test_rejects_non_dict_story_planning(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                json.dumps({"llm": {"story_planning": "not-a-dict"}}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "story_planning must be an object"):
+                AppConfig.load(config_path)
+
     def test_loads_llm_api_key_from_adjacent_dotenv(self):
         from feverslop.config.app_config import AppConfig
 

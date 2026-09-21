@@ -40,6 +40,8 @@ RUNNER_ARGUMENTS = (
     ("upscale_resolution", ("--upscale-resolution",), {"type": ResolutionTuple.parse, "default": None, "help": "Override SeedVR2 target resolution for this run."}),
     ("set_resolution", ("--set-resolution",), {"type": ResolutionTuple.parse, "default": None}),
     ("concept_batch_size", ("--concept-batch-size",), {"type": int, "default": 10}),
+    ("story_direction", ("--story-direction",), {"default": "", "help": "Free-text creative direction for the story plan (provenance only; never authoritative audio data)."}),
+    ("story_plan_approve", ("--story-plan-approve",), {"action": "store_true", "help": "Approve a freshly built story plan so the pipeline continues past the approval gate."}),
     ("storyboard_workflow", ("--storyboard-workflow",), {"default": str(Path("workflows/image/image-model") / "image_t2i_startframe_v1.json")}),
     ("reference_hero_workflow", ("--reference-hero-workflow",), {"default": str(Path("workflows/image/image-model") / "image_t2i_startframe_krea_v1.json")}),
     ("reference_edit_workflow", ("--reference-edit-workflow",), {"default": str(Path("workflows/image/image-model") / "image_edit_flux2_klein_1ref_v1.json")}),

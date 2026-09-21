@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 import re
@@ -10,7 +11,27 @@ from typing import Any
 
 from feverslop.application.global_cast_resolver import materialize_global_assets
 from feverslop.application.pipeline_context import GenerateRenderPlanContext
+from feverslop.application.story_plan_service import (
+    SegmentDescriptor,
+    StoryPlanError,
+    StoryPlanRequest,
+    compute_source_fingerprint,
+)
 from feverslop.domain.prompt_constraints import build_location_constraint
+from feverslop.domain.story_plan import (
+    PLANNER_REVISION,
+    SUPPORTED_SCHEMA_VERSIONS,
+)
+from feverslop.domain.story_plan_artifacts import (
+    ArtifactClass,
+    RegenerationPolicy,
+    StoryPlanArtifactManifest,
+    manifest_is_stale,
+    read_manifest,
+    read_story_plan,
+    write_manifest,
+    write_story_plan,
+)
 from feverslop.errors import FeverSlopValidationError
 from feverslop.ports.generate_pipeline import (
     ConceptBatcherFactory,
@@ -300,6 +321,7 @@ class PromptGenerationPipeline:
         global_library_factory: Callable[[Any], Any] | None = None,
         intent_review_factory: Callable[[Any], Any] | None = None,
         intent_extractor_factory: Callable[[Any], Any] | None = None,
+        story_plan_service_factory: Callable[[Any], Any] | None = None,
     ):
         self.llm_factory = llm_factory
         self.prompt_pipeline_factory = prompt_pipeline_factory
@@ -308,6 +330,7 @@ class PromptGenerationPipeline:
         self.global_library_factory = global_library_factory
         self.intent_review_factory = intent_review_factory
         self.intent_extractor_factory = intent_extractor_factory
+        self.story_plan_service_factory = story_plan_service_factory
 
     def execute(self, context: GenerateRenderPlanContext) -> GenerateRenderPlanContext:
         missing = self.required_keys - context.keys()
@@ -366,6 +389,24 @@ class PromptGenerationPipeline:
                 reporter=reporter,
             )
 
+        _paths = getattr(context, "paths", None)
+        if _paths is None and isinstance(context, dict):
+            _paths = context.get("paths")
+        segment_briefs, gate_stopped = self._resolve_story_plan(
+            config=config,
+            app_config=app_config,
+            request=request,
+            resume=resume,
+            stage1_segments=stage1_segments,
+            paths=_paths,
+            reporter=reporter,
+            artifact_store=artifact_store,
+            log_file=log_file,
+        )
+        if gate_stopped:
+            context.update({"story_plan_gate": True})
+            return context
+
         concept_story_input = join_notes(
             global_context["story_idea"],
             "STEERING:",
@@ -384,6 +425,7 @@ class PromptGenerationPipeline:
                 stage1_segments=stage1_segments,
                 concept_story_input=concept_story_input,
                 global_context=global_context,
+                segment_briefs=segment_briefs,
                 concept_prompts_json=concept_prompts_json,
                 artifact_store=artifact_store,
                 reporter=reporter,
@@ -470,6 +512,171 @@ class PromptGenerationPipeline:
         )
         return context
 
+    def _resolve_story_plan(
+        self,
+        *,
+        config: Any,
+        app_config: Any,
+        request: Any,
+        resume: bool,
+        stage1_segments: list[dict],
+        paths: Any,
+        reporter: Any,
+        artifact_store: Any,
+        log_file: Any,
+    ) -> tuple[dict[str, Any] | None, bool]:
+        """Build or reuse the story plan; return (segment_briefs, gate_stopped)."""
+        if str(getattr(config, "content_mode", "music_video")) != "music_video":
+            return None, False
+        if self.story_plan_service_factory is None:
+            return None, False
+        if paths is None:
+            return None, False
+
+        llm = self.llm_factory(app_config)
+        service = self.story_plan_service_factory(llm)
+
+        effective_direction = (
+            str(getattr(request, "story_direction", "") or "").strip()
+            or str(getattr(config, "story_direction", "") or "").strip()
+        )
+
+        song_id = str(
+            getattr(config, "song_id", "")
+            or getattr(config, "project_name", "")
+            or "song"
+        )
+        song_language = str(getattr(config, "language", "") or "unknown")
+        song_style = str(
+            getattr(config, "music_style", "")
+            or getattr(config, "style", "")
+            or ""
+        )
+        lyrics = str(getattr(config, "lyrics", "") or "")
+
+        characters = [
+            {
+                "id": str(actor.id),
+                "name": str(actor.name),
+                "description": str(getattr(actor, "description", "")),
+            }
+            for actor in (getattr(config, "actors", ()) or ())
+        ]
+
+        segments = tuple(
+            SegmentDescriptor.from_mapping(seg)
+            for seg in stage1_segments
+            if "segment_id" in seg and "start_seconds" in seg and "end_seconds" in seg
+        )
+
+        max_end = max((seg.end_seconds for seg in segments), default=0.0)
+        terminal_window_seconds = max_end * 0.9 if max_end > 0 else 0.0
+
+        source_evidence = {"creative_direction": effective_direction}
+
+        fingerprint = compute_source_fingerprint(
+            song_title=song_id,
+            song_language=song_language,
+            song_style=song_style,
+            lyrics=lyrics,
+            sections=(),
+            segments=[seg.to_compact_dict() for seg in segments],
+            characters=characters,
+            creative_direction=effective_direction,
+        )
+
+        plan_path = paths.prompts_dir / f"story_plan_{song_id}.json"
+        manifest_path = paths.prompts_dir / f"story_plan_{song_id}.manifest.json"
+
+        expected_revision = str(
+            getattr(
+                getattr(app_config.llm, "story_planning", None),
+                "planner_revision",
+                PLANNER_REVISION,
+            )
+        )
+
+        reused = False
+        if resume and manifest_path.is_file():
+            manifest = read_manifest(manifest_path)
+            if not manifest_is_stale(manifest, input_fingerprint=fingerprint):
+                if manifest.artifact_class == ArtifactClass.authoritative:
+                    plan = read_story_plan(plan_path)
+                    if (
+                        plan.schema_version in SUPPORTED_SCHEMA_VERSIONS
+                        and plan.planner_revision == expected_revision
+                    ):
+                        reporter.message(
+                            "[yellow]Reusing story plan (fingerprint match).[/yellow]"
+                        )
+                        reused = True
+
+        if not reused:
+            reporter.message("[cyan]Story plan build started.[/cyan]")
+            plan_request = StoryPlanRequest(
+                source_fingerprint=fingerprint,
+                song_title=song_id,
+                song_language=song_language,
+                song_style=song_style,
+                lyrics=lyrics,
+                sections=(),
+                segments=segments,
+                characters=tuple(characters),
+                source_evidence=source_evidence,
+                guide="",
+                terminal_window_seconds=terminal_window_seconds,
+            )
+            result = service.build_plan(plan_request)
+            plan = result.plan
+
+            if plan.schema_version not in SUPPORTED_SCHEMA_VERSIONS:
+                raise StoryPlanError(
+                    f"unsupported story plan schema: {plan.schema_version}"
+                )
+            if plan.planner_revision != expected_revision:
+                raise StoryPlanError(
+                    f"planner revision mismatch: {plan.planner_revision}"
+                )
+
+            write_story_plan(plan_path, plan)
+            plan_fingerprint = hashlib.sha256(
+                json.dumps(plan.model_dump(mode="json"), sort_keys=True).encode("utf-8")
+            ).hexdigest()
+            manifest = StoryPlanArtifactManifest(
+                artifact_class=ArtifactClass.authoritative,
+                regeneration_policy=RegenerationPolicy.on_input_change,
+                input_fingerprint=fingerprint,
+                plan_fingerprint=plan_fingerprint,
+            )
+            write_manifest(manifest_path, manifest)
+            log_file("Story Plan JSON", plan_path)
+            log_file("Story Plan Manifest", manifest_path)
+            reporter.message("[green]Story plan build complete.[/green]")
+
+            if (
+                getattr(
+                    getattr(app_config.llm, "story_planning", None),
+                    "require_approval",
+                    False,
+                )
+                and not getattr(request, "story_plan_approve", False)
+            ):
+                export_md, export_manifest = service.write_review_export(
+                    result, plan_path.parent, name=f"story_plan_{song_id}"
+                )
+                log_file("Story Plan Review Export", export_md)
+                reporter.message(
+                    "[yellow]Story plan approval required. "
+                    "Re-run with --story-plan-approve to continue.[/yellow]"
+                )
+                return None, True
+
+        segment_briefs = {
+            brief.target: brief.model_dump(mode="json")
+            for brief in plan.segments
+        }
+        return segment_briefs, False
+
     def _report_global_context(self, reporter: Any, global_context: dict[str, Any]) -> None:
         reporter.panel(global_context["story_idea"], title="Story Idea")
         reporter.panel(global_context["style"], title="Style Block")
@@ -493,6 +700,7 @@ class PromptGenerationPipeline:
         stage1_segments: list[dict],
         concept_story_input: str,
         global_context: dict[str, Any],
+        segment_briefs: dict[str, Any] | None = None,
         concept_prompts_json: Path,
         artifact_store: Any,
         reporter: Any,
@@ -506,6 +714,7 @@ class PromptGenerationPipeline:
                 stage1_segments=stage1_segments,
                 concept_story_input=concept_story_input,
                 global_context=global_context,
+                segment_briefs=segment_briefs,
                 concept_prompts_json=concept_prompts_json,
                 artifact_store=artifact_store,
                 reporter=reporter,
@@ -520,6 +729,7 @@ class PromptGenerationPipeline:
             story_idea=concept_story_input,
             global_context=global_context,
             notes=get_steering_value(config, "concepts"),
+            segment_briefs=segment_briefs or {},
         )
         reporter.message("[green]Concept generation finished.[/green]")
         return concept_prompts
@@ -534,6 +744,7 @@ class PromptGenerationPipeline:
         stage1_segments: list[dict],
         concept_story_input: str,
         global_context: dict[str, Any],
+        segment_briefs: dict[str, Any] | None = None,
         concept_prompts_json: Path,
         artifact_store: Any,
         reporter: Any,
@@ -578,6 +789,7 @@ class PromptGenerationPipeline:
             progress_callback=lambda message: reporter.message(
                 f"[cyan]{message}[/cyan]",
             ),
+            segment_briefs=segment_briefs or {},
         )
         reporter.message("[green]Concept generation finished.[/green]")
         return concept_prompts
