@@ -216,7 +216,16 @@ class AppConfigTests(unittest.TestCase):
             config = AppConfig.load(config_path)
 
         self.assertEqual(
-            {"planner": 0.6, "renderer": 0.6, "judge": 0.2, "analyzer": 0.2},
+            {
+                "planner": 0.6,
+                "renderer": 0.6,
+                "judge": 0.2,
+                "analyzer": 0.2,
+                "story_plan_bible": 0.2,
+                "story_plan_beat_allocation": 0.2,
+                "story_plan_acting": 0.6,
+                "story_plan_repair": 0.2,
+            },
             config.llm.task_temperatures,
         )
 
