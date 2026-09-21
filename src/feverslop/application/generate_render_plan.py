@@ -29,6 +29,8 @@ class GenerateRenderPlanRequest:
     skip_whisper: bool = False
     skip_beat_analysis: bool = False
     resume: bool = False
+    story_direction: str = ""
+    story_plan_approve: bool = False
 
 
 @dataclass(frozen=True)

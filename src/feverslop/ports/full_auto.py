@@ -37,6 +37,7 @@ class ProjectScaffoldPort(Protocol):
         video_pipeline: str = "ltx_i2v",
         render_profile: str = "ltx25-i2v-draft",
         silent_mode: bool = False,
+        story_direction: str = "",
     ) -> ProjectScaffoldResult:
         """Create a FeverSlop project folder and config from generated song assets."""
 

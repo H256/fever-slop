@@ -124,14 +124,29 @@ class SegmentDescriptor:
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "SegmentDescriptor":
+        """Adapt either supported Stage 1 timing representation.
+
+        Persisted Stage 1 artifacts use ``start`` / ``end``.  The planning
+        boundary exposes the explicit ``*_seconds`` names, so newer callers
+        may already provide those without changing the authoritative artifact.
+        """
+        start = data["start_seconds"] if "start_seconds" in data else data["start"]
+        end = data["end_seconds"] if "end_seconds" in data else data["end"]
         return cls(
             segment_id=str(data["segment_id"]),
-            start_seconds=float(data["start_seconds"]),
-            end_seconds=float(data["end_seconds"]),
-            lyric_text=str(data.get("lyric_text", "")),
+            start_seconds=float(start),
+            end_seconds=float(end),
+            lyric_text=str(data.get("lyric_text", data.get("lyrics", ""))),
             section=str(data.get("section", "")),
             beat_index=int(data.get("beat_index", -1)),
         )
+
+    @staticmethod
+    def has_stage1_timing(data: Mapping[str, Any]) -> bool:
+        """Whether a Stage 1 record has one complete supported timing pair."""
+        return (
+            "start_seconds" in data and "end_seconds" in data
+        ) or ("start" in data and "end" in data)
 
     def to_compact_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -373,6 +388,7 @@ class StoryPlanService:
             "song_style": request.song_style,
             "lyrics": request.lyrics,
             "sections": [dict(section) for section in request.sections],
+            "characters": [dict(character) for character in request.characters],
             "source_evidence": dict(request.source_evidence),
             "guide": request.guide,
         }
@@ -1049,6 +1065,7 @@ def compute_source_fingerprint(
     sections: Sequence[Mapping[str, Any]],
     segments: Sequence[Mapping[str, Any]],
     characters: Sequence[Mapping[str, Any]],
+    creative_direction: str = "",
 ) -> str:
     """Deterministic sha256 fingerprint of the planning inputs."""
     canonical = {
@@ -1059,6 +1076,7 @@ def compute_source_fingerprint(
         "sections": [dict(section) for section in sections],
         "segments": [dict(segment) for segment in segments],
         "characters": [dict(character) for character in characters],
+        "creative_direction": creative_direction,
     }
     encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()

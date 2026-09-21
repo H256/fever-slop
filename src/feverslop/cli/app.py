@@ -45,6 +45,8 @@ def _run_render(args: argparse.Namespace) -> None:
                 if args.zimage_workflow
                 else None
             ),
+            story_direction=str(getattr(args, "story_direction", "") or ""),
+            story_plan_approve=bool(getattr(args, "story_plan_approve", False)),
         ),
         console=console,
     )

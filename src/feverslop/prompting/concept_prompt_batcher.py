@@ -553,6 +553,7 @@ class ConceptPromptBatcher:
         global_context: dict,
         notes: str = "",
         progress_callback: Callable[[str], None] | None = None,
+        segment_briefs: dict | None = None,
     ) -> dict:
         all_results: dict[str, str] = {}
         previous_summary = ""
@@ -613,6 +614,7 @@ class ConceptPromptBatcher:
                 accepted_ledger=_accepted_state_ledger(all_results),
                 accepted=all_results,
                 order_ids=[seg["segment_id"] for seg in stage1_segments],
+                segment_briefs=segment_briefs,
             )
             self._report(f"{batch_label}: response received, validating keys", report)
 
@@ -753,6 +755,7 @@ class ConceptPromptBatcher:
         accepted_ledger: list[dict[str, str]] | None = None,
         accepted: dict | None = None,
         order_ids: list[str] | None = None,
+        segment_briefs: dict | None = None,
     ) -> dict:
         accepted = accepted or {}
         order_ids = order_ids or []
@@ -769,6 +772,15 @@ class ConceptPromptBatcher:
             "ACCEPTED_STATE_LEDGER": accepted_ledger or [],
             "CURRENT_BATCH_SEGMENTS": compact_planning_payload(batch),
         }
+        if segment_briefs:
+            batch_ids = {seg.get("segment_id") for seg in batch}
+            briefs = {
+                seg_id: brief
+                for seg_id, brief in segment_briefs.items()
+                if seg_id in batch_ids
+            }
+            if briefs:
+                payload["SEGMENT_BRIEFS"] = briefs
         # Front-load the exact boundary vocabulary so the batch's first scene
         # anchors on verbatim tokens instead of inferred ones (issue #1247).
         # Only present when there is an accepted predecessor to anchor on.

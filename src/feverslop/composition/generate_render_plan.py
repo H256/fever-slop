@@ -2,6 +2,7 @@
 
 import random
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 
@@ -29,6 +30,9 @@ from feverslop.application.generate_render_plan import (
 )
 from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
+from feverslop.application.story_plan_service import StoryPlanService
+from feverslop.prompting.story_plan_modules import StoryPlanPromptModules
+from feverslop.prompting.story_plan_service_adapter import StoryPlanServiceAdapter
 from feverslop.application.render_plan_pipeline import RenderPlanPipeline
 from feverslop.application.scene_timeline_pipeline import SceneTimelinePipeline
 from feverslop.config.app_config import AppConfig
@@ -62,6 +66,19 @@ from feverslop.prompting.scene_prompt_builder import ScenePromptBuilder
 from feverslop.prompting.semantic_intent_extraction import DspySemanticIntentExtractor
 
 
+def build_story_plan_service(
+    llm: Any,
+    *,
+    dspy_runtime: Any | None = None,
+) -> StoryPlanService:
+    """Build the production StoryPlan service and its typed DSPy boundary."""
+    return StoryPlanService(
+        prompt_modules=StoryPlanServiceAdapter(
+            StoryPlanPromptModules(llm, dspy_runtime=dspy_runtime)
+        )
+    )
+
+
 def _common_pipeline_services():
     return [
         SceneTimelinePipeline(
@@ -80,6 +97,7 @@ def _common_pipeline_services():
             global_library_factory=lambda path: GlobalLibraryAdapter(path),
             intent_review_factory=DspySemanticIntentReviewer,
             intent_extractor_factory=DspySemanticIntentExtractor,
+            story_plan_service_factory=build_story_plan_service,
         ),
         H3PromptPipeline(
             llm_factory=_build_llm,

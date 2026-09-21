@@ -176,6 +176,38 @@ class FullAutoCliTests(unittest.TestCase):
         self.assertEqual("dark gothic visual fantasy", request.style)
         self.assertEqual("epic fantasy power metal", request.music_style)
 
+    def test_request_from_args_maps_story_direction(self):
+        args = full_auto.build_arg_parser().parse_args(
+            [
+                "--idea",
+                "a lighthouse keeper befriends a ghost",
+                "--style",
+                "melancholy film noir",
+                "--story-direction",
+                "keep the palette cold and rain-soaked",
+            ],
+        )
+
+        request = full_auto.request_from_args(args)
+
+        self.assertEqual("keep the palette cold and rain-soaked", request.story_direction)
+        # story_direction also flows through runner options for the downstream run.
+        self.assertEqual("keep the palette cold and rain-soaked", request.runner_options["story_direction"])
+
+    def test_request_from_args_defaults_story_direction_to_empty(self):
+        args = full_auto.build_arg_parser().parse_args(
+            [
+                "--idea",
+                "a lighthouse keeper befriends a ghost",
+                "--style",
+                "melancholy film noir",
+            ],
+        )
+
+        request = full_auto.request_from_args(args)
+
+        self.assertEqual("", request.story_direction)
+
     def test_request_from_args_maps_runner_options(self):
         args = full_auto.build_arg_parser().parse_args(
             [
