@@ -29,6 +29,9 @@ from feverslop.application.generate_render_plan import (
 )
 from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
+from feverslop.application.story_plan_service import StoryPlanService
+from feverslop.prompting.story_plan_modules import StoryPlanPromptModules
+from feverslop.prompting.story_plan_service_adapter import StoryPlanServiceAdapter
 from feverslop.application.render_plan_pipeline import RenderPlanPipeline
 from feverslop.application.scene_timeline_pipeline import SceneTimelinePipeline
 from feverslop.config.app_config import AppConfig
@@ -80,6 +83,9 @@ def _common_pipeline_services():
             global_library_factory=lambda path: GlobalLibraryAdapter(path),
             intent_review_factory=DspySemanticIntentReviewer,
             intent_extractor_factory=DspySemanticIntentExtractor,
+            story_plan_service_factory=lambda llm: StoryPlanService(
+                prompt_modules=StoryPlanServiceAdapter(StoryPlanPromptModules(llm))
+            ),
         ),
         H3PromptPipeline(
             llm_factory=_build_llm,

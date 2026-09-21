@@ -427,6 +427,7 @@ class ProjectConfig:
     vocal_detection: VocalDetectionConfig = field(default_factory=VocalDetectionConfig)
 
     story_idea: str = ""
+    story_direction: str = ""
     style: str = ""
     environment_style: str = ""
     music_style: str = ""
@@ -679,6 +680,7 @@ class ProjectConfig:
             ),
 
             story_idea=raw.get("story_idea", ""),
+            story_direction=str(raw.get("story_direction", "") or "").strip(),
             style=raw.get("style", ""),
             environment_style=raw.get("environment_style", ""),
             music_style=raw.get("music_style", ""),

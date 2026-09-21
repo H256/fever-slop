@@ -121,6 +121,8 @@ def _run_main_pipeline_stage(state: PipelineRunState) -> None:
             skip_whisper=getattr(state.args, "skip_whisper", False),
             skip_beat_analysis=getattr(state.args, "skip_beat_analysis", False),
             resume=bool(getattr(state.args, "resume", False)),
+            story_direction=str(getattr(state.args, "story_direction", "") or ""),
+            story_plan_approve=bool(getattr(state.args, "story_plan_approve", False)),
         ),
         console=console,
         resolution=resolution,

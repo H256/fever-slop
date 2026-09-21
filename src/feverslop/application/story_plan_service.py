@@ -1049,6 +1049,7 @@ def compute_source_fingerprint(
     sections: Sequence[Mapping[str, Any]],
     segments: Sequence[Mapping[str, Any]],
     characters: Sequence[Mapping[str, Any]],
+    creative_direction: str = "",
 ) -> str:
     """Deterministic sha256 fingerprint of the planning inputs."""
     canonical = {
@@ -1059,6 +1060,7 @@ def compute_source_fingerprint(
         "sections": [dict(section) for section in sections],
         "segments": [dict(segment) for segment in segments],
         "characters": [dict(character) for character in characters],
+        "creative_direction": creative_direction,
     }
     encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()

@@ -68,6 +68,7 @@ def request_from_args(args: argparse.Namespace) -> FullAutoRequest:
         idea=args.idea,
         style=args.style,
         music_style=args.music_style,
+        story_direction=str(args.story_direction or ""),
         cast_idea=args.cast_idea,
         cast_mode=args.cast_mode,
         cast_target_size=args.cast_size,
