@@ -1984,6 +1984,102 @@ class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
         self.assertEqual(["a1"], payload["CLOSED_VOCABULARY"]["actor_ids"])
         self.assertEqual(["m1"], payload["CLOSED_VOCABULARY"]["milestones"])
 
+    def test_narrative_constraints_block_is_derived(self):
+        from feverslop.prompting.concept_prompt_batcher import _narrative_constraints
+        contract = {
+            "one_shot_milestones": ["m1", "m2"],
+            "terminal_states": {
+                "a1": {
+                    "milestone": "m1",
+                    "state": "ascended",
+                    "reset_event": "return_rite",
+                },
+            },
+        }
+        constraints = _narrative_constraints(contract)
+        self.assertEqual(["m1", "m2"], constraints["one_shot_milestones"])
+        self.assertEqual(
+            {
+                "a1": {
+                    "milestone": "m1",
+                    "state": "ascended",
+                    "reset_event": "return_rite",
+                },
+            },
+            constraints["terminal_states"],
+        )
+
+    def test_narrative_constraints_empty_contract_returns_empty(self):
+        from feverslop.prompting.concept_prompt_batcher import _narrative_constraints
+        self.assertEqual({}, _narrative_constraints({}))
+
+    def test_narrative_constraints_present_in_batch_payload(self):
+        modules = FakeConceptModules([{"s1": "concept"}, "summary"])
+        ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=1).create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": "s1"}],
+            story_idea="A story idea.",
+            global_context={
+                "actors": [{"id": "a1"}],
+                "narrative_contract": {
+                    "milestone_order": ["m1", "m2"],
+                    "one_shot_milestones": ["m1"],
+                    "terminal_states": {
+                        "a1": {
+                            "milestone": "m2",
+                            "state": "ascended",
+                            "reset_event": "return_rite",
+                        },
+                    },
+                },
+            },
+        )
+        payload = next(call[1] for call in modules.calls if call[0] == "concepts")
+        self.assertEqual(["m1"], payload["NARRATIVE_CONSTRAINTS"]["one_shot_milestones"])
+        self.assertEqual(
+            "m2",
+            payload["NARRATIVE_CONSTRAINTS"]["terminal_states"]["a1"]["milestone"],
+        )
+
+    def test_narrative_constraints_absent_without_contract(self):
+        modules = FakeConceptModules([{"s1": "concept"}, "summary"])
+        ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=1).create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": "s1"}],
+            story_idea="A story idea.",
+            global_context={"actors": [{"id": "a1"}]},
+        )
+        payload = next(call[1] for call in modules.calls if call[0] == "concepts")
+        self.assertNotIn("NARRATIVE_CONSTRAINTS", payload)
+
+    def test_derive_fix_instructions_one_shot_milestone(self):
+        from feverslop.prompting.concept_prompt_batcher import _derive_fix_instructions
+        reasons = [
+            "milestone 'drink_silver_water' repeats segment_031 without "
+            "reset_events authorization",
+        ]
+        instructions = _derive_fix_instructions(reasons)
+        self.assertEqual(1, len(instructions))
+        self.assertIn("drink_silver_water", instructions[0])
+        self.assertIn("reset_events", instructions[0])
+
+    def test_derive_fix_instructions_terminal_state(self):
+        from feverslop.prompting.concept_prompt_batcher import _derive_fix_instructions
+        reasons = [
+            "terminal milestone 'transfiguration_and_ascension' requires "
+            "explicit cast state 'ascended_soul_in_a_shaft_of_light' for "
+            "actor 'ravena' (source: narrative_contract)",
+        ]
+        instructions = _derive_fix_instructions(reasons)
+        self.assertEqual(1, len(instructions))
+        self.assertIn("ascended_soul_in_a_shaft_of_light", instructions[0])
+        self.assertIn("ravena", instructions[0])
+
+    def test_derive_fix_instructions_fallback(self):
+        from feverslop.prompting.concept_prompt_batcher import _derive_fix_instructions
+        reasons = ["some unknown reason"]
+        instructions = _derive_fix_instructions(reasons)
+        self.assertEqual(1, len(instructions))
+        self.assertIn("some unknown reason", instructions[0])
+
 
 if __name__ == "__main__":
     unittest.main()

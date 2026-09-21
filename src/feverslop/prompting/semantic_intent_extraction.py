@@ -29,6 +29,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from feverslop.domain.semantic_intent import (
+    CONSTRAINT_KINDS,
     IntentConstraint,
     IntentEntity,
     IntentLedger,
@@ -305,10 +306,17 @@ def _build_constraint(
     if constraint_id in used_ids:
         constraint_id = _next_id(constraint_id, used_ids)
     used_ids.add(constraint_id)
+    kind = str(raw.get("kind") or "identity").strip() or "identity"
+    if kind not in CONSTRAINT_KINDS:
+        warnings.append(
+            f"constraint {index} kind {kind!r} not in {sorted(CONSTRAINT_KINDS)}; "
+            "defaulted to identity"
+        )
+        kind = "identity"
     return IntentConstraint(
         id=constraint_id,
         entity_id=entity_id,
-        kind=str(raw.get("kind") or "identity").strip() or "identity",
+        kind=kind,
         statement=statement,
         status=str(raw.get("status") or "required").strip() or "required",
         provenance=_build_provenance(raw.get("provenance")),

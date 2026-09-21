@@ -107,6 +107,173 @@ def _closed_vocabulary(
     return vocab
 
 
+def _narrative_constraints(contract: dict[str, Any]) -> dict[str, Any]:
+    """Explicit one-shot and terminal-state constraints for the model.
+
+    The closed vocabulary tells the model which milestones exist; this block
+    tells it which are one-shot (must not repeat without a reset_events
+    authorization) and which terminal milestones require an explicit cast
+    state.  Only present when the contract actually configures these
+    constraints.
+    """
+    constraints: dict[str, Any] = {}
+    one_shot = [
+        str(_normalize_semantic_value(item))
+        for item in contract.get("one_shot_milestones") or ()
+        if str(_normalize_semantic_value(item))
+    ]
+    if one_shot:
+        constraints["one_shot_milestones"] = one_shot[:_VOCAB_MAX_PER_FIELD]
+    terminal_states = contract.get("terminal_states") or {}
+    if isinstance(terminal_states, dict) and terminal_states:
+        normalized: dict[str, Any] = {}
+        for actor, rule in terminal_states.items():
+            if not isinstance(rule, dict):
+                continue
+            normalized[str(_normalize_semantic_value(actor))] = {
+                "milestone": str(_normalize_semantic_value(rule.get("milestone"))),
+                "state": str(_normalize_semantic_value(rule.get("state"))),
+                "reset_event": str(_normalize_semantic_value(rule.get("reset_event"))),
+            }
+        if normalized:
+            constraints["terminal_states"] = dict(
+                list(normalized.items())[:_VOCAB_MAX_PER_FIELD]
+            )
+    return constraints
+
+
+def _derive_fix_instructions(reasons: list[str]) -> list[str]:
+    """Derive concrete, actionable fix instructions from validation reasons.
+
+    The raw reason text names the offending value and the colliding scene,
+    but the repair model still has to infer the correction.  These
+    instructions state the exact field change or reset_events authorization
+    that resolves each reason, so a single repair pass converges instead of
+    re-emitting the same value.
+    """
+    instructions: list[str] = []
+    for reason in reasons:
+        match = re.match(
+            r"milestone '([^']+)' repeats (\S+) without reset_events authorization",
+            reason,
+        )
+        if match:
+            milestone, prior = match.groups()
+            instructions.append(
+                f"Remove milestone '{milestone}' from milestones (one-shot, "
+                f"already used in {prior}), or add '{milestone}' to "
+                f"reset_events."
+            )
+            continue
+        match = re.match(
+            r"prop '([^']+)' state '([^']+)' regresses from '([^']+)' in "
+            r"(\S+) without reset_events authorization",
+            reason,
+        )
+        if match:
+            prop, state, previous, prior = match.groups()
+            instructions.append(
+                f"Set props['{prop}'] to a state at or after '{previous}' "
+                f"(it was '{previous}' in {prior}), or add '{prop}' to "
+                f"reset_events."
+            )
+            continue
+        match = re.match(
+            r"milestone '([^']+)' reverses current milestone '([^']+)'",
+            reason,
+        )
+        if match:
+            milestone, previous = match.groups()
+            instructions.append(
+                f"Remove milestone '{milestone}' (reverses '{previous}'); "
+                f"use a milestone at or after '{previous}'."
+            )
+            continue
+        match = re.match(
+            r"milestone '([^']+)' observed before required predecessor "
+            r"'([^']+)'",
+            reason,
+        )
+        if match:
+            milestone, predecessor = match.groups()
+            instructions.append(
+                f"Remove milestone '{milestone}' (skips required predecessor "
+                f"'{predecessor}'); resolve '{predecessor}' in an earlier "
+                f"scene."
+            )
+            continue
+        match = re.match(
+            r"location '([^']+)' reverses current location '([^']+)'",
+            reason,
+        )
+        if match:
+            current, previous = match.groups()
+            instructions.append(
+                f"Set location to a location at or after '{previous}' "
+                f"(it was '{previous}'), or name a chronology exception in "
+                f"causal_events."
+            )
+            continue
+        match = re.match(
+            r"terminal milestone '([^']+)' requires explicit cast state "
+            r"'([^']+)' for actor '([^']+)'",
+            reason,
+        )
+        if match:
+            milestone, state, actor = match.groups()
+            instructions.append(
+                f"Set cast_states['{actor}'] to '{state}' (terminal "
+                f"milestone '{milestone}' requires it)."
+            )
+            continue
+        match = re.match(
+            r"(?:terminal milestone '([^']+)'|actor '([^']+)') requires "
+            r"terminal state '([^']+)' from (\S+); observed '([^']+)' "
+            r"without causal event '([^']+)'",
+            reason,
+        )
+        if match:
+            required_state = match.group(3)
+            observed = match.group(5)
+            reset_event = match.group(6)
+            instructions.append(
+                f"Set the actor's cast state to '{required_state}', or add "
+                f"causal event '{reset_event}' to authorize observed state "
+                f"'{observed}'."
+            )
+            continue
+        match = re.match(
+            r"(\S+)\.incoming\.([^:]+): '([^']+)' is incompatible with "
+            r"continuous (\S+) outgoing state '([^']+)'",
+            reason,
+        )
+        if match:
+            field = match.group(2)
+            before = match.group(5)
+            instructions.append(
+                f"Set incoming.{field} to '{before}' (must match the "
+                f"predecessor's continuous outgoing state), or name the "
+                f"change in transition_events."
+            )
+            continue
+        match = re.match(
+            r"(\S+)\.incoming\.([^:]+)\.([^:]+): '([^']+)' is incompatible "
+            r"with (\S+) outgoing state '([^']+)'",
+            reason,
+        )
+        if match:
+            field, key = match.group(2), match.group(3)
+            before = match.group(6)
+            instructions.append(
+                f"Set incoming.{field}.{key} to '{before}' (must match the "
+                f"predecessor's outgoing state), or name the change in "
+                f"transition_events."
+            )
+            continue
+        instructions.append(f"Fix: {reason}")
+    return instructions
+
+
 def _ordered_contract_ids(contract: dict[str, Any], key: str) -> list[str]:
     return [item_id for item_id, _source in _ordered_contract_entries(contract, key)]
 
@@ -433,9 +600,16 @@ class ConceptPromptBatcher:
                 payload["BOUNDARY_CONTEXT"] = {first_segment_id: anchor}
         # Constrain the output to a closed vocabulary derived from the narrative
         # contract and structured ids so the model picks instead of inventing.
-        vocabulary = _closed_vocabulary(global_context, _narrative_contract(global_context))
+        contract = _narrative_contract(global_context)
+        vocabulary = _closed_vocabulary(global_context, contract)
         if vocabulary:
             payload["CLOSED_VOCABULARY"] = vocabulary
+        # Explicit one-shot and terminal-state constraints so the model knows
+        # which milestones must not repeat and which require an explicit cast
+        # state, instead of discovering them only through repair.
+        constraints = _narrative_constraints(contract)
+        if constraints:
+            payload["NARRATIVE_CONSTRAINTS"] = constraints
         # Guard the request budget: front-loaded context must not push the
         # request toward the ~100k-token model limit.
         estimated = _estimate_request_tokens(payload)
@@ -654,6 +828,12 @@ class ConceptPromptBatcher:
                     excluded=target_ids,
                 ),
             }
+            # Explicit one-shot and terminal-state constraints so the repair
+            # model knows which milestones must not repeat and which require
+            # an explicit cast state.
+            constraints = _narrative_constraints(_narrative_contract(global_context))
+            if constraints:
+                payload["NARRATIVE_CONSTRAINTS"] = constraints
             response = self.prompt_modules.repair_concepts(
                 payload,
                 timeout=self.request_timeout_seconds,
@@ -738,6 +918,7 @@ class ConceptPromptBatcher:
                 finding = {
                     "segment_id": segment_id,
                     "reason": "; ".join(reasons),
+                    "fix_instructions": _derive_fix_instructions(reasons),
                     "current_concept": value,
                 }
                 if prior_segment_id:
