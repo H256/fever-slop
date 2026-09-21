@@ -281,6 +281,134 @@ def _derive_fix_instructions(reasons: list[str]) -> list[str]:
     return instructions
 
 
+def _sequence_aware_repair_ids(
+    missing: list[str],
+    invalid: list[dict[str, Any]],
+    expected_ids: list[str],
+) -> list[str]:
+    """Expand the repair set to the smallest contiguous sequence window.
+
+    When a semantic conflict names a prior segment (a one-shot milestone
+    repeated, a prop regression, a chronology violation), the affected
+    sequence spans from the cited predecessor through the offending scene.
+    Repairing only the two endpoints leaves the intervening scenes
+    inconsistent.  This helper expands the repair set to include every
+    segment between the minimum and maximum affected ID, so the repair
+    model sees the full sequence and can reallocate preparation,
+    irreversible event, completion, and aftermath coherently.
+
+    The cited predecessor is only included in the window when it is itself
+    invalid or missing; a valid predecessor anchors the boundary and does
+    not need regeneration.
+    """
+    invalid_ids = {item["segment_id"] for item in invalid}
+    missing_set = set(missing)
+    affected = set(missing)
+    for item in invalid:
+        affected.add(item["segment_id"])
+        prior = item.get("prior_segment_id")
+        if prior and (prior in invalid_ids or prior in missing_set):
+            affected.add(prior)
+    if not affected:
+        return []
+    # Expand to the contiguous window between min and max affected IDs.
+    indices = [expected_ids.index(seg) for seg in affected if seg in expected_ids]
+    if not indices:
+        return sorted(affected, key=expected_ids.index)
+    lo, hi = min(indices), max(indices)
+    window = set(expected_ids[lo:hi + 1])
+    # Include any missing IDs that fall outside the window.
+    window.update(seg for seg in missing if seg not in expected_ids)
+    return sorted(window, key=expected_ids.index)
+
+
+def _sequence_allocation(
+    invalid: list[dict[str, Any]],
+    expected_ids: list[str],
+    contract: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Build a compact sequence allocation for the repair prompt.
+
+    When a one-shot milestone conflict or terminal-state mismatch is
+    detected, the repair model needs to know the expected sequence
+    structure: which scene is the preparation, which is the irreversible
+    event, which is the completion, and which are the aftermath.  This
+    allocation is immutable and given to every repair call in the window.
+    """
+    one_shot = set(
+        str(_normalize_semantic_value(item))
+        for item in contract.get("one_shot_milestones") or ()
+        if str(_normalize_semantic_value(item))
+    )
+    terminal = contract.get("terminal_states") or {}
+    if not isinstance(terminal, dict):
+        terminal = {}
+    # Collect the milestones and terminal states involved in the conflicts.
+    conflicted_milestones: set[str] = set()
+    conflicted_actors: set[str] = set()
+    for item in invalid:
+        reason = item.get("reason", "")
+        for milestone in one_shot:
+            if f"milestone '{milestone}' repeats" in reason:
+                conflicted_milestones.add(milestone)
+        for actor, rule in terminal.items():
+            if not isinstance(rule, dict):
+                continue
+            state = str(_normalize_semantic_value(rule.get("state")))
+            if state and f"requires terminal state '{state}'" in reason:
+                conflicted_actors.add(str(_normalize_semantic_value(actor)))
+    if not conflicted_milestones and not conflicted_actors:
+        return None
+    # Build the allocation: use the same contiguous window as the repair
+    # set, divided into preparation, irreversible event, completion,
+    # and aftermath.
+    window_ids = _sequence_aware_repair_ids(
+        [],
+        invalid,
+        expected_ids,
+    )
+    if not window_ids:
+        return None
+    # The irreversible event is the scene with the one-shot milestone;
+    # completion is the scene with the terminal state; everything before
+    # is preparation, everything after is aftermath.
+    event_index = None
+    completion_index = None
+    for i, seg_id in enumerate(window_ids):
+        item = next(
+            (it for it in invalid if it["segment_id"] == seg_id),
+            None,
+        )
+        if not item:
+            continue
+        reason = item.get("reason", "")
+        if event_index is None and any(
+            f"milestone '{m}' repeats" in reason for m in conflicted_milestones
+        ):
+            event_index = i
+        if completion_index is None and "requires terminal state" in reason:
+            completion_index = i
+    allocation: dict[str, Any] = {
+        "window": window_ids,
+        "preparation": window_ids[:event_index] if event_index is not None else [],
+        "irreversible_event": (
+            [window_ids[event_index]] if event_index is not None else []
+        ),
+        "completion": (
+            [window_ids[completion_index]] if completion_index is not None else []
+        ),
+        "aftermath": (
+            window_ids[completion_index + 1:] if completion_index is not None else []
+        ),
+    }
+    if conflicted_milestones:
+        allocation["one_shot_milestones"] = sorted(conflicted_milestones)
+    if conflicted_actors:
+        allocation["terminal_actors"] = sorted(conflicted_actors)
+    # Remove empty lists to keep the payload compact.
+    return {k: v for k, v in allocation.items() if v}
+
+
 def _ordered_contract_ids(contract: dict[str, Any], key: str) -> list[str]:
     return [item_id for item_id, _source in _ordered_contract_entries(contract, key)]
 
@@ -348,9 +476,15 @@ class ConceptPromptBatcher:
         request_timeout_seconds: float | None = None,
         progress_callback: Callable[[str], None] | None = None,
         prompt_modules: MusicVideoPromptModules | None = None,
+        semantic_enforcement: str = "warn",
     ):
         if batch_size < 1:
             raise ValueError("batch_size must be >= 1")
+        if semantic_enforcement not in ("warn", "block"):
+            raise ValueError(
+                f"semantic_enforcement must be 'warn' or 'block', "
+                f"got {semantic_enforcement!r}"
+            )
 
         self.llm = llm
         self.batch_size = batch_size
@@ -358,6 +492,7 @@ class ConceptPromptBatcher:
         self.request_timeout_seconds = request_timeout_seconds
         self.progress_callback = progress_callback
         self.prompt_modules = prompt_modules or MusicVideoPromptModules(llm)
+        self.semantic_enforcement = semantic_enforcement
         self._checkpoint_path: Path | None = None
         self._checkpoint_store: ArtifactStore | None = None
 
@@ -662,9 +797,10 @@ class ConceptPromptBatcher:
             previous_concepts=previous_accepted_concepts,
             expected_ids=expected_ids,
         )
-        repair_ids = sorted(
-            dict.fromkeys(missing + [item["segment_id"] for item in invalid]),
-            key=expected_ids.index,
+        repair_ids = _sequence_aware_repair_ids(
+            missing,
+            invalid,
+            expected_ids,
         )
 
         if not repair_ids:
@@ -762,8 +898,25 @@ class ConceptPromptBatcher:
                 f"{item['segment_id']}: {item['reason']}"
                 for item in remaining_invalid
             )
-            raise ValueError(
-                f"Concept semantic validation failed after repair: {details}"
+            if self.semantic_enforcement == "block":
+                raise ValueError(
+                    f"Concept semantic validation failed after repair: {details}"
+                )
+            # Warn mode: preserve structurally valid concepts, persist
+            # unresolved diagnostics, emit a visible warning, and continue.
+            self._report(
+                f"[yellow]Warning: {len(remaining_invalid)} semantic "
+                f"validation issue(s) remain after repair; continuing with "
+                f"unresolved diagnostics. "
+                f"Segments: {', '.join(item['segment_id'] for item in remaining_invalid)}. "
+                f"Details: {details}[/yellow]",
+                progress_callback,
+            )
+            return self._annotate_semantic_validation(
+                ordered,
+                previous_concepts=previous_accepted_concepts,
+                contract=_narrative_contract(global_context),
+                unresolved=remaining_invalid,
             )
         return self._annotate_semantic_validation(
             ordered,
@@ -843,6 +996,17 @@ class ConceptPromptBatcher:
             constraints = _narrative_constraints(_narrative_contract(global_context))
             if constraints:
                 payload["NARRATIVE_CONSTRAINTS"] = constraints
+            # Sequence allocation: when a one-shot or terminal-state conflict
+            # is detected, the repair model needs the expected sequence
+            # structure (preparation, irreversible event, completion,
+            # aftermath) to reallocate the window coherently.
+            allocation = _sequence_allocation(
+                invalid_items,
+                expected_ids,
+                _narrative_contract(global_context),
+            )
+            if allocation:
+                payload["SEQUENCE_ALLOCATION"] = allocation
             response = self.prompt_modules.repair_concepts(
                 payload,
                 timeout=self.request_timeout_seconds,
@@ -955,8 +1119,16 @@ class ConceptPromptBatcher:
         *,
         previous_concepts: dict | None = None,
         contract: dict[str, Any] | None = None,
+        unresolved: list[dict[str, Any]] | None = None,
     ) -> dict:
         accepted = dict(previous_concepts or {})
+        unresolved_ids = {
+            item["segment_id"] for item in (unresolved or [])
+        }
+        unresolved_details = {
+            item["segment_id"]: item.get("reason", "")
+            for item in (unresolved or [])
+        }
         annotated = {}
         for segment_id, raw_value in result.items():
             if not isinstance(raw_value, dict) or not isinstance(raw_value.get("narrative"), dict):
@@ -975,14 +1147,18 @@ class ConceptPromptBatcher:
             authorized = bool(reprise_of and repeated) and all(
                 milestone in reset_events for milestone in repeated
             )
+            is_unresolved = segment_id in unresolved_ids
             value["semantic_validation"] = {
-                "outcome": "accepted",
+                "outcome": "warning" if is_unresolved else "accepted",
                 "scene_id": segment_id,
                 "story_beat": _normalize_semantic_value(narrative.get("story_beat")),
                 "state_signature": _semantic_signature(narrative),
                 "authorized_reprise": authorized,
                 "authorized_reset_events": sorted(set(repeated) & set(reset_events)),
                 "reprise_of": reprise_of if authorized else None,
+                "unresolved_diagnostic": (
+                    unresolved_details.get(segment_id) if is_unresolved else None
+                ),
                 "chronology": _chronology_evidence(
                     segment_id,
                     narrative,

@@ -187,7 +187,8 @@ class SemanticIntentRepairTests(unittest.TestCase):
         self.assertEqual(sorted(e.id for e in result.ledger.entities), ["band", "statue"])
 
     def test_omitted_finding_is_never_silently_invented(self):
-        # Acceptance: omitted records are flagged, not invented.
+        # Acceptance: omitted records without source evidence are flagged,
+        # not invented.
         findings = [IntentFinding(id="f1", kind="omitted", description="missing")]
         result = repair_ledger(_sample_ledger(), findings)
         self.assertEqual(result.applied, [])
@@ -195,6 +196,52 @@ class SemanticIntentRepairTests(unittest.TestCase):
         # No new entity/constraint was invented.
         self.assertEqual(len(result.ledger.entities), 2)
         self.assertEqual(len(result.ledger.constraints), 1)
+
+    def test_omitted_finding_with_source_evidence_adds_typed_proposal(self):
+        # Acceptance: source-backed omitted constraints are added as typed
+        # proposed additions with provenance.
+        findings = [
+            IntentFinding(
+                id="f1",
+                kind="omitted",
+                entity_id="band",
+                description="The band must play in the grotto",
+                source_evidence="The band plays in the fountain grotto.",
+            ),
+        ]
+        result = repair_ledger(_sample_ledger(), findings)
+        self.assertEqual(result.applied, ["f1"])
+        self.assertEqual(result.skipped, [])
+        # A new constraint was added.
+        self.assertEqual(len(result.ledger.constraints), 2)
+        added = [c for c in result.ledger.constraints if c.id != "c1"]
+        self.assertEqual(len(added), 1)
+        self.assertEqual(added[0].entity_id, "band")
+        self.assertEqual(added[0].statement, "The band must play in the grotto")
+        self.assertIsNotNone(added[0].provenance)
+        self.assertEqual(added[0].provenance.origin, "explicit")
+        self.assertEqual(
+            added[0].provenance.source_text,
+            "The band plays in the fountain grotto.",
+        )
+
+    def test_omitted_finding_with_unknown_entity_is_skipped(self):
+        # An omitted finding with source evidence but an unknown entity is
+        # skipped with a warning.
+        findings = [
+            IntentFinding(
+                id="f1",
+                kind="omitted",
+                record_id="c1",
+                entity_id="unknown_entity",
+                description="missing",
+                source_evidence="some source",
+            ),
+        ]
+        result = repair_ledger(_sample_ledger(), findings)
+        self.assertEqual(result.applied, [])
+        self.assertEqual(result.skipped, ["f1"])
+        self.assertTrue(result.warnings)
 
     def test_repair_of_unknown_record_is_skipped_not_fatal(self):
         findings = [IntentFinding(id="f1", kind="invented", record_id="nope", description="x")]
@@ -491,7 +538,7 @@ class TestPipelineWiring(unittest.TestCase):
 
         self.assertTrue(any("1 applied, 1 unresolved" in message for message in reporter.messages))
         self.assertEqual(
-            [("Semantic intent review", "finding omitted-band skipped: omitted records are not invented")],
+            [("Semantic intent review", "finding omitted-band unresolved: omitted record without source evidence is not invented")],
             reporter.warnings,
         )
 

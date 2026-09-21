@@ -316,6 +316,40 @@ def repair_ledger(
     drop_ids: set[str] = set()
     rebind: dict[str, str] = {}
     for finding in findings:
+        if finding.kind == "omitted":
+            if finding.source_evidence.strip():
+                # Source-backed omitted constraint: add a typed proposed
+                # addition with provenance from the original story.
+                entity_id = finding.entity_id
+                if not entity_id or entity_id not in entity_ids:
+                    skipped.append(finding.id)
+                    warnings.append(
+                        f"finding {finding.id} skipped: omitted record has "
+                        f"unknown entity {entity_id or '(none)'}"
+                    )
+                    continue
+                constraint_id = _next_constraint_id(payload)
+                new_constraint: dict[str, Any] = {
+                    "id": constraint_id,
+                    "entity_id": entity_id,
+                    "kind": "scene_obligation",
+                    "statement": finding.description,
+                    "status": "required",
+                    "provenance": {
+                        "origin": "explicit",
+                        "source_text": finding.source_evidence,
+                    },
+                }
+                payload["constraints"].append(new_constraint)
+                applied.append(finding.id)
+            else:
+                # No source evidence: retain an explicit unresolved warning.
+                skipped.append(finding.id)
+                warnings.append(
+                    f"finding {finding.id} unresolved: omitted record without "
+                    f"source evidence is not invented"
+                )
+            continue
         record_id = finding.record_id
         if not record_id:
             skipped.append(finding.id)
@@ -344,9 +378,6 @@ def repair_ledger(
                 continue
             rebind[record_id] = target
             applied.append(finding.id)
-        else:  # omitted
-            skipped.append(finding.id)
-            warnings.append(f"finding {finding.id} skipped: omitted records are not invented")
 
     if drop_ids:
         payload["entities"] = [e for e in payload["entities"] if e["id"] not in drop_ids]
@@ -398,6 +429,19 @@ def _record_exists(payload: dict[str, Any], record_id: str) -> bool:
             if record.get("id") == record_id:
                 return True
     return False
+
+
+def _next_constraint_id(payload: dict[str, Any]) -> str:
+    """Generate a unique constraint ID that doesn't collide with existing IDs."""
+    existing = {
+        record.get("id", "")
+        for key in ("entities", "relations", "constraints")
+        for record in payload.get(key, [])
+    }
+    counter = 1
+    while f"constraint_{counter}" in existing:
+        counter += 1
+    return f"constraint_{counter}"
 
 
 def review_and_repair(
