@@ -46,14 +46,6 @@ def get_config_value(config: Any, name: str, default: Any = None) -> Any:
     return getattr(config, name, default)
 
 
-def _create_subject_and_locations(prompt_pipeline: Any, *, story_idea: str, notes: str, cast_idea: str) -> Any:
-    method = prompt_pipeline.create_subject_and_locations
-    kwargs = {"story_idea": story_idea, "notes": notes}
-    if "cast_idea" in inspect.signature(method).parameters:
-        kwargs["cast_idea"] = cast_idea
-    return method(**kwargs)
-
-
 def _report_subject_staging_retry(
     reporter: Any,
     *,
@@ -1180,8 +1172,8 @@ class PromptGenerationPipeline:
             and not any(_actor_needs_llm_enrichment(actor) for actor in notes["configured_actor_items"])
             else run_spinner(
                 "Generating subject and locations fallback...",
-                lambda: _create_subject_and_locations(
-                    prompt_pipeline,
+                lambda: call_with_supported_kwargs(
+                    prompt_pipeline.create_subject_and_locations,
                     story_idea=story_idea,
                     notes=notes["subject_location_notes"],
                     cast_idea=config_values["cast_idea"],
