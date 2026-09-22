@@ -54,6 +54,16 @@ __all__ = [
 
 STORY_PLAN_PRODUCER = "story-plan-service/v1"
 
+
+def _model_bool(value: Any) -> bool:
+    """Interpret JSON-like scalar booleans without Python's truthy-string trap."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "1", "yes"}
+    return False
+
+
 _FORBIDDEN_RENDER_KEYS = frozenset(
     {
         "camera",
@@ -734,7 +744,7 @@ class StoryPlanService:
                 "prop_ids": list(item.get("prop_ids", [])),
                 "vocal_presentation": item.get("vocal_presentation", "offscreen"),
                 "visual_direction": item.get("visual_direction", ""),
-                "exclusive": bool(item.get("exclusive", False)),
+                "exclusive": _model_bool(item.get("exclusive", False)),
                 "beat_id": item.get("beat_id"),
                 "objective": item.get("objective", ""),
                 "emotional_turn": item.get("emotional_turn", ""),
@@ -1284,7 +1294,7 @@ class StoryPlanService:
                             in canonical_character_ids
                         )
                     ],
-                    "exclusive": bool(acting_brief.get("exclusive", False)),
+                    "exclusive": _model_bool(acting_brief.get("exclusive", False)),
                     "audio_ref": {"segment_id": target, "fingerprint": fingerprint},
                 }
             if bound_milestone_id:

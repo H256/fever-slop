@@ -774,6 +774,37 @@ class StoryPlanServiceTests(unittest.TestCase):
         self.assertEqual("Guarded to hopeful.", result.plan.segments[0].emotional_turn)
         self.assertEqual("guarded", result.plan.segments[0].actor_states[0].state)
 
+    def test_string_false_exclusive_from_dspy_does_not_invalidate_shared_beat(self) -> None:
+        """Untyped DSPy mappings must not treat the non-empty string ``false`` as true."""
+        modules = FakePromptModules(
+            allocation={
+                "beats": [
+                    {"phase": "opening", "description": "The journey begins."},
+                    {"phase": "resolution", "description": "The journey resolves."},
+                ],
+            },
+            acting={
+                "briefs": [
+                    {
+                        "target": target,
+                        "vocal_presentation": "offscreen",
+                        "exclusive": "false",
+                        "objective": "Continue the journey.",
+                        "emotional_turn": "Steady to resolved.",
+                        "actor_states": [{"character_id": "char-1", "state": "steady"}],
+                    }
+                    for target in ("seg-1", "seg-2", "seg-3")
+                ],
+            },
+        )
+
+        result = StoryPlanService(prompt_modules=modules).build_plan(make_request_3seg())
+
+        self.assertEqual(["beat-001", "beat-001", "beat-002"], [
+            brief.beat_id for brief in result.plan.segments
+        ])
+        self.assertFalse(any(brief.exclusive for brief in result.plan.segments))
+
     def test_story_plan_bindings_override_creative_location_choices(self) -> None:
         modules = FakePromptModules(
             allocation={
