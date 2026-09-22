@@ -540,13 +540,15 @@ class PromptGenerationPipeline:
         factory = self.story_plan_service_factory
         story_planning = getattr(getattr(app_config, "llm", None), "story_planning", None)
         acting_batch_size = int(getattr(story_planning, "acting_batch_size", 8))
-        # Preserve compatibility with injected one-argument test factories,
-        # while the production factory receives the user-configured bound.
+        # Preserve compatibility with injected one-argument factories, while
+        # giving the production service its configured bound and live reporter.
         parameters = inspect.signature(factory).parameters
+        factory_kwargs: dict[str, Any] = {}
         if "acting_batch_size" in parameters:
-            service = factory(llm, acting_batch_size=acting_batch_size)
-        else:
-            service = factory(llm)
+            factory_kwargs["acting_batch_size"] = acting_batch_size
+        if "reporter" in parameters:
+            factory_kwargs["reporter"] = reporter
+        service = factory(llm, **factory_kwargs)
 
         global_context = global_context or {}
         effective_direction = (

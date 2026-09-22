@@ -136,6 +136,9 @@ class _RecordingReporter:
     def warning(self, *args: Any, **kwargs: Any) -> None:
         self.messages.append(str(args[0]) if args else "warning")
 
+    def run_progress(self, _description: str, func: Any) -> Any:
+        return func()
+
 
 class _FactoryFakeClient:
     base_url = "http://fake.local/v1"
@@ -390,6 +393,37 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             self.assertFalse(stopped)
             self.assertIn("continuing", " ".join(reporter.messages).lower())
             self.assertEqual("Story plan diagnostics", reporter.tables[0][0])
+
+    def test_story_planning_factory_receives_live_pipeline_reporter(self) -> None:
+        """The production boundary must not replace Rich progress with NullReporter."""
+        with tempfile.TemporaryDirectory() as tmp:
+            captured: dict[str, Any] = {}
+
+            class Service:
+                def build_plan(self, _request: Any) -> Any:
+                    raise StoryPlanError("stop after factory wiring assertion")
+
+            def factory(
+                _llm: Any,
+                *,
+                acting_batch_size: int,
+                reporter: Any,
+            ) -> Service:
+                captured["acting_batch_size"] = acting_batch_size
+                captured["reporter"] = reporter
+                return Service()
+
+            pipeline = _build_pipeline(story_plan_service_factory=factory)
+            reporter = _RecordingReporter()
+            pipeline._resolve_story_plan(
+                config=_make_config(), app_config=_make_app_config(acting_batch_size=3),
+                request=_make_request(), resume=False, stage1_segments=_stage1_segments(),
+                paths=_make_paths(Path(tmp)), reporter=reporter, artifact_store=None,
+                log_file=lambda *_args: None,
+            )
+
+            self.assertEqual(captured["acting_batch_size"], 3)
+            self.assertIs(captured["reporter"], reporter)
     """Wiring tests for the music-video StoryPlan pipeline (issue #1386)."""
 
     def test_resume_accepts_existing_stage1_start_end_schema(self) -> None:
@@ -1013,10 +1047,12 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
         """The production factory must bridge real typed DSPy modules to a plan."""
         factory = getattr(composition, "build_story_plan_service", None)
         self.assertIsNotNone(factory, "composition must expose the production factory")
+        reporter = _RecordingReporter()
 
         service = factory(
             _FactoryFakeLLM(),
             dspy_runtime=_factory_fake_dspy_runtime(),
+            reporter=reporter,
         )
 
         result = service.build_plan(make_request())
@@ -1027,6 +1063,10 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             [brief["target"] for brief in result.acting["briefs"]],
             ["brief-seg-1", "brief-seg-2"],
         )
+        self.assertIn("Story plan - narrative bible", reporter.messages)
+        self.assertIn("Story plan - story arc", reporter.messages)
+        self.assertIn("Story plan - acting beats", reporter.messages)
+        self.assertEqual("Story arc - model-authored beats", reporter.tables[0][0])
 
 
 if __name__ == "__main__":

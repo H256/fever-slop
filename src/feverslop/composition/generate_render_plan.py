@@ -31,6 +31,7 @@ from feverslop.application.generate_render_plan import (
 from feverslop.application.h3_prompt_pipeline import H3PromptPipeline
 from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
 from feverslop.application.story_plan_service import StoryPlanService
+from feverslop.ports.reporting import Reporter
 from feverslop.prompting.story_plan_modules import StoryPlanPromptModules
 from feverslop.prompting.story_plan_service_adapter import StoryPlanServiceAdapter
 from feverslop.application.render_plan_pipeline import RenderPlanPipeline
@@ -71,6 +72,7 @@ def build_story_plan_service(
     *,
     dspy_runtime: Any | None = None,
     acting_batch_size: int = 8,
+    reporter: Reporter | None = None,
 ) -> StoryPlanService:
     """Build the production StoryPlan service and its typed DSPy boundary."""
     return StoryPlanService(
@@ -78,6 +80,7 @@ def build_story_plan_service(
             StoryPlanPromptModules(llm, dspy_runtime=dspy_runtime)
         ),
         acting_batch_size=acting_batch_size,
+        reporter=reporter,
     )
 
 
