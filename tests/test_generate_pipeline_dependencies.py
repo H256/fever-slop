@@ -501,6 +501,45 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
                 result.global_context["narrative_contract"],
             )
 
+    def test_batched_concepts_run_inside_live_reporter_progress(self):
+        """A slow model batch must keep the Rich console visibly alive."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            llm = object()
+            batcher = FakeConceptBatcher(llm, 2)
+            progress_calls = []
+
+            class Reporter(FakeReporter):
+                def run_progress(self, description, func):
+                    progress_calls.append(description)
+                    return func()
+
+            pipeline = PromptGenerationPipeline(
+                llm_factory=lambda _app_config: llm,
+                prompt_pipeline_factory=lambda _llm: FakePromptPipeline(_llm),
+                concept_batcher_factory=(
+                    lambda _llm, _size, request_timeout_seconds=None, semantic_enforcement=None: batcher
+                ),
+                scene_prompt_builder_factory=lambda _llm: FakeScenePromptBuilder(_llm),
+            )
+            context = _prompt_context(temp, concept_batch_size=2)
+
+            result = pipeline._generate_concept_prompts_batched(
+                config=context.config,
+                llm=llm,
+                app_config=context.app_config,
+                request=context.request,
+                stage1_segments=context.stage1_segments,
+                concept_story_input="story",
+                global_context={"narrative_contract": {}},
+                concept_prompts_json=context.concept_prompts_json,
+                artifact_store=context.artifact_store,
+                reporter=Reporter(),
+            )
+
+            self.assertEqual({"segment_001": "batched concept"}, result)
+            self.assertEqual(["Concept generation - model batches"], progress_calls)
+
     def test_pipeline_enables_concept_checkpoint_on_capable_batcher(self):
         class CheckpointCapableBatcher(FakeConceptBatcher):
             def __init__(self, llm, batch_size, request_timeout_seconds=None):

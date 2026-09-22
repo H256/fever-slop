@@ -858,16 +858,19 @@ class PromptGenerationPipeline:
             f"{len(stage1_segments)} scenes, batches of "
             f"{request.concept_batch_size}[/cyan]",
         )
-        concept_prompts = call_with_supported_kwargs(
-            concept_batcher.create_concept_prompts_batched,
-            stage1_segments=stage1_segments,
-            story_idea=concept_story_input,
-            global_context=global_context,
-            notes=get_steering_value(config, "concepts"),
-            progress_callback=lambda message: reporter.message(
-                f"[cyan]{message}[/cyan]",
+        concept_prompts = reporter.run_progress(
+            "Concept generation - model batches",
+            lambda: call_with_supported_kwargs(
+                concept_batcher.create_concept_prompts_batched,
+                stage1_segments=stage1_segments,
+                story_idea=concept_story_input,
+                global_context=global_context,
+                notes=get_steering_value(config, "concepts"),
+                progress_callback=lambda message: reporter.message(
+                    f"[cyan]{message}[/cyan]",
+                ),
+                segment_briefs=segment_briefs or {},
             ),
-            segment_briefs=segment_briefs or {},
         )
         reporter.message("[green]Concept generation finished.[/green]")
         return concept_prompts
