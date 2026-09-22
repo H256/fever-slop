@@ -27,11 +27,15 @@ class StoryPlanningConfig:
     ``require_approval`` gates a freshly built plan behind an explicit
     ``--story-plan-approve`` before concept generation. ``planner_revision``
     names the planner that produced the plan so a revision change invalidates
-    cached planning state on resume.
+    cached planning state on resume. ``failure_policy`` controls what happens
+    when planning cannot produce a valid plan: ``warn`` (default) records a
+    diagnostic and continues the existing concept pipeline without story-plan
+    briefs; ``block`` keeps the intentional hard-fail behavior.
     """
 
     require_approval: bool = False
     planner_revision: str = PLANNER_REVISION
+    failure_policy: str = "warn"
 
 
 @dataclass
@@ -416,6 +420,13 @@ class AppConfig:
         ).strip()
         if not story_planning_planner_revision:
             raise ValueError("story_planning.planner_revision must be a non-empty string")
+        story_planning_failure_policy = str(
+            story_planning_raw.get("failure_policy", "warn")
+        ).strip().lower()
+        if story_planning_failure_policy not in {"warn", "block"}:
+            raise ValueError(
+                "story_planning.failure_policy must be 'warn' or 'block'"
+            )
         llm_chat_template_kwargs_raw = llm_raw.get("chat_template_kwargs", {})
         if not isinstance(llm_chat_template_kwargs_raw, dict):
             raise ValueError("llm.chat_template_kwargs must be an object")
@@ -493,6 +504,7 @@ class AppConfig:
                 story_planning=StoryPlanningConfig(
                     require_approval=story_planning_require_approval,
                     planner_revision=story_planning_planner_revision,
+                    failure_policy=story_planning_failure_policy,
                 ),
                 chat_template_kwargs=llm_chat_template_kwargs,
                 models=llm_models,

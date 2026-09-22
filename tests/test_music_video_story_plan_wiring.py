@@ -71,12 +71,17 @@ def _make_config(**overrides: Any) -> Any:
     return SimpleNamespace(**defaults)
 
 
-def _make_app_config(require_approval: bool = False, planner_revision: str = PLANNER_REVISION) -> Any:
+def _make_app_config(
+    require_approval: bool = False,
+    planner_revision: str = PLANNER_REVISION,
+    failure_policy: str = "warn",
+) -> Any:
     return SimpleNamespace(
         llm=SimpleNamespace(
             story_planning=SimpleNamespace(
                 require_approval=require_approval,
                 planner_revision=planner_revision,
+                failure_policy=failure_policy,
             ),
         ),
     )
@@ -721,7 +726,9 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
 
             pipeline = _build_pipeline(story_plan_service_factory=factory)
             config = _make_config()
-            app_config = _make_app_config()
+            # This test asserts the hard-stop behavior, which is the block
+            # policy; the default (warn) degrades instead of raising.
+            app_config = _make_app_config(failure_policy="block")
             request_ns = _make_request()
             paths = _make_paths(prompts_dir)
             reporter = _RecordingReporter()
@@ -950,6 +957,68 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             [brief["target"] for brief in result.acting["briefs"]],
             ["brief-seg-1", "brief-seg-2"],
         )
+
+    # -- (f) failure_policy: warn vs block --------------------------------
+
+    def _failing_service(self) -> Any:
+        """A service whose build_plan raises the empty-acting-briefs error."""
+
+        class _FailingService:
+            def build_plan(self, request: Any) -> Any:
+                raise StoryPlanError(
+                    "acting output must contain a non-empty briefs list",
+                    diagnostics=[
+                        {"code": "missing_acting_briefs", "subject_id": "acting"}
+                    ],
+                )
+
+            def write_review_export(self, *args: Any, **kwargs: Any) -> Any:
+                raise AssertionError("write_review_export should not be called")
+
+        return _FailingService()
+
+    def test_failure_policy_warn_continues_without_briefs(self) -> None:
+        """failure_policy=warn (default) degrades to empty briefs instead of
+        aborting the pipeline when the acting job returns no briefs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pipeline = _build_pipeline(
+                story_plan_service_factory=lambda _llm: self._failing_service()
+            )
+            reporter = _RecordingReporter()
+            segment_briefs, gate_stopped = pipeline._resolve_story_plan(
+                config=_make_config(),
+                app_config=_make_app_config(failure_policy="warn"),
+                request=_make_request(),
+                resume=False,
+                stage1_segments=_stage1_segments(),
+                paths=_make_paths(Path(tmp)),
+                reporter=reporter,
+                artifact_store=None,
+                log_file=lambda _name, _path: None,
+            )
+        self.assertFalse(gate_stopped)
+        self.assertEqual(segment_briefs, {})
+        self.assertTrue(any("failure_policy=warn" in m for m in reporter.messages))
+
+    def test_failure_policy_block_raises(self) -> None:
+        """failure_policy=block keeps the intentional hard-fail behavior."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pipeline = _build_pipeline(
+                story_plan_service_factory=lambda _llm: self._failing_service()
+            )
+            reporter = _RecordingReporter()
+            with self.assertRaises(StoryPlanError):
+                pipeline._resolve_story_plan(
+                    config=_make_config(),
+                    app_config=_make_app_config(failure_policy="block"),
+                    request=_make_request(),
+                    resume=False,
+                    stage1_segments=_stage1_segments(),
+                    paths=_make_paths(Path(tmp)),
+                    reporter=reporter,
+                    artifact_store=None,
+                    log_file=lambda _name, _path: None,
+                )
 
 
 if __name__ == "__main__":

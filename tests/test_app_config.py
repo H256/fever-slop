@@ -410,6 +410,38 @@ class AppConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "story_planning must be an object"):
                 AppConfig.load(config_path)
 
+    def test_story_planning_failure_policy_defaults_to_warn(self):
+        from feverslop.config.app_config import AppConfig
+
+        config = AppConfig.load(Path("does-not-exist.json"))
+        self.assertEqual(config.llm.story_planning.failure_policy, "warn")
+
+    def test_loads_story_planning_failure_policy(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                json.dumps({"llm": {"story_planning": {"failure_policy": "block"}}}),
+                encoding="utf-8",
+            )
+            config = AppConfig.load(config_path)
+        self.assertEqual(config.llm.story_planning.failure_policy, "block")
+
+    def test_rejects_invalid_story_planning_failure_policy(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                json.dumps({"llm": {"story_planning": {"failure_policy": "nope"}}}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                ValueError, "failure_policy must be 'warn' or 'block'"
+            ):
+                AppConfig.load(config_path)
+
     def test_loads_llm_api_key_from_adjacent_dotenv(self):
         from feverslop.config.app_config import AppConfig
 

@@ -603,6 +603,13 @@ class PromptGenerationPipeline:
                 PLANNER_REVISION,
             )
         )
+        failure_policy = str(
+            getattr(
+                getattr(app_config.llm, "story_planning", None),
+                "failure_policy",
+                "warn",
+            )
+        ).strip().lower()
 
         reused = False
         if resume and manifest_path.is_file():
@@ -636,7 +643,17 @@ class PromptGenerationPipeline:
                 guide="",
                 terminal_window_seconds=terminal_window_seconds,
             )
-            result = service.build_plan(plan_request)
+            try:
+                result = service.build_plan(plan_request)
+            except StoryPlanError as exc:
+                if failure_policy != "block":
+                    reporter.message(
+                        "[yellow]Story plan build failed "
+                        f"({exc}); continuing without story-plan briefs "
+                        "(failure_policy=warn).[/yellow]"
+                    )
+                    return {}, False
+                raise
             plan = result.plan
 
             if plan.schema_version not in SUPPORTED_SCHEMA_VERSIONS:
