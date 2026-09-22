@@ -228,6 +228,7 @@ class SegmentBrief(BaseModel):
     id: str
     target: str
     beat_id: str | None = None
+    milestone_id: str | None = None
     character_ids: list[str] = Field(default_factory=list)
     location_id: str | None = None
     prop_ids: list[str] = Field(default_factory=list)
