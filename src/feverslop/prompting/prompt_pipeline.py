@@ -111,6 +111,7 @@ class MusicVideoPromptPipeline:
         }
         if segment_briefs:
             payload["SEGMENT_BRIEFS"] = segment_briefs
+            payload["LOCKED_SEGMENT_BINDINGS"] = segment_briefs
         response = self.prompt_modules.concepts(
             payload,
             silent_mode=bool((global_context or {}).get("silent_mode", False)),

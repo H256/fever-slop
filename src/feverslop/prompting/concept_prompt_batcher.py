@@ -628,6 +628,7 @@ class ConceptPromptBatcher:
                 previous_concepts=self._last_concepts(all_results),
                 previous_accepted_concepts=all_results,
                 previous_summary=previous_summary,
+                segment_briefs=segment_briefs,
                 progress_callback=report,
             )
 
@@ -651,6 +652,7 @@ class ConceptPromptBatcher:
             raise ValueError(f"Missing concept prompts after batched generation: {missing}")
 
         self._clear_checkpoint()
+        _apply_locked_segment_bindings(all_results, segment_briefs)
         # Preserve stage1 order in output JSON.
         return {
             seg["segment_id"]: all_results[seg["segment_id"]]
@@ -781,6 +783,7 @@ class ConceptPromptBatcher:
             }
             if briefs:
                 payload["SEGMENT_BRIEFS"] = briefs
+                payload["LOCKED_SEGMENT_BINDINGS"] = briefs
         # Front-load the exact boundary vocabulary so the batch's first scene
         # anchors on verbatim tokens instead of inferred ones (issue #1247).
         # Only present when there is an accepted predecessor to anchor on.
@@ -832,6 +835,7 @@ class ConceptPromptBatcher:
         previous_concepts: dict,
         previous_accepted_concepts: dict,
         previous_summary: str,
+        segment_briefs: dict | None = None,
         progress_callback: Callable[[str], None] | None = None,
     ) -> dict:
         # Drop unexpected keys.
@@ -840,6 +844,7 @@ class ConceptPromptBatcher:
             for key, value in result.items()
             if key in expected_ids
         }
+        _apply_locked_segment_bindings(repaired, segment_briefs)
 
         missing = [segment_id for segment_id in expected_ids if segment_id not in repaired]
         invalid = self._invalid_concepts(
@@ -887,8 +892,10 @@ class ConceptPromptBatcher:
             notes=notes,
             previous_concepts=previous_concepts,
             previous_summary=previous_summary,
+            segment_briefs=segment_briefs,
             progress_callback=progress_callback,
         ))
+        _apply_locked_segment_bindings(repaired, segment_briefs)
 
         ordered = {
             segment_id: repaired[segment_id]
@@ -932,8 +939,10 @@ class ConceptPromptBatcher:
                     **ordered,
                 }),
                 previous_summary=previous_summary,
+                segment_briefs=segment_briefs,
                 progress_callback=progress_callback,
             ))
+            _apply_locked_segment_bindings(repaired, segment_briefs)
             ordered = {
                 segment_id: repaired[segment_id]
                 for segment_id in expected_ids
@@ -990,6 +999,7 @@ class ConceptPromptBatcher:
         notes: str,
         previous_concepts: dict,
         previous_summary: str,
+        segment_briefs: dict | None = None,
         progress_callback: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
         # Repair in small sequential chunks: each call carries a bounded number
@@ -1041,6 +1051,12 @@ class ConceptPromptBatcher:
                     excluded=target_ids,
                 ),
             }
+            if segment_briefs:
+                payload["LOCKED_SEGMENT_BINDINGS"] = {
+                    segment_id: segment_briefs[segment_id]
+                    for segment_id in chunk_ids
+                    if segment_id in segment_briefs
+                }
             # Explicit one-shot and terminal-state constraints so the repair
             # model knows which milestones must not repeat and which require
             # an explicit cast state.
@@ -1422,6 +1438,41 @@ def _narrative(value: Any) -> dict[str, Any]:
         return {}
     narrative = value.get("narrative")
     return narrative if isinstance(narrative, dict) else {}
+
+
+def _apply_locked_segment_bindings(
+    concepts: dict[str, Any], segment_briefs: dict | None,
+) -> None:
+    """Project canonical story-plan bindings over creative model output.
+
+    The concept model owns prose only.  These fields are the serialized
+    narrative allocation and therefore must be corrected deterministically,
+    including after an LLM repair response.
+    """
+    if not segment_briefs:
+        return
+    for segment_id, binding in segment_briefs.items():
+        concept = concepts.get(segment_id)
+        if not isinstance(concept, dict) or not isinstance(binding, dict):
+            continue
+        references = concept.setdefault("references", {})
+        if not isinstance(references, dict):
+            references = {}
+            concept["references"] = references
+        narrative = concept.setdefault("narrative", {})
+        if not isinstance(narrative, dict):
+            narrative = {}
+            concept["narrative"] = narrative
+        if "location_id" in binding:
+            references["location_id"] = binding.get("location_id")
+            if binding.get("location_id"):
+                narrative["location"] = binding["location_id"]
+        if "character_ids" in binding:
+            references["actor_ids"] = list(binding.get("character_ids") or [])
+        if "prop_ids" in binding:
+            narrative["prop_ids"] = list(binding.get("prop_ids") or [])
+        if binding.get("milestone_id"):
+            narrative["milestones"] = [str(binding["milestone_id"])]
 
 
 def _matching_signature_segment(

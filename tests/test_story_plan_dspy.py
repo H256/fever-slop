@@ -65,7 +65,10 @@ def make_request(**overrides: Any) -> StoryPlanRequest:
         guide="story plan guide",
         terminal_window_seconds=45.0,
         story_idea="A singer travels through a haunted mountain to find renewal.",
-        locations=({"id": "cave", "name": "Cave"},),
+        locations=(
+            {"id": "cave", "name": "Cave"},
+            {"id": "well", "name": "Well Grotto"},
+        ),
         props=({"id": "well", "name": "Well"},),
     )
     defaults.update(overrides)
@@ -654,6 +657,53 @@ class StoryPlanServiceTests(unittest.TestCase):
         self.assertEqual([beat.id for beat in result.plan.beats], ["beat-001", "beat-002"])
         self.assertEqual([brief.target for brief in result.plan.segments], ["seg-1", "seg-2"])
         self.assertEqual(result.plan.segments[0].audio_ref.segment_id, "seg-1")
+
+    def test_story_plan_bindings_override_creative_location_choices(self) -> None:
+        modules = FakePromptModules(
+            allocation={
+                "beats": [
+                    {"phase": "opening", "description": "Caves", "location_id": "cave", "character_ids": ["char-1"]},
+                    {"phase": "resolution", "description": "Well", "location_id": "well", "character_ids": ["char-1"]},
+                ],
+                "brief_allocations": [
+                    {"target": "seg-1", "beat_index": 0},
+                    {"target": "seg-2", "beat_index": 1},
+                ],
+            },
+            acting={
+                "briefs": [
+                    {"target": "seg-1", "location_id": "well", "objective": "Move.", "emotional_turn": "fear to resolve", "actor_states": [{"character_id": "char-1", "state": "fearful"}]},
+                    {"target": "seg-2", "location_id": "cave", "objective": "Arrive.", "emotional_turn": "resolve to calm", "actor_states": [{"character_id": "char-1", "state": "calm"}]},
+                ],
+            },
+        )
+        result = StoryPlanService(prompt_modules=modules).build_plan(make_request())
+        self.assertEqual([brief.location_id for brief in result.plan.segments], ["cave", "well"])
+
+    def test_missing_actor_states_are_filled_from_locked_beat_cast(self) -> None:
+        modules = FakePromptModules(
+            allocation={
+                "beats": [
+                    {"phase": "opening", "description": "Caves", "character_ids": ["char-1"]},
+                    {"phase": "resolution", "description": "Well", "character_ids": ["char-1"]},
+                ],
+                "brief_allocations": [
+                    {"target": "seg-1", "beat_index": 0},
+                    {"target": "seg-2", "beat_index": 1},
+                ],
+            },
+            acting={
+                "briefs": [
+                    {"target": "seg-1", "objective": "Move.", "emotional_turn": "fear to resolve"},
+                    {"target": "seg-2", "objective": "Arrive.", "emotional_turn": "resolve to calm", "actor_states": [{"character_id": "char-1", "state": "calm"}]},
+                ],
+            },
+        )
+
+        result = StoryPlanService(prompt_modules=modules).build_plan(make_request())
+
+        first = result.acting["briefs"][0]
+        self.assertEqual(first["actor_states"], [{"character_id": "char-1", "state": "present"}])
 
     def test_valid_plan_skips_repair(self) -> None:
         modules = FakePromptModules()

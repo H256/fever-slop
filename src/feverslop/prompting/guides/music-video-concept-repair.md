@@ -17,3 +17,5 @@ For every item in `MISSING_SEGMENTS`, obey its `type` exactly:
 - `mixed`: Do not describe continuous singing; only represent vocal performance when supported by the supplied segment data.
 
 Never infer singing from the actor role `Vocalist`, the name `Lead Singer`, a microphone, music-video context, previous concepts, or story continuity.
+
+LOCKED_SEGMENT_BINDINGS are authoritative: never change segment_id, beat_id, milestone_id, location_id, character_ids, prop_ids, allowed_events, or forbidden_events. Repair only creative prose and references inside the existing binding.
