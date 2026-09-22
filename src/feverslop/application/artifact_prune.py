@@ -12,12 +12,14 @@ application layer must not import ``feverslop.config``.
 
 from __future__ import annotations
 
+import hashlib
 import json
+from uuid import uuid4
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile
 
 from feverslop.domain.artifact_lifecycle import (
     ArtifactKind,
@@ -134,6 +136,7 @@ def scan_project(project_dir: str | Path, reporter: Reporter | None = None) -> P
         entry_path = path.relative_to(project_dir).as_posix()
         try:
             size = path.stat().st_size
+            content_sha256 = _sha256_file(path)
         except OSError as exc:
             errors.append(f"cannot stat {entry_path}: {exc}")
             continue
@@ -169,6 +172,7 @@ def scan_project(project_dir: str | Path, reporter: Reporter | None = None) -> P
                 "path": entry_path,
                 "class": lifecycle_class_for(kind).value,
                 "size_bytes": size,
+                "sha256": content_sha256,
                 "eligible": eligible,
                 "reasons": list(reasons),
             }
@@ -202,16 +206,20 @@ def create_prune_archive(
     output_zip = resolve_available_zip_path(output_zip)
     output_zip.parent.mkdir(parents=True, exist_ok=True)
     created_at = _now_iso()
-    manifest = build_archive_manifest(project_dir, members, created_at=created_at)
+    archive_members, expected_hashes = _snapshot_members(members)
+    manifest = build_archive_manifest(project_dir, archive_members, created_at=created_at)
+    temporary_zip = output_zip.with_name(f".{output_zip.name}.{uuid4().hex}.tmp")
     try:
-        with ZipFile(output_zip, "w", compression=ZIP_DEFLATED) as archive:
+        with ZipFile(temporary_zip, "w", compression=ZIP_DEFLATED) as archive:
             archive.writestr(
                 "archive_manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)
             )
-            for member in members:
+            for member in archive_members:
                 archive.write(member.source, member.arcname)
+        _verify_prune_archive(temporary_zip, archive_members, expected_hashes)
+        temporary_zip.replace(output_zip)
     except BaseException:
-        output_zip.unlink(missing_ok=True)
+        temporary_zip.unlink(missing_ok=True)
         raise
     return output_zip
 
@@ -227,10 +235,23 @@ def apply_prune(
     The archive is created and verified before any deletion; an archive
     failure raises and leaves every file in place.
     """
-    project_dir = Path(project_dir)
+    project_dir = Path(project_dir).resolve()
     reporter = reporter if reporter is not None else NullReporter()
     reporter.step("artifact-prune-apply")
-    eligible = [entry for entry in report.candidates if entry["eligible"]]
+    _validate_report_project(project_dir, report)
+    reporter.message("Rechecking prune eligibility immediately before archival")
+    current_report = scan_project(project_dir, reporter=reporter)
+    scanned_by_path = {
+        str(entry.get("path")): entry
+        for entry in report.candidates
+        if entry.get("eligible") is True
+    }
+    eligible = [
+        entry
+        for entry in current_report.candidates
+        if entry.get("eligible") is True
+        and scanned_by_path.get(str(entry.get("path")), {}).get("sha256") == entry.get("sha256")
+    ]
     reporter.message(f"Archiving {len(eligible)} eligible candidate(s) to {archive_path}")
     members: list[ArchiveMember] = []
     for entry in eligible:
@@ -241,9 +262,12 @@ def apply_prune(
             )
         )
     archive_path = create_prune_archive(project_dir, members, archive_path)
-    if not archive_path.is_file():
-        raise FeverSlopDataError(f"prune archive missing after creation: {archive_path}")
+    expected_hashes = {str(entry["path"]): str(entry["sha256"]) for entry in eligible}
+    _verify_prune_archive(archive_path, members, expected_hashes)
     reporter.message(f"Archive complete: {archive_path}")
+
+    for member in members:
+        _verify_source_matches_archive(archive_path, member, expected_hashes[member.arcname])
 
     deleted: list[dict[str, Any]] = []
     for member in members:
@@ -253,15 +277,85 @@ def apply_prune(
     reporter.message("Apply complete")
 
     return PruneReport(
-        created_at=report.created_at,
-        project=report.project,
+        created_at=current_report.created_at,
+        project=current_report.project,
         mode=_MODE_APPLY,
         archive_path=str(archive_path),
-        candidates=list(report.candidates),
-        protected=list(report.protected),
+        candidates=list(current_report.candidates),
+        protected=list(current_report.protected),
         deleted=deleted,
-        errors=list(report.errors),
+        errors=list(current_report.errors),
     )
+
+
+def _validate_report_project(project_dir: Path, report: PruneReport) -> None:
+    """Reject reports that do not originate from this exact project root."""
+    try:
+        report_project = Path(report.project).resolve()
+    except (OSError, TypeError, ValueError) as exc:
+        raise FeverSlopDataError("prune report has an invalid project path") from exc
+    if report_project != project_dir:
+        raise FeverSlopDataError(
+            f"prune report belongs to {report_project}, not {project_dir}"
+        )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _snapshot_members(
+    members: list[ArchiveMember],
+) -> tuple[list[ArchiveMember], dict[str, str]]:
+    """Capture the exact source sizes and hashes represented by one ZIP."""
+    snapshots: list[ArchiveMember] = []
+    hashes: dict[str, str] = {}
+    for member in members:
+        snapshots.append(
+            ArchiveMember(
+                source=member.source,
+                arcname=member.arcname,
+                size=member.source.stat().st_size,
+            )
+        )
+        hashes[member.arcname] = _sha256_file(member.source)
+    return snapshots, hashes
+
+
+def _verify_prune_archive(
+    archive_path: Path, members: list[ArchiveMember], expected_hashes: dict[str, str]
+) -> None:
+    """Require a readable archive containing byte-identical selected members."""
+    expected_names = {"archive_manifest.json", *(member.arcname for member in members)}
+    try:
+        with ZipFile(archive_path) as archive:
+            if archive.testzip() is not None:
+                raise FeverSlopDataError(f"prune archive is corrupt: {archive_path}")
+            if set(archive.namelist()) != expected_names:
+                raise FeverSlopDataError(f"prune archive members do not match selection: {archive_path}")
+            for member in members:
+                if hashlib.sha256(archive.read(member.arcname)).hexdigest() != expected_hashes[member.arcname]:
+                    raise FeverSlopDataError(f"prune archive content mismatch: {member.arcname}")
+    except (BadZipFile, KeyError, OSError) as exc:
+        raise FeverSlopDataError(f"prune archive cannot be verified: {archive_path}") from exc
+
+
+def _verify_source_matches_archive(
+    archive_path: Path, member: ArchiveMember, expected_hash: str
+) -> None:
+    """Do not unlink a file that changed after it was archived."""
+    try:
+        if _sha256_file(member.source) != expected_hash:
+            raise FeverSlopDataError(f"candidate changed after archival: {member.arcname}")
+        with ZipFile(archive_path) as archive:
+            if hashlib.sha256(archive.read(member.arcname)).hexdigest() != expected_hash:
+                raise FeverSlopDataError(f"archive changed before deletion: {member.arcname}")
+    except (BadZipFile, KeyError, OSError) as exc:
+        raise FeverSlopDataError(f"cannot verify candidate before deletion: {member.arcname}") from exc
 
 
 def _enumerated_paths(layout: SceneArtifactLayout) -> list[Path]:

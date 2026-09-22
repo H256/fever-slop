@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 from feverslop.application.artifact_prune import (
     PRUNE_REPORT_SCHEMA,
+    PruneReport,
     apply_prune,
     create_prune_archive,
     scan_project,
@@ -26,6 +27,7 @@ from feverslop.application.artifact_prune import (
 from feverslop.domain.canonical_render_plan import PromptRole, build_canonical_scene
 from feverslop.domain.effective_render_plan import CanonicalSceneDependencies, project_effective_plan
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
+from feverslop.errors import FeverSlopDataError
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.tools.project_asset_archive import ArchiveMember
 
@@ -350,6 +352,85 @@ class CreatePruneArchiveTests(ArtifactPruneApplicationTests):
 
 
 class ApplyPruneTests(ArtifactPruneApplicationTests):
+    def test_apply_rescans_and_keeps_candidates_that_became_ineligible(self):
+        """A completed final removed after scan must block the stale deletion."""
+        self._build_two_scene_project()
+        stale_report = scan_project(self.project)
+        self.layout.scene_final_video(1).unlink()
+
+        final = apply_prune(
+            self.project, Path(self.temp.name) / "stale.zip", stale_report
+        )
+
+        self.assertNotIn(
+            "output/render/scenes/scene_0001/workflow.json",
+            {entry["path"] for entry in final.deleted},
+        )
+        self.assertNotIn(
+            "output/render/scenes/scene_0001/raw.mp4",
+            {entry["path"] for entry in final.deleted},
+        )
+        self.assertTrue(self.layout.scene_workflow(1).is_file())
+        self.assertTrue(self.layout.scene_raw_video(1).is_file())
+
+    def test_apply_rejects_a_report_for_another_project(self):
+        """A caller cannot redirect deletion with a report from another project."""
+        self._build_two_scene_project()
+        scanned = scan_project(self.project)
+        forged_report = PruneReport(
+            created_at=scanned.created_at,
+            project=str(self.project.parent / "another-project"),
+            mode=scanned.mode,
+            archive_path=None,
+            candidates=scanned.candidates,
+            protected=scanned.protected,
+        )
+
+        with self.assertRaises(FeverSlopDataError):
+            apply_prune(self.project, Path(self.temp.name) / "forged.zip", forged_report)
+
+        self.assertTrue(self.layout.scene_workflow(1).is_file())
+        self.assertTrue(self.layout.scene_raw_video(1).is_file())
+
+    def test_apply_does_not_delete_when_archive_cannot_be_verified(self):
+        """An existing but corrupt archive is never a sufficient delete gate."""
+        self._build_two_scene_project()
+        report = scan_project(self.project)
+        corrupt_archive = Path(self.temp.name) / "corrupt.zip"
+        corrupt_archive.write_bytes(b"not a zip")
+
+        with patch(
+            "feverslop.application.artifact_prune.create_prune_archive",
+            return_value=corrupt_archive,
+        ):
+            with self.assertRaises(FeverSlopDataError):
+                apply_prune(self.project, corrupt_archive, report)
+
+        self.assertTrue(self.layout.scene_workflow(1).is_file())
+        self.assertTrue(self.layout.scene_raw_video(1).is_file())
+
+    def test_apply_keeps_every_member_when_one_changes_after_archival(self):
+        """Verification failure is atomic from the project's point of view."""
+        self._build_two_scene_project()
+        report = scan_project(self.project)
+        archive = Path(self.temp.name) / "changed-after-archive.zip"
+        real_create = create_prune_archive
+
+        def archive_then_change(*args, **kwargs):
+            created = real_create(*args, **kwargs)
+            self.layout.scene_raw_video(1).write_bytes(b"changed-after-archive")
+            return created
+
+        with patch(
+            "feverslop.application.artifact_prune.create_prune_archive",
+            side_effect=archive_then_change,
+        ):
+            with self.assertRaises(FeverSlopDataError):
+                apply_prune(self.project, archive, report)
+
+        self.assertTrue(self.layout.scene_workflow(1).is_file())
+        self.assertTrue(self.layout.scene_raw_video(1).is_file())
+
     def test_apply_prune_deletes_exactly_archived_eligible(self):
         self._build_two_scene_project()
         report = scan_project(self.project)

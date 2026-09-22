@@ -33,6 +33,8 @@ Each candidate entry in the report shows:
 - `path` — project-relative path of the artifact,
 - `class` — its lifecycle class (`resume_cache` for candidates),
 - `size_bytes` — byte estimate,
+- `sha256` — content snapshot used to reject a candidate that changed before
+  apply,
 - `eligible` — whether it may be deleted,
 - `reasons` — every ineligibility reason (all reasons are collected, not
   first-failure), so the report explains every blocker.
@@ -50,17 +52,22 @@ Exit codes:
 
 `--apply` requires `--archive PATH` (exit `1` without it). Apply mode:
 
-1. scans the project (same classification as safe mode),
-2. packages every eligible candidate into a ZIP at the archive path, writing
+1. rejects a report from another project, then scans the project again,
+2. retains only files that are still eligible and byte-identical to the safe
+   scan snapshot,
+3. packages those candidates into a ZIP at the archive path, writing
    `archive_manifest.json` into the ZIP first,
-3. verifies the archive exists,
-4. deletes exactly the archived eligible files,
-5. writes a machine-readable report to
+4. reopens and verifies ZIP integrity, member names, and member hashes,
+5. verifies every source file still matches its archived hash immediately
+   before deletion,
+6. deletes exactly the verified archived files,
+7. writes a machine-readable report to
    `output/prune_report_<timestamp>.json` in the project, and prints the
    final report to stdout.
 
-The archive is created atomically: if archive creation fails, the partial ZIP
-is removed and nothing is deleted. Exit code is `0` on success.
+The archive is created through a temporary ZIP and atomically promoted only
+after verification. If archive creation or verification fails, nothing is
+deleted. Exit code is `0` on success.
 
 ## What is pruned
 
@@ -161,7 +168,7 @@ and `deleted` lists every removed file with its size.
 ## Recovery
 
 The ZIP archive (with its `archive_manifest.json`) is the recoverable record.
-It is fully written before any deletion, and it contains exactly the files
+It is fully verified before any deletion, and it contains exactly the files
 that were deleted. There is no separate restore command; to recover, extract
 the archived files back into the project at their original paths.
 
