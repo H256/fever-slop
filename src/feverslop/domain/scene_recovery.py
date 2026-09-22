@@ -26,7 +26,8 @@ def require_ready_scenes(scenes: list[dict[str, Any]], *, project_path: Path | N
         if project_path is not None:
             suffix += f"\nRun: uv run python main.py run {project_path} --replan-failed"
         raise ValueError("Scene preparation is incomplete; blocked scenes: "
-                         + ", ".join(blocked) + suffix)
+                         + ", ".join(blocked) + suffix
+                         + "\n" + "\n".join(parts))
 RecoveryStage = Literal['generate', 'repair', 'fallback']
 
 
