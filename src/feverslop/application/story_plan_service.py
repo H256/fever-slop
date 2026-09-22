@@ -284,6 +284,30 @@ class StoryPlanService:
         self._reporter.message(
             f"[green]Bound {len(allocation.get('briefs', []))} scenes to the arc deterministically.[/green]"
         )
+        window_rows: list[list[str]] = []
+        for index, beat in enumerate(allocation.get("typed_beats", []), start=0):
+            if not isinstance(beat, Mapping):
+                continue
+            bound = [
+                brief for brief in allocation.get("briefs", [])
+                if isinstance(brief, Mapping) and index in brief.get("beat_indices", [])
+            ]
+            if not bound:
+                continue
+            milestones = [
+                str(brief["milestone_id"])
+                for brief in bound if brief.get("milestone_id")
+            ]
+            window_rows.append([
+                str(beat.get("location_id", f"beat-{index + 1}")),
+                f"{bound[0].get('segment_id')} – {bound[-1].get('segment_id')}",
+                ", ".join(milestones) or "—",
+            ])
+        self._reporter.table(
+            "Story plan - locked windows",
+            ["Location", "Scenes", "Milestones"],
+            window_rows,
+        )
 
         self._reporter.step("Story plan - acting beats")
         acting = self._build_acting_in_batches(request, allocation, diagnostics)
@@ -657,6 +681,13 @@ class StoryPlanService:
         raw_beats = allocation.get("beats")
         if not isinstance(raw_beats, list) or not raw_beats:
             return allocation
+        contract = request.source_evidence.get("narrative_contract", {})
+        if isinstance(contract, Mapping):
+            contract_allocation = StoryPlanService._allocation_from_narrative_contract(
+                request, raw_beats, contract,
+            )
+            if contract_allocation is not None:
+                return contract_allocation
         typed_beats = [dict(item) for item in raw_beats if isinstance(item, Mapping)]
         if not typed_beats:
             return allocation
@@ -691,6 +722,112 @@ class StoryPlanService:
                 "beat_indices": [index],
                 "required": [f"beat-{index + 1:03d}"],
                 "forbidden": [],
+            })
+        return {"briefs": briefs, "typed_beats": typed_beats}
+
+    @staticmethod
+    def _allocation_from_narrative_contract(
+        request: StoryPlanRequest,
+        raw_beats: list[Any],
+        contract: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        location_ids = [
+            str(item.get("id") if isinstance(item, Mapping) else item).strip()
+            for item in contract.get("location_order", [])
+        ]
+        canonical_locations = {str(item.get("id", "")) for item in request.locations}
+        location_ids = [item for item in location_ids if item in canonical_locations]
+        if len(location_ids) < 2:
+            return None
+
+        restricted = contract.get("actor_allowed_locations", {})
+        restricted = restricted if isinstance(restricted, Mapping) else {}
+        canonical_characters = [str(item.get("id", "")) for item in request.characters]
+        restricted_ids = {str(actor_id) for actor_id in restricted}
+        base_characters = [item for item in canonical_characters if item and item not in restricted_ids]
+        terminal = contract.get("terminal_states", {})
+        terminal = terminal if isinstance(terminal, Mapping) else {}
+
+        typed_beats: list[dict[str, Any]] = []
+        for index, location_id in enumerate(location_ids):
+            source = raw_beats[min(index, len(raw_beats) - 1)]
+            source = source if isinstance(source, Mapping) else {}
+            allowed = [
+                str(actor_id)
+                for actor_id, locations in restricted.items()
+                if location_id in {
+                    str(entry.get("id") if isinstance(entry, Mapping) else entry)
+                    for entry in (locations or [])
+                }
+            ]
+            typed_beats.append({
+                "phase": ("opening", "development", "climax", "resolution")[
+                    min(index, 3)
+                ],
+                "description": str(source.get("description", f"Journey through {location_id}.")),
+                "location_id": location_id,
+                "character_ids": [*base_characters, *allowed],
+            })
+
+        milestones = [
+            str(item.get("id") if isinstance(item, Mapping) else item).strip()
+            for item in contract.get("milestone_order", [])
+        ]
+        milestones = [item for item in milestones if item]
+        by_location: dict[int, list[str]] = {index: [] for index in range(len(location_ids))}
+        for milestone in milestones:
+            lower = milestone.lower()
+            location_index = next(
+                (index for index, location_id in enumerate(location_ids) if location_id.lower() in lower),
+                None,
+            )
+            if location_index is None:
+                if "lich" in lower:
+                    location_index = next((i for i, item in enumerate(location_ids) if "lich" in item.lower()), 0)
+                elif "dragon" in lower:
+                    location_index = next((i for i, item in enumerate(location_ids) if "dragon" in item.lower()), 0)
+                elif any(token in lower for token in ("fountain", "water", "ascen", "transfig")):
+                    location_index = len(location_ids) - 1
+                else:
+                    location_index = 0
+            by_location[location_index].append(milestone)
+
+        segment_count = len(request.segments)
+        assignments: list[int] = [
+            min(len(location_ids) - 1, position * len(location_ids) // max(1, segment_count))
+            for position in range(segment_count)
+        ]
+        milestone_by_position: dict[int, str] = {}
+        for location_index, items in by_location.items():
+            positions = [i for i, value in enumerate(assignments) if value == location_index]
+            for item_index, milestone in enumerate(items):
+                if not positions:
+                    continue
+                target = positions[round(item_index * (len(positions) - 1) / max(1, len(items) - 1))]
+                milestone_by_position[target] = milestone
+
+        briefs: list[dict[str, Any]] = []
+        for position, segment in enumerate(request.segments):
+            beat_index = assignments[position]
+            milestone_id = milestone_by_position.get(position)
+            characters = list(typed_beats[beat_index]["character_ids"])
+            if milestone_id:
+                for actor_id, rule in terminal.items():
+                    if isinstance(rule, Mapping) and str(rule.get("milestone", "")) == milestone_id:
+                        actor = str(actor_id)
+                        if actor in canonical_characters and actor not in characters:
+                            characters.append(actor)
+            briefs.append({
+                "brief_id": f"brief-{segment.segment_id}",
+                "segment_id": segment.segment_id,
+                "start_seconds": segment.start_seconds,
+                "end_seconds": segment.end_seconds,
+                "beat_indices": [beat_index],
+                "required": [milestone_id] if milestone_id else [],
+                "forbidden": [],
+                "character_ids": characters,
+                "location_id": typed_beats[beat_index]["location_id"],
+                "milestone_id": milestone_id,
             })
         return {"briefs": briefs, "typed_beats": typed_beats}
 
@@ -1242,10 +1379,10 @@ class StoryPlanService:
             binding = beat_by_index.get(beat_index, {}) if isinstance(beat_index, int) else {}
             # Narrative bindings come from allocation, never from the creative
             # acting response. Acting may only fill creative fields.
-            bound_character_ids = list(binding.get("character_ids", []))
+            bound_character_ids = list(raw.get("character_ids", binding.get("character_ids", [])))
             bound_prop_ids = list(binding.get("prop_ids", []))
-            bound_location_id = binding.get("location_id")
-            bound_milestone_id = binding.get("milestone_id")
+            bound_location_id = raw.get("location_id", binding.get("location_id"))
+            bound_milestone_id = raw.get("milestone_id") or binding.get("milestone_id")
             segment = {
                     "id": brief_id,
                     "target": target,

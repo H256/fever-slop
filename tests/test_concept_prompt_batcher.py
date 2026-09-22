@@ -117,6 +117,31 @@ class ConceptPromptBatcherTests(unittest.TestCase):
             narrative["visual_direction"],
         )
 
+    def test_locked_story_brief_clears_unassigned_milestones_and_cast_states(self):
+        concepts = {
+            "segment_001": {
+                "concept": "The dragon waits in the cave.",
+                "narrative": {
+                    "milestones": ["drink_silver_water"],
+                    "cast_states": {"dragon": "watching"},
+                },
+            }
+        }
+
+        _apply_locked_segment_bindings(
+            concepts,
+            {
+                "segment_001": {
+                    "character_ids": ["ravena", "lich"],
+                    "actor_states": [{"character_id": "ravena", "state": "resolute"}],
+                }
+            },
+        )
+
+        narrative = concepts["segment_001"]["narrative"]
+        self.assertEqual([], narrative["milestones"])
+        self.assertEqual({"ravena": "resolute"}, narrative["cast_states"])
+
     def test_story_complete_is_only_valid_on_final_segment_without_contract(self):
         concepts = {
             "segment_001": {

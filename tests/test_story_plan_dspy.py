@@ -742,6 +742,7 @@ class StoryPlanServiceTests(unittest.TestCase):
             ("Story plan locked", ["Scenes", "Beats", "Acting briefs"], [["2", "0", "2"]]),
             reporter.tables,
         )
+        self.assertIn("Story plan - locked windows", [table[0] for table in reporter.tables])
 
     def test_pydantic_bible_output_is_accepted_from_typed_dspy(self) -> None:
         """DSPy may deserialize an annotated output before the service sees it."""
@@ -832,6 +833,60 @@ class StoryPlanServiceTests(unittest.TestCase):
             brief.beat_id for brief in result.plan.segments
         ])
         self.assertFalse(any(brief.exclusive for brief in result.plan.segments))
+
+    def test_contract_deterministically_separates_locations_and_milestones(self) -> None:
+        request = make_request(
+            segments=tuple(
+                SegmentDescriptor(
+                    segment_id=f"seg-{index}",
+                    start_seconds=float((index - 1) * 10),
+                    end_seconds=float(index * 10),
+                )
+                for index in range(1, 13)
+            ),
+            source_evidence={
+                "narrative_contract": {
+                    "location_order": ["cave", "lich_lair", "dragon_lair", "fountain"],
+                    "milestone_order": [
+                        "descent", "encounter_lich", "traverse_dragon",
+                        "reach_fountain", "drink_water", "ascend",
+                    ],
+                    "actor_allowed_locations": {
+                        "lich": ["lich_lair"],
+                        "dragon": ["dragon_lair"],
+                        "guardian": ["fountain"],
+                    },
+                    "terminal_states": {"ravena": {"milestone": "ascend"}},
+                },
+            },
+            characters=(
+                {"id": "ravena", "name": "Ravena"},
+                {"id": "lich", "name": "Lich"},
+                {"id": "dragon", "name": "Dragon"},
+                {"id": "guardian", "name": "Guardian"},
+            ),
+            locations=(
+                {"id": "cave", "name": "Cave"},
+                {"id": "lich_lair", "name": "Lich Lair"},
+                {"id": "dragon_lair", "name": "Dragon Lair"},
+                {"id": "fountain", "name": "Fountain"},
+            ),
+        )
+
+        allocation = StoryPlanService._coerce_typed_allocation(
+            request,
+            {"beats": [{"phase": "development", "description": "journey"}]},
+        )
+
+        self.assertEqual(
+            ["cave", "lich_lair", "dragon_lair", "fountain"],
+            [beat["location_id"] for beat in allocation["typed_beats"]],
+        )
+        by_segment = {brief["segment_id"]: brief for brief in allocation["briefs"]}
+        self.assertEqual(["ravena", "lich"], by_segment["seg-4"]["character_ids"])
+        self.assertEqual(["ravena", "dragon"], by_segment["seg-7"]["character_ids"])
+        self.assertEqual("reach_fountain", by_segment["seg-10"]["milestone_id"])
+        self.assertEqual("ascend", by_segment["seg-12"]["milestone_id"])
 
     def test_story_plan_bindings_override_creative_location_choices(self) -> None:
         modules = FakePromptModules(

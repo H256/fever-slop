@@ -1519,8 +1519,11 @@ def _apply_locked_segment_bindings(
             references["actor_ids"] = list(binding.get("character_ids") or [])
         if "prop_ids" in binding:
             narrative["prop_ids"] = list(binding.get("prop_ids") or [])
-        if binding.get("milestone_id"):
-            narrative["milestones"] = [str(binding["milestone_id"])]
+        narrative["milestones"] = (
+            [str(binding["milestone_id"])]
+            if binding.get("milestone_id")
+            else []
+        )
         acting = {
             key: binding[key]
             for key in ("objective", "emotional_turn", "actor_states")
@@ -1528,6 +1531,12 @@ def _apply_locked_segment_bindings(
         }
         if acting:
             narrative["acting"] = acting
+        if "actor_states" in binding:
+            narrative["cast_states"] = {
+                str(item.get("character_id")): str(item.get("state", "present"))
+                for item in binding.get("actor_states", [])
+                if isinstance(item, dict) and item.get("character_id")
+            }
         if "vocal_presentation" in binding:
             narrative["vocal_presentation"] = binding["vocal_presentation"]
         if "visual_direction" in binding:
