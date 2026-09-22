@@ -1256,6 +1256,22 @@ class VideoPipelineFieldTests(unittest.TestCase):
         config = ProjectConfig.load(self._mk_config())
         self.assertEqual(config.video_pipeline, "ltx_i2v")
 
+    def test_rejects_unknown_video_pipeline_with_clear_error(self):
+        """A typo in video_pipeline is rejected at load time with the valid values."""
+        self.config = {"input_audio": "song.wav", "video_pipeline": "ltx25"}
+        with self.assertRaisesRegex(ValueError, "video_pipeline must be one of") as ctx:
+            ProjectConfig.load(self._mk_config())
+        message = str(ctx.exception)
+        self.assertIn("ltx_i2v", message)
+        self.assertIn("minimax-h3-r2v", message)
+        self.assertIn("ltx25", message)
+
+    def test_rejects_typo_video_pipeline_not_silently_defaulted(self):
+        """An unrecognized value is not silently coerced to a default."""
+        self.config = {"input_audio": "song.wav", "video_pipeline": "ltx_i2v_typo"}
+        with self.assertRaises(ValueError):
+            ProjectConfig.load(self._mk_config())
+
     def _mk_config(self):
         import tempfile
         from pathlib import Path
