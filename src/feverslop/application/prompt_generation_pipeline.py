@@ -397,6 +397,7 @@ class PromptGenerationPipeline:
             config=config,
             app_config=app_config,
             request=request,
+            global_context=global_context,
             resume=resume,
             stage1_segments=stage1_segments,
             paths=_paths,
@@ -519,6 +520,7 @@ class PromptGenerationPipeline:
         config: Any,
         app_config: Any,
         request: Any,
+        global_context: dict[str, Any] | None = None,
         resume: bool,
         stage1_segments: list[dict],
         paths: Any,
@@ -537,6 +539,7 @@ class PromptGenerationPipeline:
         llm = self.llm_factory(app_config)
         service = self.story_plan_service_factory(llm)
 
+        global_context = global_context or {}
         effective_direction = (
             str(getattr(request, "story_direction", "") or "").strip()
             or str(getattr(config, "story_direction", "") or "").strip()
@@ -554,15 +557,30 @@ class PromptGenerationPipeline:
             or ""
         )
         lyrics = str(getattr(config, "lyrics", "") or "")
+        story_idea = str(global_context.get("story_idea", "") or getattr(config, "story_idea", "") or "")
 
+        context_characters = global_context.get("actors") or getattr(config, "actors", ()) or ()
         characters = [
             {
-                "id": str(actor.id),
-                "name": str(actor.name),
-                "description": str(getattr(actor, "description", "")),
+                "id": str(actor.get("id") or actor.get("name") or "")
+                if isinstance(actor, dict) else str(actor.id),
+                "name": str(actor.get("name") or actor.get("id") or "")
+                if isinstance(actor, dict) else str(actor.name),
+                "description": str(actor.get("description", ""))
+                if isinstance(actor, dict) else str(getattr(actor, "description", "")),
+                "is_singer": bool(actor.get("is_singer", False))
+                if isinstance(actor, dict) else bool(getattr(actor, "is_singer", False)),
             }
-            for actor in (getattr(config, "actors", ()) or ())
+            for actor in context_characters
         ]
+        locations = tuple(
+            item for item in (global_context.get("structured_locations") or ())
+            if isinstance(item, dict)
+        )
+        props = tuple(
+            item for item in (global_context.get("props") or ())
+            if isinstance(item, dict)
+        )
 
         segments = tuple(
             SegmentDescriptor.from_mapping(seg)
@@ -580,7 +598,14 @@ class PromptGenerationPipeline:
         max_end = max((seg.end_seconds for seg in segments), default=0.0)
         terminal_window_seconds = max_end * 0.9 if max_end > 0 else 0.0
 
-        source_evidence = {"creative_direction": effective_direction}
+        source_evidence = {
+            "creative_direction": effective_direction,
+            "story_idea": story_idea,
+            "locations": [dict(item) for item in locations],
+            "props": [dict(item) for item in props],
+            "narrative_contract": global_context.get("narrative_contract", {}),
+            "semantic_intent": global_context.get("semantic_intent", {}),
+        }
 
         fingerprint = compute_source_fingerprint(
             song_title=song_id,
@@ -591,6 +616,9 @@ class PromptGenerationPipeline:
             segments=[seg.to_compact_dict() for seg in segments],
             characters=characters,
             creative_direction=effective_direction,
+            story_idea=story_idea,
+            locations=locations,
+            props=props,
         )
 
         plan_path = paths.prompts_dir / f"story_plan_{song_id}.json"
@@ -635,8 +663,24 @@ class PromptGenerationPipeline:
                 source_evidence=source_evidence,
                 guide="",
                 terminal_window_seconds=terminal_window_seconds,
+                story_idea=story_idea,
+                locations=locations,
+                props=props,
             )
-            result = service.build_plan(plan_request)
+            try:
+                result = service.build_plan(plan_request)
+            except StoryPlanError as exc:
+                story_planning_config = getattr(
+                    getattr(app_config, "llm", None), "story_planning", None
+                )
+                failure_policy = str(
+                    getattr(story_planning_config, "failure_policy", "warn")
+                ).strip().lower()
+                message = f"Story plan unavailable; continuing without story briefs: {exc}"
+                if failure_policy == "block":
+                    raise
+                reporter.message(f"[yellow]{message}[/yellow]")
+                return None, False
             plan = result.plan
 
             if plan.schema_version not in SUPPORTED_SCHEMA_VERSIONS:
