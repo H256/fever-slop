@@ -190,9 +190,22 @@ def _prepared_scene_is_fresh(
 
 
 
+def _selected_scene_numbers(state: PipelineRunState) -> set[int] | None:
+    if state.args.smoke_only:
+        return {state.args.smoke_scene}
+    return parse_scene_list(state.args.scenes)
+
+
+def _selected_workflow(state: PipelineRunState) -> Path:
+    return (
+        state.msr_workflow
+        if state.args.video_pipeline == "ltx_msr"
+        else state.ingredients_workflow
+    )
+
+
 def _select_render_scenes(state: PipelineRunState, scenes: tuple[RenderScene, ...]) -> tuple[RenderScene, ...]:
-    selected = {state.args.smoke_scene} if state.args.smoke_only else parse_scene_list(state.args.scenes)
-    return RenderPlan(scenes).select(scene_numbers=selected).scenes
+    return RenderPlan(scenes).select(scene_numbers=_selected_scene_numbers(state)).scenes
 
 
 def _missing_prepare_inputs(state: PipelineRunState, scenes: tuple[RenderScene, ...]) -> list[str]:
@@ -200,7 +213,7 @@ def _missing_prepare_inputs(state: PipelineRunState, scenes: tuple[RenderScene, 
     for path, label in ((state.plan_for_next_step, "render plan"), (state.context.input_audio, "audio")):
         if not path.is_file():
             missing.append(f"{label}: {path}")
-    workflow = state.msr_workflow if state.args.video_pipeline == "ltx_msr" else state.ingredients_workflow
+    workflow = _selected_workflow(state)
     if not workflow.is_file():
         missing.append(f"workflow template: {workflow}")
     for render_scene in scenes:
@@ -366,11 +379,7 @@ def _attach_music_continuity_handoffs(
     all_payloads = [scene.to_dict() for scene in all_scenes]
     by_number = {int(scene["scene"]): scene for scene in all_payloads}
     selected_numbers = {scene.scene_number for scene in selected_scenes}
-    explicitly_selected = bool(
-        {state.args.smoke_scene}
-        if state.args.smoke_only
-        else parse_scene_list(state.args.scenes),
-    )
+    explicitly_selected = bool(_selected_scene_numbers(state))
     attached = []
     for render_scene in selected_scenes:
         scene = render_scene.to_dict()
@@ -608,11 +617,7 @@ def _run_visual_consistency_preflight(
         lambda _project_id: state.context.project_config_dir,
     ).load(state.context.project_config_dir.name)
     mode = "msr" if state.args.video_pipeline == "ltx_msr" else "ingredients"
-    workflow = (
-        state.msr_workflow
-        if state.args.video_pipeline == "ltx_msr"
-        else state.ingredients_workflow
-    )
+    workflow = _selected_workflow(state)
     scene_payloads = [scene.to_dict() for scene in scenes]
     workflow_profile = resolve_preflight_workflow_profile(
         scene_payloads,
@@ -823,11 +828,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
                     "video_workflow_profile",
                     None,
                 ),
-                legacy_fallback=(
-                    state.msr_workflow
-                    if state.args.video_pipeline == "ltx_msr"
-                    else state.ingredients_workflow
-                ).stem,
+                legacy_fallback=_selected_workflow(state).stem,
             )
         )
         renderer = PreparedWorkflowRenderer(
@@ -849,11 +850,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
             backend,
             state.context.artifact_layout,
         )
-        explicit_selection = bool(
-            {state.args.smoke_scene}
-            if state.args.smoke_only
-            else parse_scene_list(state.args.scenes),
-        )
+        explicit_selection = bool(_selected_scene_numbers(state))
         rendered_this_run: set[int] = set()
         dirty_marker = (
             state.context.render_dir / "continuity_dirty.json"
@@ -1062,7 +1059,7 @@ def _run_ltx_render_scenes_stage(state: PipelineRunState) -> None:
         ),
         console=console,
     )
-    ltx_scene_numbers = {state.args.smoke_scene} if state.args.smoke_only else parse_scene_list(state.args.scenes)
+    ltx_scene_numbers = _selected_scene_numbers(state)
     ltx_total = count_render_plan_items(state.plan_for_next_step, scene_numbers=ltx_scene_numbers)
     with RenderProgressReporter(
         VIDEO_SCENE_PROGRESS_LABEL, ltx_total, emit_scene_progress=True,

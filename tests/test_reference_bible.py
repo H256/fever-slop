@@ -576,6 +576,71 @@ class ReferenceBibleTests(unittest.TestCase):
             self.assertEqual(previous_manifest, json.loads(first.read_text(encoding="utf-8")))
             self.assertEqual([], [p for p in first.parent.rglob("*") if p.name.endswith(".tmp")])
 
+    def test_staging_manifest_commit_uses_atomic_write(self):
+        # Acceptance for #1315: the staging-manifest rewrite in the commit
+        # phase must go through atomic_write_json. A crash during that write
+        # must leave the previously published final manifest intact and the
+        # staging dir uncommitted.
+        from feverslop.application.reference_bible import _commit_staged_reference
+        from feverslop.application import reference_bible as rb_mod
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "project"
+            output_dir = root / "output" / "references"
+            final_dir = output_dir / "actors" / "singer"
+            final_dir.mkdir(parents=True)
+            previous = {"id": "singer", "name": "Mara", "sheet_path": "actors/singer/sheet.png"}
+            (final_dir / "manifest.json").write_text(json.dumps(previous), encoding="utf-8")
+
+            staging_dir = output_dir / ".staging" / "actor-singer-test"
+            staging_dir.mkdir(parents=True)
+            (staging_dir / "manifest.json").write_text(json.dumps(previous), encoding="utf-8")
+
+            calls = {"n": 0}
+
+            def raise_on_rewrite(path, *args, **kwargs):
+                calls["n"] += 1
+                raise OSError("simulated crash during staging manifest rewrite")
+
+            with patch.object(rb_mod, "atomic_write_json", side_effect=raise_on_rewrite):
+                with self.assertRaises(OSError):
+                    _commit_staged_reference(staging_dir, final_dir, "manifest.json")
+
+            self.assertEqual(calls["n"], 1, "staging manifest rewrite must use atomic_write_json")
+            self.assertEqual(previous, json.loads((final_dir / "manifest.json").read_text(encoding="utf-8")))
+            self.assertEqual([], [p for p in output_dir.rglob("*") if p.name.endswith(".tmp")])
+
+    def test_failing_enriched_plan_write_keeps_previous_plan(self):
+        # Acceptance for #1315: a crash in the enriched-plan atomic write must
+        # leave the previously written plan file intact.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            render_plan_path = temp / "render_plan.json"
+            render_plan_path.write_text(
+                json.dumps([{"scene": 1, "visual_consistency_sources": []}]),
+                encoding="utf-8",
+            )
+            (temp / "actor" / "manifest.json").parent.mkdir(parents=True)
+            (temp / "actor" / "manifest.json").write_text(
+                json.dumps({"id": "a1", "name": "Mara", "sheet_path": "actor/sheet.png"}),
+                encoding="utf-8",
+            )
+            output_path = temp / "enriched.json"
+            output_path.write_text(json.dumps([{"scene": 1, "visual_consistency_sources": []}]), encoding="utf-8")
+            previous = json.loads(output_path.read_text(encoding="utf-8"))
+
+            from feverslop.application.reference_bible import enrich_render_plan_with_reference_sheets
+
+            with self.assertRaises(OSError):
+                with patch(
+                    "feverslop.utils.io._replace_atomically",
+                    side_effect=OSError("simulated crash during enriched plan replace"),
+                ):
+                    enrich_render_plan_with_reference_sheets(render_plan_path, temp, output_path)
+
+            self.assertEqual(previous, json.loads(output_path.read_text(encoding="utf-8")))
+            self.assertEqual([], [p for p in temp.rglob("*") if p.name.endswith(".tmp")])
+
     def test_actor_reference_prompts_require_plain_white_background(self):
         front_prompt = ReferenceBibleGenerator._view_prompt(
             ReferenceSubject(id="singer", name="Mara", image_prompt="portrait of Mara in a forest"),
