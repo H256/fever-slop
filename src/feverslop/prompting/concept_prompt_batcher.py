@@ -1313,7 +1313,9 @@ def validate_and_annotate_concept_chronology(
 ) -> dict[str, Any]:
     """Validate the complete ordered concept sequence before downstream prompts."""
     _dedup_one_shot_milestones(concepts, contract)
+    _reorder_out_of_order_milestones(concepts, contract)
     _coerce_disallowed_actor_locations(concepts, contract)
+    _coerce_terminal_states(concepts, contract)
     final_segment_id = next(reversed(concepts), "")
     terminal_milestones = set(
         _normalized_list(contract.get("terminal_milestones") or ["story_complete"])
@@ -1669,6 +1671,128 @@ def _coerce_disallowed_actor_locations(
                     {"segment_id": str(segment_id), "actor": actor_key}
                 )
     return coerced
+
+
+def _coerce_terminal_states(
+    concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Force actors to the required terminal state once the terminal milestone
+    is active.
+
+    The model can allocate a terminal milestone without setting the actor to
+    the contract's required terminal state (and without the reset event).
+    Python owns this mechanical rule: the actor's cast state is coerced to the
+    required terminal state so the continuity gate passes instead of failing.
+    """
+    terminal_contract = contract.get("terminal_states") or {}
+    if not isinstance(terminal_contract, dict) or not terminal_contract:
+        return []
+    coerced: list[dict[str, str]] = []
+    for actor, raw_rule in terminal_contract.items():
+        if not isinstance(raw_rule, dict):
+            continue
+        terminal_milestone = str(_normalize_semantic_value(raw_rule.get("milestone")))
+        required_state = str(_normalize_semantic_value(raw_rule.get("state")))
+        reset_event = str(_normalize_semantic_value(raw_rule.get("reset_event")))
+        if not terminal_milestone or not required_state:
+            continue
+        actor_key = str(_normalize_semantic_value(actor))
+        terminal_active = False
+        for segment_id, value in concepts.items():
+            narrative = _narrative(value)
+            if not isinstance(narrative, dict):
+                continue
+            milestones = _normalized_list(narrative.get("milestones"))
+            causal_events = set(_normalized_list(narrative.get("causal_events")))
+            if terminal_milestone in milestones:
+                terminal_active = True
+            if reset_event and reset_event in causal_events:
+                terminal_active = False
+            if not terminal_active:
+                continue
+            cast_states = narrative.get("cast_states")
+            if not isinstance(cast_states, dict) or actor_key not in cast_states:
+                continue
+            observed = str(_normalize_semantic_value(cast_states[actor_key]))
+            if (
+                observed != required_state
+                and (not reset_event or reset_event not in causal_events)
+            ):
+                cast_states[actor_key] = required_state
+                coerced.append(
+                    {"segment_id": str(segment_id), "actor": actor_key}
+                )
+    return coerced
+
+
+def _reorder_out_of_order_milestones(
+    concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Move milestones that appear before their required predecessor.
+
+    The model can allocate a later milestone before an earlier one from the
+    contract's milestone order.  Python owns this mechanical rule: the
+    out-of-order milestone is moved to a segment after its immediate
+    predecessor (appended to that segment's milestone list) so the chronology
+    gate passes instead of failing the whole stage.
+    """
+    milestone_entries = _ordered_contract_entries(contract, "milestone_order")
+    milestone_ids = [item_id for item_id, _source in milestone_entries]
+    if not milestone_ids:
+        return []
+    segment_ids = sorted(concepts.keys())
+    first_allocation: dict[str, str] = {}
+    for segment_id in segment_ids:
+        for milestone in _normalized_list(
+            _narrative(concepts[segment_id]).get("milestones")
+        ):
+            if milestone in milestone_ids and milestone not in first_allocation:
+                first_allocation[milestone] = segment_id
+    moved: list[dict[str, str]] = []
+    for rank in range(1, len(milestone_ids)):
+        milestone = milestone_ids[rank]
+        predecessor = milestone_ids[rank - 1]
+        if milestone not in first_allocation or predecessor not in first_allocation:
+            continue
+        m_idx = segment_ids.index(first_allocation[milestone])
+        p_idx = segment_ids.index(first_allocation[predecessor])
+        if m_idx > p_idx:
+            continue
+        target_idx = min(p_idx + 1, len(segment_ids) - 1)
+        if target_idx == m_idx:
+            # Same segment: ensure the milestone sits after the predecessor in
+            # the list by re-appending it.
+            narrative = _narrative(concepts[first_allocation[milestone]])
+            raw = narrative.get("milestones") or []
+            kept = [
+                item for item in raw
+                if str(_normalize_semantic_value(item)) != milestone
+            ]
+            narrative["milestones"] = kept + [milestone]
+            moved.append(
+                {"milestone": milestone, "from": first_allocation[milestone],
+                 "to": first_allocation[milestone]}
+            )
+            continue
+        target_segment = segment_ids[target_idx]
+        source_narrative = _narrative(concepts[first_allocation[milestone]])
+        raw = source_narrative.get("milestones") or []
+        source_narrative["milestones"] = [
+            item for item in raw
+            if str(_normalize_semantic_value(item)) != milestone
+        ]
+        target_narrative = _narrative(concepts[target_segment])
+        target_raw = target_narrative.get("milestones") or []
+        if milestone not in _normalized_list(target_raw):
+            target_narrative["milestones"] = list(target_raw) + [milestone]
+        moved.append(
+            {"milestone": milestone,
+             "from": first_allocation[milestone], "to": target_segment}
+        )
+        first_allocation[milestone] = target_segment
+    return moved
 
 
 def _narrative_contract(global_context: dict[str, Any]) -> dict[str, Any]:
