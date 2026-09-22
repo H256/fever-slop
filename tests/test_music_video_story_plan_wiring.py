@@ -77,6 +77,7 @@ def _make_app_config(require_approval: bool = False, planner_revision: str = PLA
             story_planning=SimpleNamespace(
                 require_approval=require_approval,
                 planner_revision=planner_revision,
+                failure_policy="warn",
             ),
         ),
     )
@@ -127,7 +128,7 @@ class _RecordingReporter:
         pass
 
     def warning(self, *args: Any, **kwargs: Any) -> None:
-        pass
+        self.messages.append(str(args[0]) if args else "warning")
 
 
 class _FactoryFakeClient:
@@ -315,6 +316,64 @@ def _persist_plan(
 
 
 class MusicVideoStoryPlanWiringTests(unittest.TestCase):
+    def test_adapter_passes_story_sources_and_acting_segments(self) -> None:
+        calls: dict[str, dict[str, Any]] = {}
+
+        class Modules:
+            def bible(self, **kwargs: Any) -> dict[str, Any]:
+                calls["bible"] = kwargs
+                return {"premise": "p"}
+
+            def beat_allocation(self, **kwargs: Any) -> dict[str, Any]:
+                calls["allocation"] = kwargs
+                return {"beats": [{"phase": "resolution", "description": "end"}], "brief_allocations": []}
+
+            def acting(self, **kwargs: Any) -> dict[str, Any]:
+                calls["acting"] = kwargs
+                return {"briefs": []}
+
+        adapter = StoryPlanServiceAdapter(Modules())
+        adapter.bible(
+            song_title="Song", song_language="en", song_style="dark", lyrics="orcs",
+            sections=[], characters=[{"id": "ravena"}],
+            source_evidence={
+                "creative_direction": "user direction",
+                "story_idea": "A pilgrimage to renewal.",
+                "locations": [{"id": "cave"}],
+                "props": [{"id": "well"}],
+            }, guide="",
+        )
+        adapter.beat_allocation(
+            song_title="Song", lyrics="orcs", segments=[{"segment_id": "seg-1"}],
+            narrative_bible={}, characters=[], terminal_window_seconds=1, guide="",
+            locations=[{"id": "cave"}], props=[{"id": "well"}],
+        )
+        adapter.acting(
+            song_title="Song", song_language="en", lyrics="orcs", briefs=[{"brief_id": "b"}],
+            characters=[], guide="", segments=[{"segment_id": "seg-1"}],
+            locations=[{"id": "cave"}], props=[{"id": "well"}],
+            typed_beats=[{"phase": "resolution", "description": "end"}],
+        )
+        self.assertIn("A pilgrimage to renewal.", calls["bible"]["story_text"])
+        self.assertEqual(calls["allocation"]["locations"], [{"id": "cave"}])
+        self.assertEqual(calls["acting"]["segments"], [{"segment_id": "seg-1"}])
+
+    def test_warn_policy_continues_when_story_plan_job_returns_empty_acting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            class FailingService:
+                def build_plan(self, request: Any) -> Any:
+                    raise StoryPlanError("acting output must contain a non-empty briefs list")
+
+            pipeline = _build_pipeline(story_plan_service_factory=lambda _llm: FailingService())
+            reporter = _RecordingReporter()
+            result, stopped = pipeline._resolve_story_plan(
+                config=_make_config(), app_config=_make_app_config(), request=_make_request(),
+                resume=False, stage1_segments=_stage1_segments(), paths=_make_paths(Path(tmp)),
+                reporter=reporter, artifact_store=None, log_file=lambda *_args: None,
+            )
+            self.assertIsNone(result)
+            self.assertFalse(stopped)
+            self.assertIn("continu", " ".join(reporter.messages).lower())
     """Wiring tests for the music-video StoryPlan pipeline (issue #1386)."""
 
     def test_resume_accepts_existing_stage1_start_end_schema(self) -> None:
@@ -517,6 +576,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             pipeline = _build_pipeline(story_plan_service_factory=factory)
             config = _make_config()
             app_config = _make_app_config()
+            app_config.llm.story_planning.failure_policy = "block"
             request_ns = _make_request()
             paths = _make_paths(prompts_dir)
             reporter = _RecordingReporter()
@@ -722,6 +782,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             pipeline = _build_pipeline(story_plan_service_factory=factory)
             config = _make_config()
             app_config = _make_app_config()
+            app_config.llm.story_planning.failure_policy = "block"
             request_ns = _make_request()
             paths = _make_paths(prompts_dir)
             reporter = _RecordingReporter()

@@ -93,13 +93,9 @@ def materialize_global_assets(
     app_config,
     *,
     library_factory: Callable[[Any], Any],
-    refresh: bool = False,
 ) -> GlobalCastResolution:
-    """Materialize declarations before reference generation; refresh is explicit."""
+    """Materialize declarations before reference generation."""
     resolver = GlobalCastResolver(library_factory(app_config.global_library_path))
-    if not refresh:
-        # Existing snapshots are intentionally left alone; callers can inspect their staleness.
-        pass
     return resolver.resolve(
         cast=project_config.global_cast,
         locations=project_config.global_locations,

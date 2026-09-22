@@ -64,6 +64,9 @@ def make_request(**overrides: Any) -> StoryPlanRequest:
         source_evidence={"creative_direction": "Keep it intimate."},
         guide="story plan guide",
         terminal_window_seconds=45.0,
+        story_idea="A singer travels through a haunted mountain to find renewal.",
+        locations=({"id": "cave", "name": "Cave"},),
+        props=({"id": "well", "name": "Well"},),
     )
     defaults.update(overrides)
     return StoryPlanRequest(**defaults)
@@ -666,12 +669,15 @@ class StoryPlanServiceTests(unittest.TestCase):
             [
                 "characters",
                 "guide",
+                "locations",
                 "lyrics",
+                "props",
                 "sections",
                 "song_language",
                 "song_style",
                 "song_title",
                 "source_evidence",
+                "story_idea",
             ],
         )
         self.assertEqual(
@@ -679,8 +685,10 @@ class StoryPlanServiceTests(unittest.TestCase):
             [
                 "characters",
                 "guide",
+                "locations",
                 "lyrics",
                 "narrative_bible",
+                "props",
                 "segments",
                 "song_title",
                 "terminal_window_seconds",
@@ -692,9 +700,13 @@ class StoryPlanServiceTests(unittest.TestCase):
                 "briefs",
                 "characters",
                 "guide",
+                "locations",
                 "lyrics",
+                "props",
+                "segments",
                 "song_language",
                 "song_title",
+                "typed_beats",
             ],
         )
         self.assertEqual(validate_story_plan_payload(result.plan.model_dump()), [])
