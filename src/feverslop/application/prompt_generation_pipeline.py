@@ -3,7 +3,7 @@
 import inspect
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -393,7 +393,7 @@ class PromptGenerationPipeline:
         _paths = getattr(context, "paths", None)
         if _paths is None and isinstance(context, dict):
             _paths = context.get("paths")
-        segment_briefs, gate_stopped = self._resolve_story_plan(
+        segment_briefs, live_prompts, gate_stopped = self._resolve_story_plan(
             config=config,
             app_config=app_config,
             request=request,
@@ -428,6 +428,7 @@ class PromptGenerationPipeline:
                 concept_story_input=concept_story_input,
                 global_context=global_context,
                 segment_briefs=segment_briefs,
+                live_prompts=live_prompts,
                 concept_prompts_json=concept_prompts_json,
                 artifact_store=artifact_store,
                 reporter=reporter,
@@ -527,14 +528,20 @@ class PromptGenerationPipeline:
         reporter: Any,
         artifact_store: Any,
         log_file: Any,
-    ) -> tuple[dict[str, Any] | None, bool]:
-        """Build or reuse the story plan; return (segment_briefs, gate_stopped)."""
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, bool]:
+        """Build or reuse the story plan.
+
+        Returns ``(segment_briefs, live_prompts, gate_stopped)``.
+        ``live_prompts`` is the per-scene image/video prompt map produced by
+        the story plan (keyed by segment target); it is ``None`` when no plan
+        is produced (non-music-video, no factory, no paths, or a hard stop).
+        """
         if str(getattr(config, "content_mode", "music_video")) != "music_video":
-            return None, False
+            return None, None, False
         if self.story_plan_service_factory is None:
-            return None, False
+            return None, None, False
         if paths is None:
-            return None, False
+            return None, None, False
 
         llm = self.llm_factory(app_config)
         factory = self.story_plan_service_factory
@@ -644,6 +651,7 @@ class PromptGenerationPipeline:
         )
 
         reused = False
+        live_prompts: dict[str, Any] | None = None
         if resume and manifest_path.is_file():
             manifest = read_manifest(manifest_path)
             if not manifest_is_stale(manifest, input_fingerprint=fingerprint):
@@ -701,8 +709,14 @@ class PromptGenerationPipeline:
                     detail = str(diagnostic.get("message", ""))
                     suffix = f" ({subject})" if subject else ""
                     reporter.message(f"[red]  - {code}{suffix}: {detail}[/red]")
-                return None, True
+                return None, None, True
             plan = result.plan
+            live_prompts = (
+                dict(result.live_prompts)
+                if isinstance(getattr(result, "live_prompts", None), Mapping)
+                and result.live_prompts
+                else None
+            )
 
             if plan.schema_version not in SUPPORTED_SCHEMA_VERSIONS:
                 raise StoryPlanError(
@@ -741,13 +755,13 @@ class PromptGenerationPipeline:
                     "[yellow]Story plan approval required. "
                     "Re-run with --story-plan-approve to continue.[/yellow]"
                 )
-                return None, True
+                return None, live_prompts, True
 
         segment_briefs = {
             brief.target: brief.model_dump(mode="json")
             for brief in plan.segments
         }
-        return segment_briefs, False
+        return segment_briefs, live_prompts, False
 
     def _report_global_context(self, reporter: Any, global_context: dict[str, Any]) -> None:
         reporter.panel(global_context["story_idea"], title="Story Idea")
@@ -773,6 +787,7 @@ class PromptGenerationPipeline:
         concept_story_input: str,
         global_context: dict[str, Any],
         segment_briefs: dict[str, Any] | None = None,
+        live_prompts: dict[str, Any] | None = None,
         concept_prompts_json: Path,
         artifact_store: Any,
         reporter: Any,
@@ -787,6 +802,7 @@ class PromptGenerationPipeline:
                 concept_story_input=concept_story_input,
                 global_context=global_context,
                 segment_briefs=segment_briefs,
+                live_prompts=live_prompts,
                 concept_prompts_json=concept_prompts_json,
                 artifact_store=artifact_store,
                 reporter=reporter,
@@ -802,6 +818,7 @@ class PromptGenerationPipeline:
             global_context=global_context,
             notes=get_steering_value(config, "concepts"),
             segment_briefs=segment_briefs or {},
+            live_prompts=live_prompts or {},
         )
         reporter.message("[green]Concept generation finished.[/green]")
         return concept_prompts
@@ -817,6 +834,7 @@ class PromptGenerationPipeline:
         concept_story_input: str,
         global_context: dict[str, Any],
         segment_briefs: dict[str, Any] | None = None,
+        live_prompts: dict[str, Any] | None = None,
         concept_prompts_json: Path,
         artifact_store: Any,
         reporter: Any,
@@ -862,6 +880,7 @@ class PromptGenerationPipeline:
                 f"[cyan]{message}[/cyan]",
             ),
             segment_briefs=segment_briefs or {},
+            live_prompts=live_prompts or {},
         )
         reporter.message("[green]Concept generation finished.[/green]")
         return concept_prompts

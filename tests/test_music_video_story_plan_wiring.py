@@ -385,7 +385,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
 
             pipeline = _build_pipeline(story_plan_service_factory=lambda _llm: FailingService())
             reporter = _RecordingReporter()
-            result, stopped = pipeline._resolve_story_plan(
+            result, _live_prompts, stopped = pipeline._resolve_story_plan(
                 config=_make_config(), app_config=_make_app_config(), request=_make_request(),
                 resume=False, stage1_segments=_stage1_segments(), paths=_make_paths(Path(tmp)),
                 reporter=reporter, artifact_store=None, log_file=lambda *_args: None,
@@ -406,7 +406,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             segments = _legacy_stage1_segments()
             original = [dict(segment) for segment in segments]
 
-            segment_briefs, gate_stopped = pipeline._resolve_story_plan(
+            segment_briefs, _live_prompts, gate_stopped = pipeline._resolve_story_plan(
                 config=_make_config(),
                 app_config=_make_app_config(),
                 request=_make_request(),
@@ -484,7 +484,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             paths = _make_paths(prompts_dir)
             reporter = _RecordingReporter()
 
-            segment_briefs, gate_stopped = pipeline._resolve_story_plan(
+            segment_briefs, _live_prompts, gate_stopped = pipeline._resolve_story_plan(
                 config=config,
                 app_config=app_config,
                 request=request_ns,
@@ -600,7 +600,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             paths = _make_paths(prompts_dir)
             reporter = _RecordingReporter()
 
-            segment_briefs, gate_stopped = pipeline._resolve_story_plan(
+            segment_briefs, _live_prompts, gate_stopped = pipeline._resolve_story_plan(
                 config=config,
                 app_config=app_config,
                 request=request_ns,
@@ -639,7 +639,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             paths = _make_paths(prompts_dir)
             reporter = _RecordingReporter()
 
-            segment_briefs, gate_stopped = pipeline._resolve_story_plan(
+            segment_briefs, _live_prompts, gate_stopped = pipeline._resolve_story_plan(
                 config=config,
                 app_config=app_config,
                 request=request_ns,
@@ -678,7 +678,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             paths = _make_paths(prompts_dir)
             reporter = _RecordingReporter()
 
-            segment_briefs, gate_stopped = pipeline._resolve_story_plan(
+            segment_briefs, _live_prompts, gate_stopped = pipeline._resolve_story_plan(
                 config=config,
                 app_config=app_config,
                 request=request_ns,
@@ -713,7 +713,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             paths = _make_paths(prompts_dir)
             reporter = _RecordingReporter()
 
-            segment_briefs, gate_stopped = pipeline._resolve_story_plan(
+            segment_briefs, _live_prompts, gate_stopped = pipeline._resolve_story_plan(
                 config=config,
                 app_config=app_config,
                 request=request_ns,
@@ -737,6 +737,68 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
                 self.assertIn("target", value)
                 self.assertEqual(value["target"], key)
 
+    def test_live_prompts_are_threaded_into_concept_generation(self) -> None:
+        """live_prompts returned by _resolve_story_plan are keyed by segment
+        target and reach the concept prompt payload as LIVE_PROMPTS."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prompts_dir = Path(tmp)
+
+            modules = FakePromptModules()
+            service = StoryPlanService(prompt_modules=modules)
+            factory, _recording = _make_recording_factory(service)
+            pipeline = _build_pipeline(story_plan_service_factory=factory)
+
+            config = _make_config()
+            app_config = _make_app_config()
+            request_ns = _make_request()
+            paths = _make_paths(prompts_dir)
+            reporter = _RecordingReporter()
+
+            _segment_briefs, live_prompts, gate_stopped = (
+                pipeline._resolve_story_plan(
+                    config=config,
+                    app_config=app_config,
+                    request=request_ns,
+                    resume=False,
+                    stage1_segments=_stage1_segments(),
+                    paths=paths,
+                    reporter=reporter,
+                    artifact_store=None,
+                    log_file=lambda _name, _path: None,
+                )
+            )
+
+            self.assertFalse(gate_stopped)
+            self.assertIsNotNone(live_prompts)
+            # Keys are the segment targets.
+            self.assertIn("seg-1", live_prompts)
+            self.assertIn("seg-2", live_prompts)
+            # Each value carries an image_prompt (and optional video_prompt).
+            for key, value in live_prompts.items():
+                self.assertIsInstance(value, dict)
+                self.assertTrue(str(value.get("image_prompt", "")).strip())
+
+            # The non-batched concept path threads LIVE_PROMPTS into the payload.
+            captured: dict[str, Any] = {}
+
+            class Modules:
+                def concepts(self, payload: dict, **_kwargs: Any) -> dict:
+                    captured.update(payload)
+                    return {"concepts": {}}
+
+            from feverslop.prompting.prompt_pipeline import MusicVideoPromptPipeline
+
+            pipe = MusicVideoPromptPipeline(
+                llm=None, prompt_modules=Modules()  # type: ignore[arg-type]
+            )
+            pipe.create_concept_prompts(
+                stage1_segments=_stage1_segments(),
+                story_idea="A singer leaves.",
+                live_prompts=live_prompts,
+            )
+            self.assertIn("LIVE_PROMPTS", captured)
+            self.assertEqual(captured["LIVE_PROMPTS"], live_prompts)
+
     def test_segment_briefs_do_not_mutate_stage1_segments(self) -> None:
         """Threading segment briefs must not mutate the stage1 segments."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -755,7 +817,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             segments = _stage1_segments()
             original = [dict(seg) for seg in segments]
 
-            segment_briefs, gate_stopped = pipeline._resolve_story_plan(
+            segment_briefs, _live_prompts, gate_stopped = pipeline._resolve_story_plan(
                 config=config,
                 app_config=app_config,
                 request=request_ns,
@@ -930,7 +992,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             paths = _make_paths(prompts_dir)
             reporter = _RecordingReporter()
 
-            segment_briefs, gate_stopped = pipeline._resolve_story_plan(
+            segment_briefs, _live_prompts, gate_stopped = pipeline._resolve_story_plan(
                 config=config,
                 app_config=app_config,
                 request=request_ns,
@@ -995,7 +1057,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             paths = _make_paths(prompts_dir)
             reporter = _RecordingReporter()
 
-            segment_briefs, gate_stopped = pipeline._resolve_story_plan(
+            segment_briefs, _live_prompts, gate_stopped = pipeline._resolve_story_plan(
                 config=config,
                 app_config=app_config,
                 request=request_ns,

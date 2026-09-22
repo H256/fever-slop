@@ -554,6 +554,7 @@ class ConceptPromptBatcher:
         notes: str = "",
         progress_callback: Callable[[str], None] | None = None,
         segment_briefs: dict | None = None,
+        live_prompts: dict | None = None,
     ) -> dict:
         all_results: dict[str, str] = {}
         previous_summary = ""
@@ -615,6 +616,7 @@ class ConceptPromptBatcher:
                 accepted=all_results,
                 order_ids=[seg["segment_id"] for seg in stage1_segments],
                 segment_briefs=segment_briefs,
+                live_prompts=live_prompts,
             )
             self._report(f"{batch_label}: response received, validating keys", report)
 
@@ -758,6 +760,7 @@ class ConceptPromptBatcher:
         accepted: dict | None = None,
         order_ids: list[str] | None = None,
         segment_briefs: dict | None = None,
+        live_prompts: dict | None = None,
     ) -> dict:
         accepted = accepted or {}
         order_ids = order_ids or []
@@ -784,6 +787,17 @@ class ConceptPromptBatcher:
             if briefs:
                 payload["SEGMENT_BRIEFS"] = briefs
                 payload["LOCKED_SEGMENT_BINDINGS"] = briefs
+        if live_prompts:
+            batch_ids = {seg.get("segment_id") for seg in batch}
+            prompts = {
+                seg_id: prompt
+                for seg_id, prompt in live_prompts.items()
+                if seg_id in batch_ids
+                and isinstance(prompt, dict)
+                and str(prompt.get("image_prompt", "") or "").strip()
+            }
+            if prompts:
+                payload["LIVE_PROMPTS"] = prompts
         # Front-load the exact boundary vocabulary so the batch's first scene
         # anchors on verbatim tokens instead of inferred ones (issue #1247).
         # Only present when there is an accepted predecessor to anchor on.
@@ -1000,6 +1014,7 @@ class ConceptPromptBatcher:
         previous_concepts: dict,
         previous_summary: str,
         segment_briefs: dict | None = None,
+        live_prompts: dict | None = None,
         progress_callback: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
         # Repair in small sequential chunks: each call carries a bounded number

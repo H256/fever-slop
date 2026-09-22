@@ -20,3 +20,5 @@ For every supplied segment, obey its `type` exactly:
 
 The actor role `Vocalist`, the name `Lead Singer`, a microphone, the music-video setting, story idea, previous concepts, or continuity NEVER override the supplied segment `type`.
 Do not infer singing merely because a singer is visible.
+
+LIVE_PROMPTS, when present, is an authoritative per-segment visual direction (image_prompt and optional video_prompt) produced by the story plan. For any segment listed in LIVE_PROMPTS, ground that segment's concept in its image_prompt: keep the described subject, setting, lighting, composition, and mood, and let the video_prompt inform camera motion and temporal flow. Do not contradict or replace the listed visual direction; only fill the structured narrative fields and prose around it. Segments absent from LIVE_PROMPTS follow the rules above.
