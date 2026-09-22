@@ -539,7 +539,7 @@ class PromptGenerationPipeline:
         llm = self.llm_factory(app_config)
         factory = self.story_plan_service_factory
         story_planning = getattr(getattr(app_config, "llm", None), "story_planning", None)
-        acting_batch_size = int(getattr(story_planning, "acting_batch_size", 8))
+        acting_batch_size = int(getattr(story_planning, "acting_batch_size", 4))
         # Preserve compatibility with injected one-argument factories, while
         # giving the production service its configured bound and live reporter.
         parameters = inspect.signature(factory).parameters

@@ -368,6 +368,7 @@ class AppConfigTests(unittest.TestCase):
 
         self.assertFalse(config.llm.story_planning.require_approval)
         self.assertEqual(PLANNER_REVISION, config.llm.story_planning.planner_revision)
+        self.assertEqual(4, config.llm.story_planning.acting_batch_size)
 
     def test_loads_story_planning_settings(self):
         from feverslop.config.app_config import AppConfig

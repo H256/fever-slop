@@ -41,7 +41,10 @@ _CREATIVE = LLMTaskPolicy("creative", max_tokens=2048)
 # the H3 planner comment). The repair must emit the complete plan, so it
 # mirrors H3_PLANNER_MAX_TOKENS.
 _STORY_PLAN_STRUCTURED = LLMTaskPolicy("structured", max_tokens=4096)
-_STORY_PLAN_CREATIVE = LLMTaskPolicy("creative", max_tokens=4096)
+# Acting returns four compact structured briefs per request by default.  A
+# smaller ceiling stops a weak local model from spending minutes on one
+# malformed JSON response; the service retries only the missing brief ids.
+_STORY_PLAN_ACTING = LLMTaskPolicy("creative", max_tokens=1536)
 _STORY_PLAN_REPAIR = LLMTaskPolicy("structured", max_tokens=8192)
 
 # Concept batches return one structured value per scene. The per-scene budget
@@ -87,7 +90,7 @@ _POLICIES = {
     SONG_BRIEF: _CREATIVE,
     STORYBOARD_TRANSFORM: _STRUCTURED,
     STORY_IDEA: _CREATIVE,
-    STORY_PLAN_ACTING: _STORY_PLAN_CREATIVE,
+    STORY_PLAN_ACTING: _STORY_PLAN_ACTING,
     STORY_PLAN_BEAT_ALLOCATION: _STORY_PLAN_STRUCTURED,
     STORY_PLAN_BIBLE: _STORY_PLAN_STRUCTURED,
     STORY_PLAN_REPAIR: _STORY_PLAN_REPAIR,

@@ -235,7 +235,7 @@ class StoryPlanService:
         *,
         prompt_modules: Any,
         reporter: Reporter | None = None,
-        acting_batch_size: int = 8,
+        acting_batch_size: int = 4,
     ) -> None:
         self._prompt_modules = prompt_modules
         self._reporter: Reporter = reporter if reporter is not None else NullReporter()

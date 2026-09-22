@@ -473,7 +473,7 @@ class StoryPlanModuleTests(unittest.TestCase):
         )
         self.assertEqual(
             _predictor(self.predictors, "Acting").calls[0]["config"],
-            {"max_tokens": 4096},
+            {"max_tokens": 1536},
         )
 
     def test_module_resolves_per_task_temperature(self) -> None:
@@ -489,6 +489,18 @@ class StoryPlanModuleTests(unittest.TestCase):
             ],
         )
         self.assertNotIn(0.4, [t for _, t, _ in self.lm_calls])
+
+    def test_module_bounds_the_dspy_lm_not_just_predictor_config(self) -> None:
+        """DSPy must receive the bounded budget as its LM default.
+
+        Some providers ignore a nested predictor ``config`` when creating a
+        completion.  Leaving the LM at the application's 65k default turns a
+        malformed small-model acting response into a multi-minute request.
+        """
+        self.assertEqual(
+            [max_tokens for _, _, max_tokens in self.lm_calls],
+            [1536, 4096, 4096],
+        )
 
     def test_module_requires_configured_dspy_llm(self) -> None:
         with self.assertRaises(RuntimeError):

@@ -55,7 +55,15 @@ class StoryPlanPromptModules:
 
             runtime = DspyRuntime.create(dspy)
         self._lms = {
-            policy_name: runtime.make_lm(llm, task=policy_name)
+            # DSPy providers use the LM's default completion budget when a
+            # predictor-level config is ignored.  Bind the task limit here as
+            # well, otherwise a 65k application default can make one malformed
+            # acting batch run for minutes.
+            policy_name: runtime.make_lm(
+                llm,
+                task=policy_name,
+                max_tokens=policy_for(policy_name).max_tokens,
+            )
             for policy_name in _BUNDLE_TASK_NAMES
         }
         self._context = runtime.context
