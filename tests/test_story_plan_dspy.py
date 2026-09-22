@@ -864,7 +864,12 @@ class StoryPlanServiceTests(unittest.TestCase):
                         "dragon": ["dragon_lair"],
                         "guardian": ["fountain"],
                     },
-                    "terminal_states": {"ravena": {"milestone": "ascend"}},
+                    "terminal_states": {
+                        "ravena": {
+                            "milestone": "ascend",
+                            "state": "radiant",
+                        }
+                    },
                 },
             },
             characters=(
@@ -895,6 +900,63 @@ class StoryPlanServiceTests(unittest.TestCase):
         self.assertEqual(["ravena", "dragon"], by_segment["seg-7"]["character_ids"])
         self.assertEqual("reach_fountain", by_segment["seg-10"]["milestone_id"])
         self.assertEqual("ascend", by_segment["seg-12"]["milestone_id"])
+        self.assertEqual(
+            [{"character_id": "ravena", "state": "radiant"}],
+            by_segment["seg-12"]["required_actor_states"],
+        )
+
+    def test_contract_with_missing_milestone_binding_is_rejected(self) -> None:
+        request = make_request(
+            source_evidence={
+                "narrative_contract": {
+                    "location_order": ["cave", "well"],
+                    "milestone_order": ["departure", "arrival"],
+                    "milestone_bindings": [
+                        {
+                            "milestone_id": "departure",
+                            "location_id": "cave",
+                            "relative_position": 0.0,
+                        }
+                    ],
+                },
+            },
+        )
+
+        with self.assertRaisesRegex(StoryPlanError, "milestone bindings"):
+            StoryPlanService._coerce_typed_allocation(
+                request,
+                {"beats": [{"phase": "development", "description": "journey"}]},
+            )
+
+    def test_contract_binds_a_single_location_story_without_llm_allocation(self) -> None:
+        request = make_request(
+            source_evidence={
+                "narrative_contract": {
+                    "location_order": ["cave"],
+                    "milestone_order": ["arrival", "decision"],
+                    "milestone_bindings": [
+                        {
+                            "milestone_id": "arrival",
+                            "location_id": "cave",
+                            "relative_position": 0.0,
+                        },
+                        {
+                            "milestone_id": "decision",
+                            "location_id": "cave",
+                            "relative_position": 1.0,
+                        },
+                    ],
+                },
+            },
+        )
+
+        allocation = StoryPlanService._coerce_typed_allocation(
+            request,
+            {"beats": [{"phase": "development", "description": "journey"}]},
+        )
+
+        self.assertEqual("arrival", allocation["briefs"][0]["milestone_id"])
+        self.assertEqual("decision", allocation["briefs"][1]["milestone_id"])
 
     def test_story_plan_bindings_override_creative_location_choices(self) -> None:
         modules = FakePromptModules(

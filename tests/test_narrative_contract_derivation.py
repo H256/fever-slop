@@ -6,6 +6,7 @@ from feverslop.application.prompt_generation_pipeline import (
     _contract_entry_id,
 )
 from feverslop.config.project_config import ProjectConfig
+from feverslop.prompting.music_video_signatures import MusicVideoNarrativeContract
 
 
 class NarrativeContractPromptPipeline:
@@ -122,6 +123,18 @@ class NarrativeContractDerivationTests(unittest.TestCase):
                 {"id": "cave_entered", "source": "enter the cave"},
                 {"id": "fountain_reached", "source": "reach the fountain"},
             ],
+            "milestone_bindings": [
+                {
+                    "milestone_id": "cave_entered",
+                    "location_id": "cave_entrance",
+                    "relative_position": 0.0,
+                },
+                {
+                    "milestone_id": "fountain_reached",
+                    "location_id": "fountain",
+                    "relative_position": 1.0,
+                },
+            ],
         }
         pipeline = NarrativeContractPromptPipeline(contract=derived)
 
@@ -184,11 +197,54 @@ class NarrativeContractValidationTests(unittest.TestCase):
         contract = {
             "location_order": ["cave_entrance", "fountain"],
             "milestone_order": [{"id": "cave_entered", "source": "enter"}],
+            "milestone_bindings": [
+                {
+                    "milestone_id": "cave_entered",
+                    "location_id": "cave_entrance",
+                    "relative_position": 0.0,
+                }
+            ],
             "terminal_states": {"singer": {"state": "ascended"}},
             "actor_allowed_locations": {"singer": ["fountain"]},
         }
         self.assertEqual([], self.pipeline._validate_narrative_contract(
             contract, self.actors, self.locations))
+
+    def test_missing_milestone_binding_is_reported(self):
+        warnings = self.pipeline._validate_narrative_contract(
+            {
+                "location_order": ["cave_entrance", "fountain"],
+                "milestone_order": ["cave_entered", "fountain_reached"],
+                "milestone_bindings": [
+                    {
+                        "milestone_id": "cave_entered",
+                        "location_id": "cave_entrance",
+                        "relative_position": 0.0,
+                    }
+                ],
+            },
+            self.actors,
+            self.locations,
+        )
+        self.assertTrue(any("milestone_bindings" in warning for warning in warnings))
+
+    def test_milestone_binding_is_a_typed_contract_value(self):
+        contract = MusicVideoNarrativeContract.model_validate(
+            {
+                "milestone_bindings": [
+                    {
+                        "milestone_id": "departure",
+                        "location_id": "cave_entrance",
+                        "relative_position": 0.25,
+                    }
+                ]
+            }
+        )
+
+        binding = contract.milestone_bindings[0]
+        self.assertEqual("departure", binding.milestone_id)
+        self.assertEqual("cave_entrance", binding.location_id)
+        self.assertEqual(0.25, binding.relative_position)
 
     def test_unknown_location_in_location_order(self):
         warnings = self.pipeline._validate_narrative_contract(

@@ -11,6 +11,14 @@ class MusicVideoSubjectLocations(BaseModel):
     locations: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class NarrativeMilestoneBinding(BaseModel):
+    """One deterministic placement of a narrative milestone."""
+
+    milestone_id: str
+    location_id: str
+    relative_position: float
+
+
 class MusicVideoNarrativeContract(BaseModel):
     """Structured story arch the concept LLM is constrained by.
 
@@ -21,7 +29,7 @@ class MusicVideoNarrativeContract(BaseModel):
 
     location_order: list[Any] = Field(default_factory=list)
     milestone_order: list[Any] = Field(default_factory=list)
-    milestone_bindings: list[dict[str, Any]] = Field(default_factory=list)
+    milestone_bindings: list[NarrativeMilestoneBinding] = Field(default_factory=list)
     terminal_states: dict[str, Any] = Field(default_factory=dict)
     actor_allowed_locations: dict[str, Any] = Field(default_factory=dict)
     chronology_exceptions: dict[str, Any] = Field(default_factory=dict)

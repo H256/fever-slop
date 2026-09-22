@@ -226,7 +226,8 @@ class SceneTimelineResumeTests(unittest.TestCase):
             "ltx_prompt_relay_json": root / f"ltx_prompt_relay_{song_id}.json",
             "scene_duration_policy": None,
             "artifact_store": SimpleNamespace(
-                read_json=lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
+                read_json=lambda path: json.loads(Path(path).read_text(encoding="utf-8")),
+                write_json=lambda path, payload: _write_json(path, payload),
             ),
             "log_step": lambda _title: None,
             "log_file": lambda _label, _path: None,
@@ -346,7 +347,8 @@ class PromptGenerationResumeTests(unittest.TestCase):
             "scene_details_json": root / f"scene_details_{song_id}.json",
             "scene_prompts_json": root / f"scene_prompts_{song_id}.json",
             "artifact_store": SimpleNamespace(
-                read_json=lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
+                read_json=lambda path: json.loads(Path(path).read_text(encoding="utf-8")),
+                write_json=lambda path, payload: _write_json(path, payload),
             ),
             "log_step": lambda _title: None,
             "log_file": lambda _label, _path: None,

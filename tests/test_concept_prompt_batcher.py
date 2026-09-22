@@ -275,7 +275,8 @@ class ConceptPromptBatcherTests(unittest.TestCase):
     def test_reports_ids_of_missing_scene_keys_before_repair(self):
         modules = FakeConceptModules([
             json.dumps({"seg_1": "concept 1"}),
-            json.dumps({"seg_2": "repaired concept 2", "seg_3": "repaired concept 3"}),
+            json.dumps({"seg_2": "repaired concept 2"}),
+            json.dumps({"seg_3": "repaired concept 3"}),
             "summary",
         ])
         progress = []
@@ -1654,7 +1655,8 @@ class RepairContextCompletenessTests(unittest.TestCase):
         c2 = self._concept("cross_chamber", cast="advancing")
         modules = FakeConceptModules([
             {"s1": c1, "s2": c2},
-            {"s3": self._concept("observe_throne"), "s4": self._concept("approach_throne")},
+            {"s3": self._concept("observe_throne")},
+            {"s4": self._concept("approach_throne")},
             {"s5": self._concept("face_guardian")},
             "summary",
         ])
@@ -1667,9 +1669,9 @@ class RepairContextCompletenessTests(unittest.TestCase):
         )
 
         repairs = [call[1] for call in modules.calls if call[0] == "repair_concepts"]
-        self.assertEqual(2, len(repairs))
-        first = repairs[0]
-        self.assertEqual(["s3", "s4"], first["EXPECTED_KEYS"])
+        self.assertEqual(3, len(repairs))
+        first, second, _third = repairs
+        self.assertEqual(["s3"], first["EXPECTED_KEYS"])
         # s3 has an adjacent accepted predecessor: unchanged shape, no distance key.
         s3_boundary = first["BOUNDARY_CONTEXT"]["s3"]["predecessor"]
         self.assertEqual("s2", s3_boundary["scene_id"])
@@ -1677,11 +1679,11 @@ class RepairContextCompletenessTests(unittest.TestCase):
         self.assertNotIn("successor", first["BOUNDARY_CONTEXT"]["s3"])
         # s4's immediate predecessor is itself being repaired: the boundary
         # entry must fall back to the nearest accepted scene across the gap.
-        s4_boundary = first["BOUNDARY_CONTEXT"]["s4"]["predecessor"]
+        s4_boundary = second["BOUNDARY_CONTEXT"]["s4"]["predecessor"]
         self.assertEqual("s2", s4_boundary["scene_id"])
         self.assertEqual(2, s4_boundary["neighbor_distance"])
         self.assertEqual("cross_chamber", s4_boundary["outgoing"]["action"])
-        self.assertNotIn("successor", first["BOUNDARY_CONTEXT"]["s4"])
+        self.assertNotIn("successor", second["BOUNDARY_CONTEXT"]["s4"])
 
     def test_gap_fallback_repair_that_duplicates_boundary_neighbor_still_fails(self):
         # Negative guard: enriching the gap context must not soften the gate.
@@ -1826,8 +1828,9 @@ class RepairContextCompletenessTests(unittest.TestCase):
     def test_incomplete_repair_response_is_reported(self):
         modules = FakeConceptModules([
             {},  # generation lost every key
-            {"s1": "concept one"},  # chunk (s1, s2) answered only s1
-            {"s3": "concept three"},  # chunk (s3) answered
+            {"s1": "concept one"},
+            {},  # targeted repair for s2 is incomplete
+            {"s3": "concept three"},
             "summary",
         ])
         progress = []
@@ -2242,6 +2245,7 @@ class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
         )
         modules = FakeConceptModules([
             {"seg_1": first, "seg_2": duplicate},
+            {"seg_1": first},
             {"seg_2": duplicate},  # repair returns the same invalid concept
             "summary",
         ])
@@ -2540,6 +2544,35 @@ class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
         # The duplicate is in the aftermath.
         self.assertIn("segment_015", allocation.get("aftermath", []))
         self.assertEqual(["drink"], allocation["one_shot_milestones"])
+
+
+class TargetedRepairTests(unittest.TestCase):
+    def test_each_missing_locked_scene_is_repaired_in_its_own_request(self):
+        modules = FakeConceptModules([
+            {"s1": "first scene"},
+            {"s2": "second scene"},
+            {"s3": "third scene"},
+            "summary",
+        ])
+        batcher = ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=3)
+
+        batcher.create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": f"s{index}"} for index in range(1, 4)],
+            story_idea="A journey with three ordered moments.",
+            global_context={},
+            segment_briefs={
+                "s1": {"location_id": "place-a"},
+                "s2": {"location_id": "place-b"},
+                "s3": {"location_id": "place-c"},
+            },
+        )
+
+        repairs = [payload for name, payload, _ in modules.calls if name == "repair_concepts"]
+        self.assertEqual([["s2"], ["s3"]], [payload["EXPECTED_KEYS"] for payload in repairs])
+        self.assertEqual(
+            [{"s2": {"location_id": "place-b"}}, {"s3": {"location_id": "place-c"}}],
+            [payload["LOCKED_SEGMENT_BINDINGS"] for payload in repairs],
+        )
 
 
 if __name__ == "__main__":

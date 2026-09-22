@@ -1622,9 +1622,9 @@ class PromptGenerationPipeline:
     ) -> list[str]:
         """Return warnings for canonical ids the contract invents.
 
-        Only location and actor ids can be checked against the resolved cast
-        and locations; milestone and chronology-exception names are narrative
-        and are not validated.
+        Milestone ids are narrative data, but their bindings are mechanical:
+        a non-empty ordered milestone list must bind each id exactly once to a
+        canonical location and a finite position in that location's window.
         """
         if not isinstance(contract, dict) or not contract:
             return []
@@ -1643,6 +1643,49 @@ class PromptGenerationPipeline:
             item_id = _contract_entry_id(raw)
             if item_id and item_id not in location_ids:
                 warnings.append(f"location_order references unknown location {item_id!r}")
+        milestone_ids = [
+            _contract_entry_id(raw)
+            for raw in contract.get("milestone_order") or ()
+        ]
+        milestone_ids = [item_id for item_id in milestone_ids if item_id]
+        bindings = contract.get("milestone_bindings")
+        if milestone_ids:
+            if not isinstance(bindings, list):
+                warnings.append("milestone_bindings must be a list when milestone_order is non-empty")
+            else:
+                bound_ids: list[str] = []
+                for index, binding in enumerate(bindings):
+                    if not isinstance(binding, dict):
+                        warnings.append(f"milestone_bindings[{index}] must be an object")
+                        continue
+                    milestone_id = str(binding.get("milestone_id") or "").strip()
+                    location_id = str(binding.get("location_id") or "").strip()
+                    bound_ids.append(milestone_id)
+                    if milestone_id not in milestone_ids:
+                        warnings.append(
+                            f"milestone_bindings[{index}] references unknown milestone {milestone_id!r}"
+                        )
+                    if location_id not in location_ids:
+                        warnings.append(
+                            f"milestone_bindings[{index}] references unknown location {location_id!r}"
+                        )
+                    try:
+                        relative_position = float(binding.get("relative_position"))
+                    except (TypeError, ValueError):
+                        warnings.append(
+                            f"milestone_bindings[{index}].relative_position must be between 0.0 and 1.0"
+                        )
+                    else:
+                        if not 0.0 <= relative_position <= 1.0:
+                            warnings.append(
+                                f"milestone_bindings[{index}].relative_position must be between 0.0 and 1.0"
+                            )
+                if len(bound_ids) != len(set(bound_ids)):
+                    warnings.append("milestone_bindings must not bind a milestone more than once")
+                if set(bound_ids) != set(milestone_ids):
+                    warnings.append(
+                        "milestone_bindings must contain every milestone in milestone_order exactly once"
+                    )
         allowed = contract.get("actor_allowed_locations") or {}
         if isinstance(allowed, dict):
             for actor_id, allowed_locations in allowed.items():

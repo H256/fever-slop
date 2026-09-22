@@ -737,7 +737,7 @@ class StoryPlanService:
         ]
         canonical_locations = {str(item.get("id", "")) for item in request.locations}
         location_ids = [item for item in location_ids if item in canonical_locations]
-        if len(location_ids) < 2:
+        if not location_ids:
             return None
 
         restricted = contract.get("actor_allowed_locations", {})
@@ -771,7 +771,25 @@ class StoryPlanService:
 
         bindings = contract.get("milestone_bindings", [])
         if not isinstance(bindings, list):
-            return None
+            raise StoryPlanError("narrative contract milestone bindings must be a list")
+        milestone_ids = [
+            str(item.get("id") if isinstance(item, Mapping) else item).strip()
+            for item in contract.get("milestone_order", [])
+        ]
+        milestone_ids = [milestone for milestone in milestone_ids if milestone]
+        binding_ids = [
+            str(binding.get("milestone_id", "")).strip()
+            for binding in bindings
+            if isinstance(binding, Mapping)
+        ]
+        if milestone_ids and (
+            len(binding_ids) != len(bindings)
+            or len(binding_ids) != len(set(binding_ids))
+            or set(binding_ids) != set(milestone_ids)
+        ):
+            raise StoryPlanError(
+                "narrative contract milestone bindings must contain every milestone exactly once"
+            )
         by_location: dict[int, list[tuple[str, float]]] = {index: [] for index in range(len(location_ids))}
         for binding in bindings:
             if not isinstance(binding, Mapping):
@@ -813,6 +831,16 @@ class StoryPlanService:
                         actor = str(actor_id)
                         if actor in canonical_characters and actor not in characters:
                             characters.append(actor)
+            required_actor_states = [
+                {"character_id": str(actor_id), "state": str(rule.get("state", "")).strip()}
+                for actor_id, rule in terminal.items()
+                if (
+                    isinstance(rule, Mapping)
+                    and str(rule.get("milestone", "")) == milestone_id
+                    and str(actor_id) in canonical_characters
+                    and str(rule.get("state", "")).strip()
+                )
+            ]
             briefs.append({
                 "brief_id": f"brief-{segment.segment_id}",
                 "segment_id": segment.segment_id,
@@ -824,6 +852,7 @@ class StoryPlanService:
                 "character_ids": characters,
                 "location_id": typed_beats[beat_index]["location_id"],
                 "milestone_id": milestone_id,
+                "required_actor_states": required_actor_states,
             })
         return {"briefs": briefs, "typed_beats": typed_beats}
 
@@ -1379,6 +1408,33 @@ class StoryPlanService:
             bound_prop_ids = list(binding.get("prop_ids", []))
             bound_location_id = raw.get("location_id", binding.get("location_id"))
             bound_milestone_id = raw.get("milestone_id") or binding.get("milestone_id")
+            actor_states_by_id = {
+                str(state.get("character_id", "")): {
+                    "character_id": str(state.get("character_id", "")),
+                    "state": str(
+                        state.get("state")
+                        or state.get("inner_state")
+                        or "present"
+                    ),
+                    "physical_state": str(state.get("physical_state", "")),
+                }
+                for state in acting_brief.get("actor_states", [])
+                if (
+                    isinstance(state, Mapping)
+                    and str(state.get("character_id", "")) in canonical_character_ids
+                )
+            }
+            for state in raw.get("required_actor_states", []):
+                if not isinstance(state, Mapping):
+                    continue
+                actor_id = str(state.get("character_id", ""))
+                required_state = str(state.get("state", "")).strip()
+                if actor_id in canonical_character_ids and required_state:
+                    actor_states_by_id[actor_id] = {
+                        "character_id": actor_id,
+                        "state": required_state,
+                        "physical_state": "",
+                    }
             segment = {
                     "id": brief_id,
                     "target": target,
@@ -1406,23 +1462,7 @@ class StoryPlanService:
                     "visual_direction": str(acting_brief.get("visual_direction", "")),
                     "objective": str(acting_brief.get("objective", "")),
                     "emotional_turn": str(acting_brief.get("emotional_turn", "")),
-                    "actor_states": [
-                        {
-                            "character_id": str(state.get("character_id", "")),
-                            "state": str(
-                                state.get("state")
-                                or state.get("inner_state")
-                                or "present"
-                            ),
-                            "physical_state": str(state.get("physical_state", "")),
-                        }
-                        for state in acting_brief.get("actor_states", [])
-                        if (
-                            isinstance(state, Mapping)
-                            and str(state.get("character_id", ""))
-                            in canonical_character_ids
-                        )
-                    ],
+                    "actor_states": list(actor_states_by_id.values()),
                     "exclusive": False,
                     "audio_ref": {"segment_id": target, "fingerprint": fingerprint},
                 }

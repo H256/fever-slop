@@ -20,11 +20,10 @@ def chunked(items: list[Any], size: int):
         yield start, items[start:start + size]
 
 
-# One repair call carries at most this many scene keys so its structured
-# output stays inside the per-scene token budget (see llm_policy
-# concept_batch_max_tokens) and a truncated response can never strand a whole
-# batch repair.
-_KEYS_PER_REPAIR_CALL = 2
+# A repair owns exactly one locked scene.  This keeps the request bounded for
+# small models and prevents one malformed response from moving an unrelated
+# scene across its deterministic narrative window.
+_KEYS_PER_REPAIR_CALL = 1
 
 # Concept-batch request budget. Front-loading BOUNDARY_CONTEXT and a
 # closed-vocabulary block onto every initial batch (issue #1247) adds tokens on
