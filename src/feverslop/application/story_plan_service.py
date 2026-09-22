@@ -237,12 +237,16 @@ class StoryPlanService:
         prompt_modules: Any,
         reporter: Reporter | None = None,
         max_repair_attempts: int = 1,
+        acting_batch_size: int = 8,
     ) -> None:
         self._prompt_modules = prompt_modules
         self._reporter: Reporter = reporter if reporter is not None else NullReporter()
         if max_repair_attempts < 1:
             raise StoryPlanError("max_repair_attempts must be at least 1")
         self._max_repair_attempts = max_repair_attempts
+        if acting_batch_size < 1:
+            raise StoryPlanError("acting_batch_size must be at least 1")
+        self._acting_batch_size = acting_batch_size
 
     def build_plan(self, request: StoryPlanRequest) -> StoryPlanResult:
         request.validate()
@@ -267,11 +271,7 @@ class StoryPlanService:
         self._reporter.message("story-plan-beat-allocation complete")
 
         self._reporter.step("story-plan-acting")
-        acting_raw = self._job("acting", self._acting_input(request, allocation))
-        acting = self._normalize_job_output(
-            "acting", acting_raw, diagnostics, _FORBIDDEN_AUDIO_DATA_KEYS
-        )
-        acting = self._coerce_typed_acting(allocation, acting)
+        acting = self._build_acting_in_batches(request, allocation, diagnostics)
         self._validate_acting(allocation, acting, diagnostics)
         self._reporter.message("story-plan-acting complete")
 
@@ -305,6 +305,125 @@ class StoryPlanService:
             acting=self._typed_acting(acting, plan),
             diagnostics=tuple(diagnostics),
         )
+
+    def _build_acting_in_batches(
+        self,
+        request: StoryPlanRequest,
+        allocation: Mapping[str, Any],
+        diagnostics: list[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Generate acting in bounded deterministic batches with targeted retry."""
+        raw_briefs = allocation.get("briefs")
+        if not isinstance(raw_briefs, list):
+            raw_briefs = []
+        merged: dict[str, Any] = {"briefs": [], "character_arcs": []}
+        ordered_briefs = [brief for brief in raw_briefs if isinstance(brief, Mapping)]
+        for start in range(0, len(ordered_briefs), self._acting_batch_size):
+            batch = ordered_briefs[start:start + self._acting_batch_size]
+            expected = [str(brief.get("brief_id", "")) for brief in batch]
+            self._reporter.message(
+                f"story-plan-acting batch {start // self._acting_batch_size + 1}: "
+                f"requested {len(expected)} briefs"
+            )
+            response = self._acting_batch(
+                request, allocation, batch, diagnostics, expected
+            )
+            returned = self._acting_brief_ids(response)
+            missing = [brief_id for brief_id in expected if brief_id not in returned]
+            if missing:
+                self._reporter.message(
+                    f"story-plan-acting retry: requesting {len(missing)} missing briefs"
+                )
+                retry_batch = [
+                    brief for brief in batch
+                    if str(brief.get("brief_id", "")) in set(missing)
+                ]
+                retry = self._acting_batch(
+                    request, allocation, retry_batch, diagnostics, missing
+                )
+                response = {
+                    "briefs": [
+                        *[brief for brief in response.get("briefs", []) if isinstance(brief, Mapping)],
+                        *[brief for brief in retry.get("briefs", []) if isinstance(brief, Mapping)],
+                    ],
+                    "character_arcs": [
+                        *response.get("character_arcs", []),
+                        *retry.get("character_arcs", []),
+                    ],
+                }
+            merged["briefs"].extend(
+                brief for brief in response.get("briefs", [])
+                if isinstance(brief, Mapping)
+            )
+            merged["character_arcs"].extend(
+                arc for arc in response.get("character_arcs", [])
+                if isinstance(arc, Mapping)
+            )
+        # Model order is not authoritative.  The allocation order is the
+        # canonical narrative order and must survive every batch/retry.
+        by_id = {str(brief.get("brief_id")): brief for brief in merged["briefs"]}
+        merged["briefs"] = [
+            by_id[brief_id]
+            for brief_id in (str(brief.get("brief_id", "")) for brief in ordered_briefs)
+            if brief_id in by_id
+        ]
+        return merged
+
+    @staticmethod
+    def _acting_brief_ids(acting: Mapping[str, Any]) -> set[str]:
+        return {
+            str(brief.get("brief_id", ""))
+            for brief in acting.get("briefs", [])
+            if isinstance(brief, Mapping) and str(brief.get("brief_id", ""))
+        }
+
+    def _acting_batch(
+        self,
+        request: StoryPlanRequest,
+        allocation: Mapping[str, Any],
+        batch: list[Mapping[str, Any]],
+        diagnostics: list[Mapping[str, Any]],
+        expected: list[str],
+    ) -> dict[str, Any]:
+        batch_allocation = {
+            **dict(allocation),
+            "briefs": [dict(brief) for brief in batch],
+            "expected_brief_ids": list(expected),
+        }
+        raw = self._job("acting", self._acting_input(request, batch_allocation))
+        acting = self._normalize_job_output(
+            "acting", raw, diagnostics, _FORBIDDEN_AUDIO_DATA_KEYS
+        )
+        acting = self._coerce_typed_acting(batch_allocation, acting)
+        raw_output = acting.get("briefs", [])
+        output_ids = [
+            str(brief.get("brief_id", ""))
+            for brief in raw_output
+            if isinstance(brief, Mapping)
+        ]
+        if len(output_ids) != len(set(output_ids)):
+            raise StoryPlanError(
+                "acting output contains duplicate brief ids",
+                diagnostics=[{
+                    "code": "duplicate_acting_brief",
+                    "subject_id": "acting",
+                    "message": "each requested brief must be returned at most once",
+                }],
+            )
+        ids = set(output_ids)
+        foreign = sorted(ids - set(expected))
+        if foreign:
+            raise StoryPlanError(
+                "acting output contains foreign brief ids",
+                diagnostics=[
+                    {
+                        "code": "foreign_acting_brief",
+                        "subject_id": "acting",
+                        "message": f"unexpected brief ids: {', '.join(foreign)}",
+                    }
+                ],
+            )
+        return dict(acting)
 
     def render_review_export(self, result: StoryPlanResult) -> str:
         plan = result.plan
@@ -422,13 +541,39 @@ class StoryPlanService:
         briefs = allocation.get("briefs")
         if not isinstance(briefs, list):
             briefs = []
+        segment_ids = {
+            str(brief.get("segment_id"))
+            for brief in briefs
+            if isinstance(brief, Mapping) and brief.get("segment_id")
+        }
+        beat_indices = {
+            int(index)
+            for brief in briefs
+            if isinstance(brief, Mapping)
+            for index in brief.get("beat_indices", [])
+            if isinstance(index, int) and not isinstance(index, bool)
+        }
+        typed_beats = [
+            dict(beat)
+            for index, beat in enumerate(allocation.get("typed_beats", []))
+            if isinstance(beat, Mapping) and (not beat_indices or index in beat_indices)
+        ]
         return {
             "song_title": request.song_title,
             "song_language": request.song_language,
             "lyrics": request.lyrics,
             "briefs": [dict(brief) for brief in briefs],
-            "typed_beats": [dict(beat) for beat in allocation.get("typed_beats", []) if isinstance(beat, Mapping)],
-            "segments": [segment.to_compact_dict() for segment in request.segments],
+            "expected_brief_ids": [
+                str(brief.get("brief_id", ""))
+                for brief in briefs
+                if isinstance(brief, Mapping)
+            ],
+            "typed_beats": typed_beats,
+            "segments": [
+                segment.to_compact_dict()
+                for segment in request.segments
+                if not segment_ids or segment.segment_id in segment_ids
+            ],
             "locations": [dict(location) for location in request.locations],
             "props": [dict(prop) for prop in request.props],
             "characters": [dict(character) for character in request.characters],

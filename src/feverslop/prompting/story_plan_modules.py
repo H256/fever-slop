@@ -137,6 +137,7 @@ class StoryPlanPromptModules:
         characters: list[dict[str, Any]],
         locations: list[dict[str, Any]],
         props: list[dict[str, Any]],
+        expected_brief_ids: list[str] | None = None,
     ) -> Any:
         return self._call(
             STORY_PLAN_ACTING,
@@ -145,6 +146,7 @@ class StoryPlanPromptModules:
                 "creative_direction": creative_direction,
                 "bible": bible,
                 "beats": beats,
+                "expected_brief_ids": list(expected_brief_ids or []),
                 "segments": segments,
                 "characters": characters,
                 "locations": locations,
