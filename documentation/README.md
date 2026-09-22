@@ -8,6 +8,7 @@ Start here:
 - [Running](running.md) — command-line operation and pipeline startup.
 - [Pipelines](pipelines.md) — pipeline modes, stages, progress, and logs.
 - [Projects](projects.md) — project layout, configuration, and artifacts.
+- [Artifact prune](artifact-prune.md) — manual, manifest-governed pruning of regenerable cache artifacts with archive-first deletion.
 - [Examples](examples.md) — standard and Full-Auto workflows.
 - [Cast briefs](cast-brief.md) — free cast direction, fixed and extend rosters, and Full-Auto options.
 - [Studio ownership](studio-ownership.md) — target package ownership and the
