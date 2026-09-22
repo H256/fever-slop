@@ -676,11 +676,15 @@ class PromptGenerationPipeline:
                 failure_policy = str(
                     getattr(story_planning_config, "failure_policy", "warn")
                 ).strip().lower()
-                message = f"Story plan unavailable; continuing without story briefs: {exc}"
+                message = (
+                    "Story plan unavailable; stopping before concept generation "
+                    "so no unbound or stale story can be produced: "
+                    f"{exc}"
+                )
                 if failure_policy == "block":
                     raise
                 reporter.message(f"[yellow]{message}[/yellow]")
-                return None, False
+                return None, True
             plan = result.plan
 
             if plan.schema_version not in SUPPORTED_SCHEMA_VERSIONS:

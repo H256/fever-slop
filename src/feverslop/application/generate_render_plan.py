@@ -84,6 +84,12 @@ class GenerateRenderPlanUseCase:
             if defer_h3 and getattr(service, "defer_until_references", False):
                 continue
             context = service.execute(context)
+            if (
+                context["story_plan_gate"]
+                if isinstance(context, GenerateRenderPlanContext)
+                else context.get("story_plan_gate", False)
+            ):
+                break
         return context
 
     def log_step(self, title: str):
@@ -158,6 +164,15 @@ class GenerateRenderPlanUseCase:
 
         self.report_scene_duration_clamp(request.scene_duration_policy)
         context = self.execute_services(context)
+        if (
+            context["story_plan_gate"]
+            if isinstance(context, GenerateRenderPlanContext)
+            else context.get("story_plan_gate", False)
+        ):
+            raise FeverSlopValidationError(
+                "Pipeline stopped: story plan unavailable; no unbound concept "
+                "generation was attempted. Re-run after the story planner succeeds."
+            )
         render_plan = context["render_plan"]
         total_frames = sum(scene["frame_count"] for scene in render_plan)
         total_duration = sum(scene["duration_seconds"] for scene in render_plan)
