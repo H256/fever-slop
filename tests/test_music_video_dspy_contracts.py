@@ -106,7 +106,37 @@ class MusicVideoDspyContractTests(unittest.TestCase):
             batch=True,
         )
 
-        self.assertEqual(22528, calls[0]["config"]["max_tokens"])
+        self.assertEqual(4096, calls[0]["config"]["max_tokens"])
+
+    def test_concept_requests_use_a_bounded_lm_when_the_runtime_supports_it(self):
+        lm_calls = []
+        context_lms = []
+
+        class Predictor:
+            def __call__(self, **_kwargs):
+                return {"concepts": {}}
+
+        class LLM:
+            model = "fake-model"
+            client = object()
+
+        class Runtime:
+            def make_lm(self, _llm, *, max_tokens=None, task=None):
+                lm_calls.append((max_tokens, task))
+                return f"lm-{max_tokens or 'default'}"
+
+            @staticmethod
+            def context(*, lm):
+                context_lms.append(lm)
+                return nullcontext()
+
+            predict = staticmethod(lambda _signature: Predictor())
+
+        modules = MusicVideoPromptModules(LLM(), dspy_runtime=Runtime())
+        modules.concepts({"CURRENT_BATCH_SEGMENTS": [{"segment_id": "segment_001"}]}, batch=True)
+
+        self.assertIn((4096, "planner"), lm_calls)
+        self.assertEqual("lm-4096", context_lms[-1])
 
     def test_legacy_concepts_scale_output_limit_by_timeline_size(self):
         calls = []
@@ -130,7 +160,7 @@ class MusicVideoDspyContractTests(unittest.TestCase):
         modules = MusicVideoPromptModules(LLM(), dspy_runtime=Runtime())
         modules.concepts({"SEGMENT_TIMELINE_JSON": [{"segment_id": str(i)} for i in range(10)]})
 
-        self.assertEqual(22528, calls[0]["config"]["max_tokens"])
+        self.assertEqual(4096, calls[0]["config"]["max_tokens"])
 
     def test_repair_concepts_scale_output_limit_per_expected_key(self):
         calls = []
@@ -156,8 +186,8 @@ class MusicVideoDspyContractTests(unittest.TestCase):
         modules.repair_concepts({"EXPECTED_KEYS": ["segment_005"]})
         modules.repair_concepts({"EXPECTED_KEYS": ["segment_005", "segment_008"]})
 
-        self.assertEqual(4096, calls[0]["config"]["max_tokens"])
-        self.assertEqual(6144, calls[1]["config"]["max_tokens"])
+        self.assertEqual(1792, calls[0]["config"]["max_tokens"])
+        self.assertEqual(2560, calls[1]["config"]["max_tokens"])
 
     def test_dspy_predictor_receives_caller_timeout_as_lm_config(self):
         calls = []

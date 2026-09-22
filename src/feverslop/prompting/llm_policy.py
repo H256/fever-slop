@@ -51,8 +51,13 @@ _STORY_PLAN_REPAIR = LLMTaskPolicy("structured", max_tokens=8192)
 # must be multiplied by the batch size because max_tokens limits the complete
 # response, not each item in the response. The overhead covers JSON keys and
 # delimiters; callers should not use the global llm.max_tokens for this.
-CONCEPT_PER_SCENE_TOKENS = 2048
-CONCEPT_BATCH_JSON_OVERHEAD = 2048
+# A scene concept is deliberately compact structured data. The former 2,048
+# tokens per scene let a default ten-scene batch request more than 22k output
+# tokens, which is untenable for local models.
+CONCEPT_PER_SCENE_TOKENS = 768
+CONCEPT_BATCH_JSON_OVERHEAD = 1024
+CONCEPT_BATCH_MAX_TOKENS = 4096
+MULTI_ITEM_JSON_OVERHEAD = 2048
 LYRIC_ALIGNMENT_PER_SEGMENT_TOKENS = 1024
 MSR_PER_RELAY_TOKENS = 2048
 
@@ -103,7 +108,7 @@ _POLICIES = {
 
 
 def _calculate_batch_token_budget(count: int, tokens_per_item: int,
-                                  overhead_tokens: int = CONCEPT_BATCH_JSON_OVERHEAD) -> int:
+                                  overhead_tokens: int = MULTI_ITEM_JSON_OVERHEAD) -> int:
     """Calculate total token budget ensuring at least a single-item budget plus overhead."""
     effective_count = max(1, count)
     return (tokens_per_item * effective_count) + overhead_tokens
@@ -116,7 +121,14 @@ def policy_for(task: str) -> LLMTaskPolicy:
 
 def concept_batch_max_tokens(batch_size: int) -> int:
     """Return the complete output budget for a concept batch."""
-    return _calculate_batch_token_budget(batch_size, CONCEPT_PER_SCENE_TOKENS)
+    return min(
+        CONCEPT_BATCH_MAX_TOKENS,
+        _calculate_batch_token_budget(
+            batch_size,
+            CONCEPT_PER_SCENE_TOKENS,
+            CONCEPT_BATCH_JSON_OVERHEAD,
+        ),
+    )
 
 
 def lyric_alignment_max_tokens(segment_count: int) -> int:
