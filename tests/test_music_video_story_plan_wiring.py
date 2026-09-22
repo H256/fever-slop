@@ -22,7 +22,11 @@ from types import SimpleNamespace
 from typing import Any
 
 from feverslop.composition import generate_render_plan as composition
-from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
+from feverslop.application.prompt_generation_pipeline import (
+    PromptGenerationPipeline,
+    _concept_bindings_match,
+    _write_concept_bindings_manifest,
+)
 from feverslop.application.story_plan_service import (
     SegmentDescriptor,
     StoryPlanError,
@@ -325,6 +329,44 @@ def _persist_plan(
 
 
 class MusicVideoStoryPlanWiringTests(unittest.TestCase):
+    def test_bound_concept_reuse_requires_a_matching_binding_manifest(self) -> None:
+        from feverslop.adapters.local_artifacts import JsonArtifactStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = JsonArtifactStore()
+            concept_path = Path(tmp) / "concept_prompts_song.json"
+            store.write_json(concept_path, {"seg-1": {"concept": "old"}})
+            bindings = {"seg-1": {"objective": "Enter the cavern."}}
+
+            self.assertFalse(
+                _concept_bindings_match(
+                    concept_path=concept_path,
+                    segment_briefs=bindings,
+                    artifact_store=store,
+                )
+            )
+
+            _write_concept_bindings_manifest(
+                concept_path=concept_path,
+                segment_briefs=bindings,
+                artifact_store=store,
+            )
+
+            self.assertTrue(
+                _concept_bindings_match(
+                    concept_path=concept_path,
+                    segment_briefs=bindings,
+                    artifact_store=store,
+                )
+            )
+            self.assertFalse(
+                _concept_bindings_match(
+                    concept_path=concept_path,
+                    segment_briefs={"seg-1": {"objective": "Reach the well."}},
+                    artifact_store=store,
+                )
+            )
+
     def test_adapter_passes_story_sources_and_acting_segments(self) -> None:
         calls: dict[str, dict[str, Any]] = {}
 

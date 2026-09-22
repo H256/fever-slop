@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import inspect
+import hashlib
 import json
 import re
 from collections.abc import Callable
@@ -66,6 +67,46 @@ def get_steering_value(config: Any, name: str, default: str = "") -> str:
 
 def get_config_value(config: Any, name: str, default: Any = None) -> Any:
     return getattr(config, name, default)
+
+
+def _concept_bindings_manifest_path(concept_path: Path) -> Path:
+    return concept_path.with_name(f"{concept_path.stem}.bindings.manifest{concept_path.suffix}")
+
+
+def _concept_bindings_fingerprint(segment_briefs: dict[str, Any] | None) -> str:
+    material = json.dumps(
+        compact_planning_payload(segment_briefs or {}),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _concept_bindings_match(
+    *, concept_path: Path, segment_briefs: dict[str, Any] | None, artifact_store: Any,
+) -> bool:
+    """Allow resume only when persisted concepts were made with these bindings."""
+    if not segment_briefs:
+        return True
+    try:
+        manifest = artifact_store.read_json(_concept_bindings_manifest_path(concept_path))
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+    return (
+        isinstance(manifest, dict)
+        and manifest.get("bindings_fingerprint") == _concept_bindings_fingerprint(segment_briefs)
+    )
+
+
+def _write_concept_bindings_manifest(
+    *, concept_path: Path, segment_briefs: dict[str, Any] | None, artifact_store: Any,
+) -> None:
+    artifact_store.write_json(
+        _concept_bindings_manifest_path(concept_path),
+        {"bindings_fingerprint": _concept_bindings_fingerprint(segment_briefs)},
+    )
 
 
 def _report_subject_staging_retry(
@@ -414,10 +455,22 @@ class PromptGenerationPipeline:
             "STEERING:",
             get_steering_value(config, "concepts"),
         )
-        if resume and concept_prompts_json.is_file():
+        if (
+            resume
+            and concept_prompts_json.is_file()
+            and _concept_bindings_match(
+                concept_path=concept_prompts_json,
+                segment_briefs=segment_briefs,
+                artifact_store=artifact_store,
+            )
+        ):
             reporter.message("[yellow]Resuming concept prompts; using existing concept prompts.[/yellow]")
             concept_prompts = artifact_store.read_json(concept_prompts_json)
         else:
+            if resume and concept_prompts_json.is_file() and segment_briefs:
+                reporter.message(
+                    "[yellow]Story bindings changed; regenerating concept prompts instead of reusing stale output.[/yellow]"
+                )
             concept_prompts = self._generate_concept_prompts(
                 config=config,
                 llm=llm,
@@ -441,6 +494,7 @@ class PromptGenerationPipeline:
             concept_prompts_json=concept_prompts_json,
             artifact_store=artifact_store,
             log_file=log_file,
+            segment_briefs=segment_briefs,
         )
         if resume and scene_details_json.is_file():
             reporter.message("[yellow]Resuming scene details; using existing scene details.[/yellow]")
@@ -1004,6 +1058,7 @@ class PromptGenerationPipeline:
         concept_prompts_json: Path,
         artifact_store: Any,
         log_file: Callable[[str, Path], None],
+        segment_briefs: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         concept_prompts, extra_concepts = validate_and_order_concept_prompts(stage1_segments, concept_prompts)
         if extra_concepts:
@@ -1015,6 +1070,11 @@ class PromptGenerationPipeline:
         prompt_pipeline.save_json(
             concept_prompts_json,
             concept_prompts,
+            artifact_store=artifact_store,
+        )
+        _write_concept_bindings_manifest(
+            concept_path=concept_prompts_json,
+            segment_briefs=segment_briefs,
             artifact_store=artifact_store,
         )
         log_file("Concept Prompts JSON", concept_prompts_json)
