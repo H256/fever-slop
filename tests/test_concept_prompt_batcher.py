@@ -15,7 +15,10 @@ class FakeConceptModules:
 
     def concepts(self, payload, *, batch=False, silent_mode=False, timeout=None):
         self.calls.append(("concepts", payload, timeout))
-        return next(self.responses)
+        response = next(self.responses)
+        if isinstance(response, BaseException):
+            raise response
+        return response
 
     def repair_concepts(self, payload, *, timeout=None):
         self.calls.append(("repair_concepts", payload, timeout))
@@ -58,6 +61,30 @@ def semantic_concept(
 
 
 class ConceptPromptBatcherTests(unittest.TestCase):
+    def test_timeout_splits_a_batch_into_targeted_smaller_requests(self):
+        modules = FakeConceptModules([
+            TimeoutError("model request exceeded its budget"),
+            {"s1": "first concept"},
+            {"s2": "second concept"}, "summary",
+        ])
+        progress = []
+        batcher = ConceptPromptBatcher(
+            object(), prompt_modules=modules, batch_size=2,
+            progress_callback=progress.append,
+        )
+
+        result = batcher.create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": "s1"}, {"segment_id": "s2"}],
+            story_idea="story", global_context={},
+        )
+
+        self.assertEqual({"s1": "first concept", "s2": "second concept"}, result)
+        self.assertEqual([2, 1, 1], [
+            len(call[1]["CURRENT_BATCH_SEGMENTS"])
+            for call in modules.calls if call[0] == "concepts"
+        ])
+        self.assertTrue(any("timed out" in message for message in progress))
+
     def test_locked_story_brief_projects_acting_into_concept_narrative(self):
         concepts = {"segment_001": {"concept": "Ravena gathers her resolve."}}
 

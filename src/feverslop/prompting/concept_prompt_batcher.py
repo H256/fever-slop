@@ -33,6 +33,11 @@ _KEYS_PER_REPAIR_CALL = 2
 # that grows the request unbounded fails fast instead of silently truncating.
 _REQUEST_TOKEN_CEILING = 80_000
 
+
+def _is_timeout_error(error: BaseException) -> bool:
+    """Recognize built-in, httpx, OpenAI, and DSPy timeout wrappers."""
+    return isinstance(error, TimeoutError) or "timeout" in type(error).__name__.lower()
+
 # The closed-vocabulary block must stay bounded so it cannot grow the request
 # unbounded as a project accumulates more cast/locations/props.
 _VOCAB_MAX_PER_FIELD = 40
@@ -603,19 +608,59 @@ class ConceptPromptBatcher:
                 f"{batch_start + 1}-{batch_start + len(batch)}",
                 report,
             )
-            batch_result = self._generate_batch(
-                batch_index=batch_start // self.batch_size + 1,
-                batch=batch,
-                story_idea=story_idea,
-                global_context=global_context,
-                notes=notes,
-                previous_concepts=self._last_concepts(all_results),
-                previous_summary=previous_summary,
-                accepted_ledger=_accepted_state_ledger(all_results),
-                accepted=all_results,
-                order_ids=[seg["segment_id"] for seg in stage1_segments],
-                segment_briefs=segment_briefs,
-            )
+            def generate_with_timeout_split(
+                candidate_batch: list[dict],
+                collected: dict[str, Any],
+            ) -> dict[str, Any]:
+                known = {**all_results, **collected}
+                try:
+                    return self._generate_batch(
+                        batch_index=batch_start // self.batch_size + 1,
+                        batch=candidate_batch,
+                        story_idea=story_idea,
+                        global_context=global_context,
+                        notes=notes,
+                        previous_concepts=self._last_concepts(known),
+                        previous_summary=previous_summary,
+                        accepted_ledger=_accepted_state_ledger(known),
+                        accepted=known,
+                        order_ids=[seg["segment_id"] for seg in stage1_segments],
+                        segment_briefs=segment_briefs,
+                    )
+                except Exception as error:
+                    if not _is_timeout_error(error):
+                        raise
+                    if len(candidate_batch) == 1:
+                        segment_id = str(candidate_batch[0]["segment_id"])
+                        self._report(
+                            f"{batch_label}: scene {segment_id} timed out; "
+                            "using its deterministic fallback",
+                            report,
+                        )
+                        return {
+                            segment_id: self._fallback_concept(
+                                segment_id, global_context,
+                            )
+                        }
+                    smaller_size = max(1, len(candidate_batch) // 2)
+                    self._report(
+                        f"{batch_label}: model request timed out; retrying "
+                        f"as {smaller_size}-scene batches",
+                        report,
+                    )
+                    split_results: dict[str, Any] = {}
+                    for _smaller_start, smaller_batch in chunked(
+                        candidate_batch, smaller_size,
+                    ):
+                        split_results.update(
+                            generate_with_timeout_split(
+                                smaller_batch,
+                                {**collected, **split_results},
+                            )
+                        )
+                    return split_results
+
+            batch_result = generate_with_timeout_split(batch, {})
             self._report(f"{batch_label}: response received, validating keys", report)
 
             batch_result = self._repair_missing_or_extra_keys(
