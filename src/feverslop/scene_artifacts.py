@@ -182,3 +182,25 @@ class SceneArtifactLayout:
 
     def scene_face_repaired_dir(self, scene_number: int, actor_id: str) -> Path:
         return self.scene_facefix_dir(scene_number, actor_id) / "repaired"
+
+    def scene_numbers(self) -> list[int]:
+        """Return the sorted scene numbers for existing ``scene_NNNN`` directories."""
+        if not self.scenes_dir.is_dir():
+            return []
+        numbers: list[int] = []
+        for entry in self.scenes_dir.iterdir():
+            if not entry.is_dir():
+                continue
+            suffix = entry.name.removeprefix("scene_")
+            if suffix.isdigit():
+                numbers.append(int(suffix))
+        return sorted(numbers)
+
+    def derived_plan_paths(self) -> tuple[Path, ...]:
+        """Return the four derived render plan paths (compact, anchored, references, ingredients)."""
+        return (
+            self.compact_plan,
+            self.anchored_plan,
+            self.references_plan,
+            self.ingredients_plan,
+        )
