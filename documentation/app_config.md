@@ -16,6 +16,7 @@ omitted, the default shown below is used.
   "llm": {},
   "comfyui": {},
   "execution": {},
+  "global_library_path": "~/.feverslop/library",
   "video_workflow_profiles": [],
   "storyboard_prompt_transforms": []
 }
@@ -82,7 +83,13 @@ the operator's responsibility.
 | `dspy_cache` | boolean | `false` | Whether DSPy may reuse cached LM responses. Set to `true` only when that behavior is wanted. |
 | `max_concurrent_requests` | integer | `1` | Process-local ceiling shared by direct OpenAI-compatible calls and DSPy/LiteLLM calls. Different values in one Python process are rejected so the shared budget stays explicit. |
 | `prompt_judge_attempts` | integer | `3` | Maximum number of final-prompt composer attempts after DSPy judge feedback. After the last bad result, the prompt and judge history are saved and rendering continues. |
+| `prompt_judge_max_tokens` | integer | `8192` | Token budget for the H3 prompt judge's own completion. |
+| `prompt_judge_enabled` | boolean | `false` | Whether the H3 prompt judge is active. When `false` the judge is skipped and rendering proceeds without judge feedback. |
+| `prompt_judge_blocking` | boolean | `false` | Kept for config compatibility; H3 judges are advisory in all modes. |
 | `prompt_planner_max_tokens` | integer | `0` | H3 planner output token budget. `0` auto-scales the budget to the project shot count (overhead plus a per-shot estimate), floored at the safe base of 8192. Set an explicit value to override the auto-scaler, for example when `truncation_suspected` appears in scene diagnostics. |
+| `narrative_contract_enforcement` | `warn` or `block` | `warn` | Enforcement policy for inferred narrative-contract violations after bounded repair. `warn` preserves structurally valid concepts and continues with a diagnostic warning; `block` raises and aborts. |
+| `story_planning` | object | `{}` | Story-plan build/approval settings; see the `story_planning` section below. |
+| `chat_template_kwargs` | object | `{}` | Extra keyword arguments forwarded to the LLM chat template. |
 
 The API-key precedence is: process environment, `llm.api_key`, then
 `LLM_API_KEY` from the `.env` file next to `app_config.json`.
@@ -101,6 +108,31 @@ structured prompt results are limited to 150 words and use a smaller token
 budget; creative signatures receive a larger budget. These are output
 contracts and do not enable or disable server-side Thinking.
 
+### `llm.story_planning`
+
+Story-plan build and approval settings (issue #1386). The section may appear
+under `llm` or as a top-level `story_planning` key.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `require_approval` | boolean | `false` | Gates a freshly built plan behind an explicit `--story-plan-approve` before concept generation. |
+| `planner_revision` | string | `planner/v1` | Names the planner that produced the plan. A revision change invalidates cached planning state on resume. |
+| `failure_policy` | `warn` or `block` | `warn` | What happens when planning cannot produce a valid plan. `warn` records a diagnostic and continues the existing concept pipeline without story-plan briefs; `block` keeps the intentional hard-fail behavior. |
+
+Example:
+
+```json
+{
+  "llm": {
+    "story_planning": {
+      "require_approval": true,
+      "planner_revision": "planner/v1",
+      "failure_policy": "warn"
+    }
+  }
+}
+```
+
 ## `comfyui`
 
 | Field | Type | Default | Description |
@@ -111,6 +143,7 @@ contracts and do not enable or disable server-side Thinking.
 | `default_max_render_duration_seconds` | number or `null` | `null` | Fallback maximum render duration when no workflow-specific limit applies. |
 | `video_workflow_limits` | array | `[]` | Per-workflow maximum render durations; see the fields below. |
 | `latent_upscaler_device` | string or `null` | `null` | ComfyUI device for the `#LATENT_UPSCALE` node in MiniMax H3 two-pass video workflows. One of `"cuda"`, `"rocm"`, `"cpu"`, or `"auto"`. `null` keeps the template default (`"cuda"`), which is correct on NVIDIA machines. `"auto"` asks the running ComfyUI server for its GPU (via `/system_stats`) and patches the node to `"rocm"` when the GPU name matches AMD/Radeon; on any other GPU the template value is kept. |
+| `ffmpeg_timeout_seconds` | number | `600.0` | Wall-clock budget (seconds) for each FFmpeg operation in the post-processing paths (scene re-encode, concat, mux). Overridable per project; missing config falls back to this default. |
 
 Each `model_overrides` item has all of these string fields:
 
@@ -209,6 +242,7 @@ the other fields have defaults.
 | `template` | string | `""` | Optional prompt template path or value. |
 | `positive_prompt_input` | string | `text` | Workflow input receiving the positive prompt. |
 | `debug_dir` | string | `storyboard_prompt_debug` | Directory for transformation debug artifacts. |
+| `max_words` | integer | `150` | Maximum word count for the generated prompt. Must be >= 1. |
 
 Example:
 
