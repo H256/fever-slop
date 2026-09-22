@@ -358,7 +358,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
         self.assertEqual(calls["allocation"]["locations"], [{"id": "cave"}])
         self.assertEqual(calls["acting"]["segments"], [{"segment_id": "seg-1"}])
 
-    def test_warn_policy_continues_when_story_plan_job_returns_empty_acting(self) -> None:
+    def test_warn_policy_stops_before_unbound_concept_generation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             class FailingService:
                 def build_plan(self, request: Any) -> Any:
@@ -372,8 +372,8 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
                 reporter=reporter, artifact_store=None, log_file=lambda *_args: None,
             )
             self.assertIsNone(result)
-            self.assertFalse(stopped)
-            self.assertIn("continu", " ".join(reporter.messages).lower())
+            self.assertTrue(stopped)
+            self.assertIn("stopping", " ".join(reporter.messages).lower())
     """Wiring tests for the music-video StoryPlan pipeline (issue #1386)."""
 
     def test_resume_accepts_existing_stage1_start_end_schema(self) -> None:
