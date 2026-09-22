@@ -93,6 +93,7 @@ def collect_archive_members(
     *,
     project_config: str | Path | None = None,
     project_name: str | None = None,
+    follow_symlinks: bool = False,
 ) -> list[ArchiveMember]:
     project_dir = coerce_local_path(project_dir).resolve()
     config_path = coerce_local_path(project_config).resolve() if project_config else None
@@ -100,6 +101,8 @@ def collect_archive_members(
 
     for path in sorted(project_dir.rglob("*")):
         if not path.is_file():
+            continue
+        if path.is_symlink() and not follow_symlinks:
             continue
         if is_protected_project_file(
             path,
@@ -165,6 +168,7 @@ def create_project_archive(
     project_name: str | None = None,
     output_zip: str | Path | None = None,
     created_at: str | None = None,
+    follow_symlinks: bool = False,
 ) -> Path:
     project_dir = coerce_local_path(project_dir).resolve()
     created_at = created_at or datetime.now().replace(microsecond=0).isoformat()
@@ -176,6 +180,7 @@ def create_project_archive(
         project_dir,
         project_config=project_config,
         project_name=project_name,
+        follow_symlinks=follow_symlinks,
     )
     manifest = build_archive_manifest(project_dir, members, created_at=created_at)
 
@@ -193,6 +198,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project-dir", default=None, help="Path to a project directory.")
     parser.add_argument("--output", default=None, help="Output ZIP path. Defaults to project archives directory.")
     parser.add_argument("--dry-run", action="store_true", help="Print selected files without writing a ZIP.")
+    parser.add_argument(
+        "--follow-symlinks",
+        action="store_true",
+        help="Follow file symlinks and archive their targets (default: skip symlinks).",
+    )
     return parser
 
 
@@ -223,6 +233,7 @@ def main(argv: list[str] | None = None) -> int:
         project_dir,
         project_config=project_config,
         project_name=project_name,
+        follow_symlinks=args.follow_symlinks,
     )
 
     if args.dry_run:
@@ -238,6 +249,7 @@ def main(argv: list[str] | None = None) -> int:
         project_config=project_config,
         project_name=project_name,
         output_zip=args.output,
+        follow_symlinks=args.follow_symlinks,
     )
     report_message(f"Archive: {output_zip}")
     report_message(f"Files: {len(members)}")
