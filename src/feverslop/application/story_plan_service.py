@@ -306,6 +306,11 @@ class StoryPlanService:
             "story-plan-entity-resolution complete: "
             f"{use_count} use, {extend_count} extend, {invent_count} invent"
         )
+        for decision in entity_decisions:
+            self._reporter.message(
+                f"  entity {decision['entity_type']} {decision['entity_id']}: "
+                f"{decision['decision']} ({decision['name']})"
+            )
 
         self._reporter.step("story-plan-acting")
         acting = self._build_acting_in_batches(request, allocation, diagnostics)
@@ -327,6 +332,11 @@ class StoryPlanService:
 
         if validation_errors:
             self._reporter.step("story-plan-repair")
+            for error in validation_errors:
+                self._reporter.message(
+                    f"  validation error: {error.get('code', '?')}: "
+                    f"{error.get('message', '')}"
+                )
             repaired_raw = self._job(
                 "repair",
                 self._repair_input(request, candidate, validation_errors),
@@ -342,6 +352,13 @@ class StoryPlanService:
             except StoryPlanValidationError as exc:
                 self._raise_validation_failure(exc, diagnostics)
             self._reporter.message("story-plan-repair complete")
+
+        if diagnostics:
+            self._reporter.step("story-plan-diagnostics")
+            for diag in diagnostics:
+                self._reporter.warning(
+                    f"{diag.get('code', '?')}: {diag.get('message', '')}"
+                )
 
         plan = StoryPlan.model_validate(candidate, strict=False)
         return StoryPlanResult(
