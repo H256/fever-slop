@@ -417,6 +417,7 @@ class StoryPlanModuleTests(unittest.TestCase):
                 "characters",
                 "config",
                 "creative_direction",
+                "expected_brief_ids",
                 "guide",
                 "locations",
                 "props",
@@ -705,6 +706,90 @@ class StoryPlanServiceTests(unittest.TestCase):
         first = result.acting["briefs"][0]
         self.assertEqual(first["actor_states"], [{"character_id": "char-1", "state": "present"}])
 
+    def test_acting_is_split_into_bounded_batches_and_merged_in_order(self) -> None:
+        class BatchedModules(FakePromptModules):
+            def __init__(self, allocation: dict) -> None:
+                super().__init__(allocation=allocation)
+                self.acting_targets: list[list[str]] = []
+
+            def acting(self, **kwargs: Any) -> dict:
+                targets = [brief["segment_id"] for brief in kwargs["briefs"]]
+                self.acting_targets.append(targets)
+                return {
+                    "briefs": [
+                        {
+                            "target": target,
+                            "objective": f"Objective {target}",
+                            "emotional_turn": "fear to resolve",
+                            "actor_states": [{"character_id": "char-1", "state": "present"}],
+                        }
+                        for target in targets
+                    ]
+                }
+
+        allocation = {
+            "beats": [
+                {"phase": "opening", "description": "A", "character_ids": ["char-1"]},
+                {"phase": "development", "description": "B", "character_ids": ["char-1"]},
+                {"phase": "resolution", "description": "C", "character_ids": ["char-1"]},
+            ],
+            "brief_allocations": [
+                {"target": "seg-1", "beat_index": 0},
+                {"target": "seg-2", "beat_index": 1},
+                {"target": "seg-3", "beat_index": 2},
+            ],
+        }
+        modules = BatchedModules(allocation)
+        result = StoryPlanService(
+            prompt_modules=modules, acting_batch_size=2
+        ).build_plan(make_request_3seg())
+
+        self.assertEqual(modules.acting_targets, [["seg-1", "seg-2"], ["seg-3"]])
+        self.assertEqual(
+            [brief["target"] for brief in result.acting["briefs"]],
+            ["brief-seg-1", "brief-seg-2", "brief-seg-3"],
+        )
+
+    def test_acting_retries_only_missing_briefs(self) -> None:
+        class MissingOnceModules(FakePromptModules):
+            def __init__(self, allocation: dict) -> None:
+                super().__init__(allocation=allocation)
+                self.targets: list[list[str]] = []
+
+            def acting(self, **kwargs: Any) -> dict:
+                targets = [brief["segment_id"] for brief in kwargs["briefs"]]
+                self.targets.append(targets)
+                returned = targets[:1] if len(self.targets) == 1 else targets
+                return {
+                    "briefs": [
+                        {
+                            "target": target,
+                            "objective": f"Objective {target}",
+                            "emotional_turn": "fear to resolve",
+                            "actor_states": [{"character_id": "char-1", "state": "present"}],
+                        }
+                        for target in returned
+                    ]
+                }
+
+        allocation = {
+            "beats": [
+                {"phase": "opening", "description": "A", "character_ids": ["char-1"]},
+                {"phase": "resolution", "description": "B", "character_ids": ["char-1"]},
+            ],
+            "brief_allocations": [
+                {"target": "seg-1", "beat_index": 0},
+                {"target": "seg-2", "beat_index": 1},
+            ],
+        }
+        modules = MissingOnceModules(allocation)
+        result = StoryPlanService(
+            prompt_modules=modules, acting_batch_size=2
+        ).build_plan(make_request())
+
+        self.assertEqual(modules.targets, [["seg-1", "seg-2"], ["seg-2"]])
+        self.assertEqual(len(result.acting["briefs"]), 2)
+
     def test_valid_plan_skips_repair(self) -> None:
         modules = FakePromptModules()
         service = StoryPlanService(prompt_modules=modules)
@@ -749,6 +834,7 @@ class StoryPlanServiceTests(unittest.TestCase):
             [
                 "briefs",
                 "characters",
+                "expected_brief_ids",
                 "guide",
                 "locations",
                 "lyrics",

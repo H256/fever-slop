@@ -332,6 +332,18 @@ class GenerateRenderPlanServiceTests(unittest.TestCase):
         self.assertEqual("timeline.json", services[1].calls[0]["timeline_json"])
         self.assertEqual([{"scene": 1, "frame_count": 24, "duration_seconds": 1.0}], result_context["render_plan"])
 
+    def test_story_plan_gate_stops_downstream_services(self):
+        planner = RecordingService("prompts", {"story_plan_gate": True})
+        downstream = RecordingService("h3", {"h3_prompts": []})
+
+        result_context = GenerateRenderPlanUseCase(
+            pipeline_services=[planner, downstream]
+        ).execute_services({"request": "fake"})
+
+        self.assertTrue(result_context["story_plan_gate"])
+        self.assertEqual(["prompts"], result_context["order"])
+        self.assertEqual([], downstream.calls)
+
     def test_pipeline_context_exposes_planned_artifact_paths(self):
         context = GenerateRenderPlanContext(
             song_id="demo",

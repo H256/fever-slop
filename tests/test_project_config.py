@@ -126,6 +126,40 @@ class ProjectConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "content_mode"):
                 ProjectConfig.load(config_path)
 
+    def test_truncated_config_raises_clear_config_error(self):
+        """A truncated/corrupt config.json yields a clear FeverSlopConfigError."""
+        from feverslop.errors import FeverSlopConfigError
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            # Truncated JSON: an opening object cut off mid-field.
+            config_path.write_text('{"input_audio": "song.mp3", "video": {"width": 1280', encoding="utf-8")
+
+            with self.assertRaises(FeverSlopConfigError) as ctx:
+                ProjectConfig.load(config_path)
+
+        self.assertIn("config.json", str(ctx.exception))
+        self.assertIn("JSON", str(ctx.exception))
+        # The low-level JSONDecodeError is preserved as the cause.
+        self.assertIsInstance(ctx.exception.__cause__, json.JSONDecodeError)
+
+    def test_valid_config_still_loads_after_atomic_write(self):
+        """set_resolution_on_disk writes a config that reloads cleanly."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "song.mp3").write_bytes(b"")
+            config_path = temp / "config.json"
+            config_path.write_text(
+                json.dumps({"input_audio": "song.mp3", "video": {"width": 1280, "height": 704}}),
+                encoding="utf-8",
+            )
+
+            ProjectConfig.set_resolution_on_disk(config_path, width=1920, height=1080)
+            config = ProjectConfig.load(config_path)
+
+        self.assertEqual(1920, config.to_video_settings().width)
+        self.assertEqual(1080, config.to_video_settings().height)
+
     def test_workflow_config_defaults_to_unselected(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)

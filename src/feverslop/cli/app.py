@@ -7,6 +7,7 @@ import sys
 
 from rich.console import Console
 
+from feverslop.cli.artifact_cli import build_artifact_parsers, run_artifact_prune_command
 from feverslop.cli.canonical_plan_cli import build_canonical_plan_parsers, run_canonical_plan_command
 from feverslop.cli.full_auto import add_full_auto_args, run_full_auto_command
 from feverslop.cli.canonical_plan_migration_cli import build_canonical_plan_migration_parser, run_canonical_plan_migration
@@ -70,6 +71,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     build_rebuild_preview_parser(subparsers)
     build_canonical_plan_migration_parser(subparsers)
     build_canonical_plan_parsers(subparsers)
+    build_artifact_parsers(subparsers)
     build_run_parser(subparsers)
     build_profiles_parser(subparsers)
     build_workflow_import_parser(subparsers)
@@ -91,6 +93,10 @@ def main() -> None:
         run_rebuild_preview(args)
     elif args.command == "plan-migrate":
         exit_code = run_canonical_plan_migration(args, console=console)
+        if exit_code:
+            raise SystemExit(exit_code)
+    elif args.command == "artifact":
+        exit_code = run_artifact_prune_command(args, console=console)
         if exit_code:
             raise SystemExit(exit_code)
     elif args.command in {"plan", "status"}:

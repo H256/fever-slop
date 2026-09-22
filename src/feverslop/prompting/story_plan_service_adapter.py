@@ -119,6 +119,7 @@ class StoryPlanServiceAdapter:
         locations: list[Mapping[str, Any]] | None = None,
         props: list[Mapping[str, Any]] | None = None,
         typed_beats: list[Mapping[str, Any]] | None = None,
+        expected_brief_ids: list[str] | None = None,
         **_extra: Any,
     ) -> Any:
         return self._modules.acting(
@@ -128,6 +129,7 @@ class StoryPlanServiceAdapter:
                 {"beat_id": f"beat-{index:03d}", **dict(beat)}
                 for index, beat in enumerate(typed_beats or briefs, start=1)
             ],
+            expected_brief_ids=list(expected_brief_ids or []),
             segments=[dict(segment) for segment in (segments or [])],
             characters=[dict(c) for c in characters],
             locations=[dict(location) for location in (locations or [])],
