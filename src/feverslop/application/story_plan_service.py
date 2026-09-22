@@ -750,14 +750,28 @@ class StoryPlanService:
             return allocation
         raw_beats = allocation.get("beats")
         raw_allocations = allocation.get("brief_allocations")
-        if not isinstance(raw_beats, list) or not isinstance(raw_allocations, list):
+        if not isinstance(raw_beats, list):
             return allocation
+        # The model sometimes returns brief_allocations as a dict keyed by
+        # target instead of the signature's list of {target, ...} objects.
+        # Normalize both shapes to (target, item) pairs.
+        if isinstance(raw_allocations, Mapping):
+            entries = [
+                (str(target), item) for target, item in raw_allocations.items()
+            ]
+        elif isinstance(raw_allocations, list):
+            entries = [
+                (str(item.get("target", "")), item)
+                for item in raw_allocations
+                if isinstance(item, Mapping)
+            ]
+        else:
+            entries = []
         segments = {segment.segment_id: segment for segment in request.segments}
         briefs: list[dict[str, Any]] = []
-        for item in raw_allocations:
+        for target, item in entries:
             if not isinstance(item, Mapping):
                 continue
-            target = str(item.get("target", ""))
             segment = segments.get(target)
             if segment is None:
                 continue

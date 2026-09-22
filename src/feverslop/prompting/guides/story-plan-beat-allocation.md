@@ -8,11 +8,13 @@ user direction wins.
 
 Return:
 
-- `brief_allocations`: exactly ONE entry per supplied segment/shot id
-  (`target`), each with:
+- `brief_allocations`: a JSON array with exactly ONE entry per supplied
+  segment/shot id. Each entry is an object with:
+  - `target`: the supplied segment/shot id (never invent a new one).
   - `beat_index`: the position (0-based) of the beat this segment belongs to.
   - `required_beat_indices`: beats this segment must also draw from, or empty.
   - `forbidden_beat_indices`: beats this segment must never draw from.
+  Do not use a JSON object keyed by target; use an array of objects instead.
 
 Hard constraints:
 
