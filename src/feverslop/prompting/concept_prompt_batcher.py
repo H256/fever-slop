@@ -1473,6 +1473,17 @@ def _apply_locked_segment_bindings(
             narrative["prop_ids"] = list(binding.get("prop_ids") or [])
         if binding.get("milestone_id"):
             narrative["milestones"] = [str(binding["milestone_id"])]
+        acting = {
+            key: binding[key]
+            for key in ("objective", "emotional_turn", "actor_states")
+            if key in binding
+        }
+        if acting:
+            narrative["acting"] = acting
+        if "vocal_presentation" in binding:
+            narrative["vocal_presentation"] = binding["vocal_presentation"]
+        if "visual_direction" in binding:
+            narrative["visual_direction"] = binding["visual_direction"]
 
 
 def _matching_signature_segment(

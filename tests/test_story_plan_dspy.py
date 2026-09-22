@@ -693,6 +693,12 @@ class StoryPlanServiceTests(unittest.TestCase):
         self.assertEqual([beat.id for beat in result.plan.beats], ["beat-001", "beat-002"])
         self.assertEqual([brief.target for brief in result.plan.segments], ["seg-1", "seg-2"])
         self.assertEqual(result.plan.segments[0].audio_ref.segment_id, "seg-1")
+        self.assertEqual(
+            "Invite the audience into the journey.",
+            result.plan.segments[0].objective,
+        )
+        self.assertEqual("Guarded to hopeful.", result.plan.segments[0].emotional_turn)
+        self.assertEqual("guarded", result.plan.segments[0].actor_states[0].state)
 
     def test_story_plan_bindings_override_creative_location_choices(self) -> None:
         modules = FakePromptModules(

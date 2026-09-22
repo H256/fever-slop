@@ -37,7 +37,7 @@ STORY_PLAN_SCHEMA_VERSION = "story-plan/v1"
 SUPPORTED_SCHEMA_VERSIONS = frozenset({STORY_PLAN_SCHEMA_VERSION})
 
 #: Revision of the planner that produced the plan.
-PLANNER_REVISION = "planner/v1"
+PLANNER_REVISION = "planner/v2"
 
 #: Maximum length of any stable ID.
 MAX_ID = 128
@@ -216,6 +216,21 @@ class CharacterArc(BaseModel):
         return _validate_id(value, "arc id")
 
 
+class BriefActorState(BaseModel):
+    """One character's playable state for a planned segment."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    character_id: str
+    state: str = ""
+    physical_state: str = ""
+
+    @field_validator("character_id")
+    @classmethod
+    def _norm_character_id(cls, value: str) -> str:
+        return _validate_id(value, "brief actor-state character id")
+
+
 class SegmentBrief(BaseModel):
     """Creative direction for one stage1 segment (music video) or shot (film).
 
@@ -234,6 +249,9 @@ class SegmentBrief(BaseModel):
     prop_ids: list[str] = Field(default_factory=list)
     vocal_presentation: VocalPresentation = VocalPresentation.offscreen
     visual_direction: str = ""
+    objective: str = ""
+    emotional_turn: str = ""
+    actor_states: list[BriefActorState] = Field(default_factory=list)
     exclusive: bool = False
     audio_ref: AudioSegmentRef | None = None
 
@@ -328,6 +346,11 @@ class StoryPlan(BaseModel):
             if brief.location_id is not None:
                 _require(location_ids, brief.location_id, f"brief {brief.id} location")
             _refs_within(prop_ids, brief.prop_ids, f"brief {brief.id} props")
+            _refs_within(
+                character_ids,
+                [state.character_id for state in brief.actor_states],
+                f"brief {brief.id} actor states",
+            )
         _unique_ids([s.target for s in self.segments], "brief target")
         _check_beat_order(self.beats)
         _check_exclusive_allocations(self.segments)

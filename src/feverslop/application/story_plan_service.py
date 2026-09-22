@@ -1170,6 +1170,7 @@ class StoryPlanService:
         raw_briefs = allocation.get("briefs")
         if not isinstance(raw_briefs, list):
             raw_briefs = []
+        canonical_character_ids = {character["id"] for character in characters}
         for raw in raw_briefs:
             if not isinstance(raw, Mapping):
                 continue
@@ -1219,6 +1220,25 @@ class StoryPlanService:
                     ),
                     "vocal_presentation": str(acting_brief.get("vocal_presentation", "offscreen")),
                     "visual_direction": str(acting_brief.get("visual_direction", "")),
+                    "objective": str(acting_brief.get("objective", "")),
+                    "emotional_turn": str(acting_brief.get("emotional_turn", "")),
+                    "actor_states": [
+                        {
+                            "character_id": str(state.get("character_id", "")),
+                            "state": str(
+                                state.get("state")
+                                or state.get("inner_state")
+                                or "present"
+                            ),
+                            "physical_state": str(state.get("physical_state", "")),
+                        }
+                        for state in acting_brief.get("actor_states", [])
+                        if (
+                            isinstance(state, Mapping)
+                            and str(state.get("character_id", ""))
+                            in canonical_character_ids
+                        )
+                    ],
                     "exclusive": bool(acting_brief.get("exclusive", False)),
                     "audio_ref": {"segment_id": target, "fingerprint": fingerprint},
                 }

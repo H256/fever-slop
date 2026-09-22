@@ -3,6 +3,7 @@ import unittest
 
 from feverslop.prompting.concept_prompt_batcher import (
     ConceptPromptBatcher,
+    _apply_locked_segment_bindings,
     validate_and_annotate_concept_chronology,
 )
 
@@ -57,6 +58,37 @@ def semantic_concept(
 
 
 class ConceptPromptBatcherTests(unittest.TestCase):
+    def test_locked_story_brief_projects_acting_into_concept_narrative(self):
+        concepts = {"segment_001": {"concept": "Ravena gathers her resolve."}}
+
+        _apply_locked_segment_bindings(
+            concepts,
+            {
+                "segment_001": {
+                    "objective": "Choose the dangerous descent.",
+                    "emotional_turn": "fear to resolve",
+                    "actor_states": [
+                        {"character_id": "ravena", "state": "resolute"},
+                    ],
+                    "vocal_presentation": "on_screen",
+                    "visual_direction": "She steps into the candlelit tunnel.",
+                }
+            },
+        )
+
+        narrative = concepts["segment_001"]["narrative"]
+        self.assertEqual("Choose the dangerous descent.", narrative["acting"]["objective"])
+        self.assertEqual("fear to resolve", narrative["acting"]["emotional_turn"])
+        self.assertEqual(
+            [{"character_id": "ravena", "state": "resolute"}],
+            narrative["acting"]["actor_states"],
+        )
+        self.assertEqual("on_screen", narrative["vocal_presentation"])
+        self.assertEqual(
+            "She steps into the candlelit tunnel.",
+            narrative["visual_direction"],
+        )
+
     def test_story_complete_is_only_valid_on_final_segment_without_contract(self):
         concepts = {
             "segment_001": {
