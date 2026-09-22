@@ -173,6 +173,9 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         beats: list[dict[str, Any]] = dspy_module.InputField(
             desc="Service-assigned beat ids, phase, description, and per-brief allocation.",
         )
+        expected_brief_ids: list[str] = dspy_module.InputField(
+            desc="Exact service-assigned brief ids to return, with no omissions or extras.",
+        )
         segments: list[dict[str, Any]] = dspy_module.InputField(
             desc="Compact segment/shot descriptors: id, fingerprint, duration only.",
         )

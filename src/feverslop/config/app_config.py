@@ -33,6 +33,7 @@ class StoryPlanningConfig:
     require_approval: bool = False
     planner_revision: str = PLANNER_REVISION
     failure_policy: str = "warn"
+    acting_batch_size: int = 8
 
 
 @dataclass
@@ -422,6 +423,14 @@ class AppConfig:
         ).strip().lower()
         if story_planning_failure_policy not in ("warn", "block"):
             raise ValueError("story_planning.failure_policy must be 'warn' or 'block'")
+        try:
+            story_planning_acting_batch_size = int(
+                story_planning_raw.get("acting_batch_size", 8)
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError("story_planning.acting_batch_size must be an integer") from exc
+        if story_planning_acting_batch_size < 1:
+            raise ValueError("story_planning.acting_batch_size must be >= 1")
         llm_chat_template_kwargs_raw = llm_raw.get("chat_template_kwargs", {})
         if not isinstance(llm_chat_template_kwargs_raw, dict):
             raise ValueError("llm.chat_template_kwargs must be an object")
@@ -500,6 +509,7 @@ class AppConfig:
                     require_approval=story_planning_require_approval,
                     planner_revision=story_planning_planner_revision,
                     failure_policy=story_planning_failure_policy,
+                    acting_batch_size=story_planning_acting_batch_size,
                 ),
                 chat_template_kwargs=llm_chat_template_kwargs,
                 models=llm_models,

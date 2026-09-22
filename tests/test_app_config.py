@@ -384,6 +384,31 @@ class AppConfigTests(unittest.TestCase):
         # planner_revision falls back to the default when unset.
         self.assertEqual("planner/v1", config.llm.story_planning.planner_revision)
 
+    def test_loads_story_planning_acting_batch_size(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                json.dumps({"llm": {"story_planning": {"acting_batch_size": 3}}}),
+                encoding="utf-8",
+            )
+            config = AppConfig.load(config_path)
+
+        self.assertEqual(3, config.llm.story_planning.acting_batch_size)
+
+    def test_rejects_invalid_story_planning_acting_batch_size(self):
+        from feverslop.config.app_config import AppConfig
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "app_config.json"
+            config_path.write_text(
+                json.dumps({"llm": {"story_planning": {"acting_batch_size": 0}}}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "acting_batch_size must be >= 1"):
+                AppConfig.load(config_path)
+
     def test_loads_top_level_story_planning_settings(self):
         from feverslop.config.app_config import AppConfig
 

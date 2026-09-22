@@ -71,13 +71,18 @@ def _make_config(**overrides: Any) -> Any:
     return SimpleNamespace(**defaults)
 
 
-def _make_app_config(require_approval: bool = False, planner_revision: str = PLANNER_REVISION) -> Any:
+def _make_app_config(
+    require_approval: bool = False,
+    planner_revision: str = PLANNER_REVISION,
+    acting_batch_size: int = 8,
+) -> Any:
     return SimpleNamespace(
         llm=SimpleNamespace(
             story_planning=SimpleNamespace(
                 require_approval=require_approval,
                 planner_revision=planner_revision,
                 failure_policy="warn",
+                acting_batch_size=acting_batch_size,
             ),
         ),
     )

@@ -199,6 +199,37 @@ class TestSetResolutionOnDisk(unittest.TestCase):
         self.assertEqual(reloaded.to_video_settings().height, 2160)
         self.assertEqual(reloaded.to_video_settings().fps, 30)
 
+    def test_mid_write_failure_leaves_original_config_intact(self):
+        """A crash during the atomic write must not truncate config.json."""
+        from feverslop.config.project_config import ProjectConfig
+
+        config_data = {
+            "input_audio": "test_audio.mp3",
+            "project_name": "test_project",
+            "video": {"fps": 24, "width": 1280, "height": 704},
+        }
+        tmpdir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        config_path = tmpdir / "config.json"
+        config_path.write_text(json.dumps(config_data), encoding="utf-8")
+        (tmpdir / "test_audio.mp3").touch()
+        original_bytes = config_path.read_bytes()
+
+        def boom(path, data):
+            raise OSError("simulated crash mid-write")
+
+        with patch(
+            "feverslop.config.project_config.atomic_write_json", side_effect=boom
+        ):
+            with self.assertRaises(OSError):
+                ProjectConfig.set_resolution_on_disk(config_path, width=1920, height=1080)
+
+        # The original file must be byte-for-byte untouched (not truncated).
+        self.assertEqual(config_path.read_bytes(), original_bytes)
+        raw = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(raw["video"]["width"], 1280)
+        self.assertEqual(raw["video"]["height"], 704)
+
 
 class TestResolutionCliParsing(unittest.TestCase):
     """Test --resolution CLI flag parsing."""
