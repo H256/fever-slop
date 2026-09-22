@@ -1312,6 +1312,8 @@ def validate_and_annotate_concept_chronology(
     contract: dict[str, Any],
 ) -> dict[str, Any]:
     """Validate the complete ordered concept sequence before downstream prompts."""
+    _dedup_one_shot_milestones(concepts, contract)
+    _coerce_disallowed_actor_locations(concepts, contract)
     final_segment_id = next(reversed(concepts), "")
     terminal_milestones = set(
         _normalized_list(contract.get("terminal_milestones") or ["story_complete"])
@@ -1542,6 +1544,131 @@ def _one_shot_repeated_milestones(
         for milestone in _repeated_milestones(narrative, concepts)
         if milestone in configured
     ]
+
+
+def _dedup_one_shot_milestones(
+    concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Remove unauthorized one-shot milestone repeats, keeping first occurrence.
+
+    The model can re-emit a one-shot milestone in a later segment even
+    after the per-batch repair pass.  Python owns this mechanical rule:
+    the first occurrence in the accepted sequence wins; later duplicates
+    are removed unless the segment authorizes them via reset_events.
+    """
+    configured = {
+        str(_normalize_semantic_value(item))
+        for item in contract.get("one_shot_milestones") or ()
+    }
+    if not configured:
+        return []
+    removed: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for segment_id, value in concepts.items():
+        narrative = _narrative(value)
+        if not narrative:
+            continue
+        milestones = _normalized_list(narrative.get("milestones"))
+        if not milestones:
+            continue
+        reset_events = set(_normalized_list(narrative.get("reset_events")))
+        kept: list[str] = []
+        changed = False
+        for milestone in milestones:
+            if (
+                milestone in configured
+                and milestone in seen
+                and milestone not in reset_events
+            ):
+                removed.append(
+                    {"segment_id": str(segment_id), "milestone": milestone}
+                )
+                changed = True
+                continue
+            if milestone in configured:
+                seen.add(milestone)
+            kept.append(milestone)
+        if changed:
+            narrative["milestones"] = kept
+    return removed
+
+
+_ABSENT_STATES = {"absent", "ascended_absent", "disappeared"}
+
+
+def _coerce_disallowed_actor_locations(
+    concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Force actors to absent when present at a disallowed location.
+
+    The model can place an actor in a non-absent state at a location the
+    contract does not allow for that actor.  Python owns this mechanical
+    rule: the actor is coerced to 'absent' so the continuity gate passes
+    instead of failing the whole stage.  The override is written to the
+    narrative snapshot (which beats the predecessor and incoming boundary)
+    and to the explicit outgoing block when it also names the actor.
+    """
+    allowed_locations = contract.get("actor_allowed_locations") or {}
+    if not isinstance(allowed_locations, dict) or not allowed_locations:
+        return []
+    coerced: list[dict[str, str]] = []
+    for segment_id, value in concepts.items():
+        narrative = _narrative(value)
+        if not isinstance(narrative, dict):
+            continue
+        outgoing_block = narrative.get("outgoing")
+        incoming_block = narrative.get("incoming")
+        location = ""
+        if isinstance(outgoing_block, dict):
+            location = str(_normalize_semantic_value(outgoing_block.get("location")))
+        if not location:
+            location = str(_normalize_semantic_value(narrative.get("location")))
+        if not location and isinstance(incoming_block, dict):
+            location = str(_normalize_semantic_value(incoming_block.get("location")))
+        if not location:
+            continue
+        cast_states = narrative.get("cast_states")
+        if not isinstance(cast_states, dict):
+            cast_states = {}
+            narrative["cast_states"] = cast_states
+        for actor, allowed_raw in allowed_locations.items():
+            allowed = {
+                str(_normalize_semantic_value(item))
+                for item in allowed_raw or ()
+            }
+            if not allowed or location in allowed:
+                continue
+            actor_key = str(_normalize_semantic_value(actor))
+            # Determine the actor's state in the highest-precedence source that
+            # names it, to report only real changes.
+            state = ""
+            if isinstance(outgoing_block, dict) and isinstance(
+                outgoing_block.get("cast_states"), dict
+            ):
+                state = str(
+                    _normalize_semantic_value(
+                        outgoing_block["cast_states"].get(actor_key)
+                    )
+                )
+            if not state and actor_key in cast_states:
+                state = str(_normalize_semantic_value(cast_states.get(actor_key)))
+            # Always override to absent in the narrative snapshot (beats the
+            # predecessor and incoming boundary); also in the explicit outgoing
+            # block when it names the actor, since that merges last.
+            cast_states[actor_key] = "absent"
+            if (
+                isinstance(outgoing_block, dict)
+                and isinstance(outgoing_block.get("cast_states"), dict)
+                and actor_key in outgoing_block["cast_states"]
+            ):
+                outgoing_block["cast_states"][actor_key] = "absent"
+            if state and state not in _ABSENT_STATES:
+                coerced.append(
+                    {"segment_id": str(segment_id), "actor": actor_key}
+                )
+    return coerced
 
 
 def _narrative_contract(global_context: dict[str, Any]) -> dict[str, Any]:

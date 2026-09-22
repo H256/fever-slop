@@ -3,6 +3,8 @@ import unittest
 
 from feverslop.prompting.concept_prompt_batcher import (
     ConceptPromptBatcher,
+    _coerce_disallowed_actor_locations,
+    _dedup_one_shot_milestones,
     validate_and_annotate_concept_chronology,
 )
 
@@ -2403,6 +2405,209 @@ class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
         # The duplicate is in the aftermath.
         self.assertIn("segment_015", allocation.get("aftermath", []))
         self.assertEqual(["drink"], allocation["one_shot_milestones"])
+
+
+def _loc_concept(
+    concept: str,
+    *,
+    location: str,
+    cast_states: dict,
+    story_beat: str = "beat_a",
+    action: str = "act_a",
+    action_phase: str = "started",
+) -> dict:
+    return {
+        "concept": concept,
+        "references": {"actor_ids": [], "location_id": location},
+        "narrative": {
+            "story_beat": story_beat,
+            "objective": "objective",
+            "action": action,
+            "action_phase": action_phase,
+            "milestones": [],
+            "location": location,
+            "cast_states": dict(cast_states),
+            "props": {},
+            "reset_events": [],
+        },
+    }
+
+
+class ActorLocationCoercionTests(unittest.TestCase):
+    def test_coerce_forces_disallowed_actor_to_absent(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "Stranger at the mirror.",
+                location="mirror_threshold",
+                cast_states={"stranger_reflection": "present"},
+            ),
+            "seg_2": _loc_concept(
+                "Stranger drifts into the fog.",
+                location="the_void_fog",
+                cast_states={"stranger_reflection": "present"},
+                story_beat="beat_b",
+                action="act_b",
+            ),
+        }
+        contract = {
+            "actor_allowed_locations": {"stranger_reflection": ["mirror_threshold"]},
+        }
+        coerced = _coerce_disallowed_actor_locations(concepts, contract)
+        self.assertEqual(
+            [{"segment_id": "seg_2", "actor": "stranger_reflection"}],
+            coerced,
+        )
+        self.assertEqual(
+            "absent",
+            concepts["seg_2"]["narrative"]["cast_states"]["stranger_reflection"],
+        )
+        # The allowed occurrence is untouched.
+        self.assertEqual(
+            "present",
+            concepts["seg_1"]["narrative"]["cast_states"]["stranger_reflection"],
+        )
+
+    def test_coerce_leaves_allowed_actor_untouched(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "Stranger at the mirror.",
+                location="mirror_threshold",
+                cast_states={"stranger_reflection": "present"},
+            ),
+        }
+        contract = {
+            "actor_allowed_locations": {"stranger_reflection": ["mirror_threshold"]},
+        }
+        self.assertEqual([], _coerce_disallowed_actor_locations(concepts, contract))
+        self.assertEqual(
+            "present",
+            concepts["seg_1"]["narrative"]["cast_states"]["stranger_reflection"],
+        )
+
+    def test_coerce_ignores_already_absent_actor(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "Stranger gone from the fog.",
+                location="the_void_fog",
+                cast_states={"stranger_reflection": "absent"},
+            ),
+        }
+        contract = {
+            "actor_allowed_locations": {"stranger_reflection": ["mirror_threshold"]},
+        }
+        self.assertEqual([], _coerce_disallowed_actor_locations(concepts, contract))
+        self.assertEqual(
+            "absent",
+            concepts["seg_1"]["narrative"]["cast_states"]["stranger_reflection"],
+        )
+
+    def test_coerce_no_contract_is_noop(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "Stranger in the fog.",
+                location="the_void_fog",
+                cast_states={"stranger_reflection": "present"},
+            ),
+        }
+        self.assertEqual([], _coerce_disallowed_actor_locations(concepts, {}))
+        self.assertEqual(
+            "present",
+            concepts["seg_1"]["narrative"]["cast_states"]["stranger_reflection"],
+        )
+
+    def test_final_validation_coerces_disallowed_actor(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "Stranger at the mirror.",
+                location="mirror_threshold",
+                cast_states={"stranger_reflection": "present"},
+            ),
+            "seg_2": _loc_concept(
+                "Stranger drifts into the fog.",
+                location="the_void_fog",
+                cast_states={"stranger_reflection": "present"},
+                story_beat="beat_b",
+                action="act_b",
+            ),
+        }
+        contract = {
+            "actor_allowed_locations": {"stranger_reflection": ["mirror_threshold"]},
+        }
+        annotated = validate_and_annotate_concept_chronology(concepts, contract)
+        self.assertEqual(
+            "absent",
+            concepts["seg_2"]["narrative"]["cast_states"]["stranger_reflection"],
+        )
+        self.assertEqual("accepted", annotated["seg_2"]["semantic_validation"]["outcome"])
+
+
+class OneShotMilestoneDedupTests(unittest.TestCase):
+    def _concepts(self, first_milestones, second_milestones, reset_events=None):
+        first = semantic_concept(
+            "Ravena raises the silver cup.",
+            story_beat="raise_cup",
+            action="raise_cup",
+            action_phase="completed",
+            milestone=first_milestones[0],
+            prop_state="raised",
+        )
+        first["narrative"]["milestones"] = list(first_milestones)
+        second = semantic_concept(
+            "Ravena watches the cup drain.",
+            story_beat="cup_drains",
+            action="watch_cup_drain",
+            action_phase="completed",
+            milestone=second_milestones[0],
+            prop_state="raised",
+        )
+        second["narrative"]["milestones"] = list(second_milestones)
+        if reset_events is not None:
+            second["narrative"]["reset_events"] = reset_events
+        return {"seg_1": first, "seg_2": second}
+
+    def test_dedup_removes_unauthorized_repeat_keeps_first(self):
+        concepts = self._concepts(["cup_raised"], ["cup_raised"])
+        removed = _dedup_one_shot_milestones(
+            concepts, {"one_shot_milestones": ["cup_raised"]},
+        )
+        self.assertEqual(
+            [{"segment_id": "seg_2", "milestone": "cup_raised"}],
+            removed,
+        )
+        self.assertEqual(["cup_raised"], concepts["seg_1"]["narrative"]["milestones"])
+        self.assertEqual([], concepts["seg_2"]["narrative"]["milestones"])
+
+    def test_dedup_keeps_reset_authorized_repeat(self):
+        concepts = self._concepts(
+            ["cup_raised"], ["cup_raised"], reset_events=["cup_raised"],
+        )
+        removed = _dedup_one_shot_milestones(
+            concepts, {"one_shot_milestones": ["cup_raised"]},
+        )
+        self.assertEqual([], removed)
+        self.assertEqual(["cup_raised"], concepts["seg_2"]["narrative"]["milestones"])
+
+    def test_dedup_leaves_non_one_shot_milestones_untouched(self):
+        concepts = self._concepts(["chorus_refrain"], ["chorus_refrain"])
+        removed = _dedup_one_shot_milestones(
+            concepts, {"one_shot_milestones": ["cup_raised"]},
+        )
+        self.assertEqual([], removed)
+        self.assertEqual(["chorus_refrain"], concepts["seg_2"]["narrative"]["milestones"])
+
+    def test_dedup_no_one_shot_contract_is_noop(self):
+        concepts = self._concepts(["cup_raised"], ["cup_raised"])
+        removed = _dedup_one_shot_milestones(concepts, {})
+        self.assertEqual([], removed)
+        self.assertEqual(["cup_raised"], concepts["seg_2"]["narrative"]["milestones"])
+
+    def test_final_validation_dedups_repeated_one_shot_milestone(self):
+        concepts = self._concepts(["cup_raised"], ["cup_raised"])
+        annotated = validate_and_annotate_concept_chronology(
+            concepts, {"one_shot_milestones": ["cup_raised"]},
+        )
+        self.assertEqual([], concepts["seg_2"]["narrative"]["milestones"])
+        self.assertEqual("accepted", annotated["seg_2"]["semantic_validation"]["outcome"])
 
 
 if __name__ == "__main__":

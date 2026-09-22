@@ -84,7 +84,7 @@ class NarrativeContinuityTests(unittest.TestCase):
                 self.contract,
             )
 
-    def test_rejects_location_bound_actor_after_threshold_event(self):
+    def test_coerces_location_bound_actor_to_absent_at_disallowed_location(self):
         previous = _concept(cast_states={"ravena": "ascended_absent", "well_guardian": "present"})
         current = _concept(
             location="weeping_caves",
@@ -92,14 +92,16 @@ class NarrativeContinuityTests(unittest.TestCase):
             transition_events=["exit_grotto"],
         )
 
-        with self.assertRaisesRegex(
-            ValueError,
-            r"segment_038\.incoming\.cast_states\.well_guardian.*weeping_caves",
-        ):
-            validate_and_annotate_concept_chronology(
-                {"segment_037": previous, "segment_038": current},
-                self.contract,
-            )
+        annotated = validate_and_annotate_concept_chronology(
+            {"segment_037": previous, "segment_038": current},
+            self.contract,
+        )
+
+        self.assertEqual(
+            "absent",
+            current["narrative"]["cast_states"]["well_guardian"],
+        )
+        self.assertEqual("accepted", annotated["segment_038"]["semantic_validation"]["outcome"])
 
     def test_preserves_terminal_absence_when_next_scene_omits_actor_state(self):
         previous = _concept(cast_states={"ravena": "ascended_absent"})
