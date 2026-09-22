@@ -52,12 +52,19 @@ class BriefBeatAllocation(BaseModel):
     forbidden_beat_indices: list[int] = Field(default_factory=list)
 
 
-class BeatAllocationResult(BaseModel):
-    """Beats in narrative order plus one allocation per supplied segment."""
+class ArcSkeletonResult(BaseModel):
+    """The story arc as a coherent whole, independent of segment count."""
 
     model_config = ConfigDict(extra="forbid")
 
     beats: list[BeatAllocationDraft] = Field(min_length=1)
+
+
+class BeatAllocationResult(BaseModel):
+    """One mapping per supplied segment, given a fixed arc skeleton."""
+
+    model_config = ConfigDict(extra="forbid")
+
     brief_allocations: list[BriefBeatAllocation] = Field(default_factory=list)
 
 
@@ -135,13 +142,14 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         props: list[dict[str, Any]] = dspy_module.InputField()
         bible: dict[str, Any] = dspy_module.OutputField()
 
-    class BeatAllocation(dspy_module.Signature):
-        """Allocate beats across the supplied segments in narrative order.
+    class ArcSkeleton(dspy_module.Signature):
+        """Invent the story arc as a coherent whole, independent of segments.
 
-        The LAST beat reserves the terminal window (phase ``resolution``);
-        every supplied segment gets exactly one brief allocation with
-        ``beat_index``, ``required_beat_indices``, and
-        ``forbidden_beat_indices``. No timestamps or frame counts.
+        Produce a small set of narrative beats in order: the FIRST beat is
+        phase ``opening``, the LAST beat is phase ``resolution``. Reference
+        only the supplied canonical ids; never invent ids, timestamps,
+        lyrics, render settings, or audio bindings. The user direction is
+        the highest-priority input.
         """
 
         guide: str = dspy_module.InputField()
@@ -149,6 +157,29 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
             desc="Explicit user direction; highest-priority input.",
         )
         bible: dict[str, Any] = dspy_module.InputField()
+        characters: list[dict[str, Any]] = dspy_module.InputField()
+        locations: list[dict[str, Any]] = dspy_module.InputField()
+        props: list[dict[str, Any]] = dspy_module.InputField()
+        beats: list[dict[str, Any]] = dspy_module.OutputField()
+
+    class BeatAllocation(dspy_module.Signature):
+        """Map the fixed arc beats onto the supplied segments.
+
+        Given the arc skeleton, assign every supplied segment exactly one
+        brief allocation with ``beat_index``, ``required_beat_indices``,
+        and ``forbidden_beat_indices``. Do not invent new beats; reference
+        only the supplied beat indices and canonical ids. No timestamps or
+        frame counts.
+        """
+
+        guide: str = dspy_module.InputField()
+        creative_direction: str = dspy_module.InputField(
+            desc="Explicit user direction; highest-priority input.",
+        )
+        bible: dict[str, Any] = dspy_module.InputField()
+        beats: list[dict[str, Any]] = dspy_module.InputField(
+            desc="Fixed arc skeleton beats: index, phase, description.",
+        )
         characters: list[dict[str, Any]] = dspy_module.InputField()
         locations: list[dict[str, Any]] = dspy_module.InputField()
         props: list[dict[str, Any]] = dspy_module.InputField()
@@ -198,6 +229,7 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
 
     return {
         "bible": StoryPlanBible,
+        "arc_skeleton": ArcSkeleton,
         "beat_allocation": BeatAllocation,
         "acting": Acting,
         "repair": StoryPlanRepair,

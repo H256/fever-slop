@@ -5,6 +5,7 @@ from typing import Any
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.llm_policy import (
     STORY_PLAN_ACTING,
+    STORY_PLAN_ARC_SKELETON,
     STORY_PLAN_BEAT_ALLOCATION,
     STORY_PLAN_BIBLE,
     STORY_PLAN_REPAIR,
@@ -17,6 +18,7 @@ from feverslop.prompting.story_plan_signatures import (
 
 _BUNDLE_TASK_NAMES = {
     STORY_PLAN_ACTING: "acting",
+    STORY_PLAN_ARC_SKELETON: "arc_skeleton",
     STORY_PLAN_BEAT_ALLOCATION: "beat_allocation",
     STORY_PLAN_BIBLE: "bible",
     STORY_PLAN_REPAIR: "repair",
@@ -103,11 +105,34 @@ class StoryPlanPromptModules:
             "bible",
         )
 
+    def arc_skeleton(
+        self,
+        *,
+        creative_direction: str,
+        bible: Any,
+        characters: list[dict[str, Any]],
+        locations: list[dict[str, Any]],
+        props: list[dict[str, Any]],
+    ) -> Any:
+        return self._call(
+            STORY_PLAN_ARC_SKELETON,
+            load_markdown_guide("story-plan-arc-skeleton"),
+            {
+                "creative_direction": creative_direction,
+                "bible": bible,
+                "characters": characters,
+                "locations": locations,
+                "props": props,
+            },
+            "beats",
+        )
+
     def beat_allocation(
         self,
         *,
         creative_direction: str,
         bible: Any,
+        beats: list[dict[str, Any]],
         characters: list[dict[str, Any]],
         locations: list[dict[str, Any]],
         props: list[dict[str, Any]],
@@ -119,6 +144,7 @@ class StoryPlanPromptModules:
             {
                 "creative_direction": creative_direction,
                 "bible": bible,
+                "beats": beats,
                 "characters": characters,
                 "locations": locations,
                 "props": props,

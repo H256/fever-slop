@@ -259,21 +259,49 @@ class StoryPlanService:
         )
         self._reporter.message("story-plan-bible complete")
 
+        self._reporter.step("story-plan-arc-skeleton")
+        arc_raw = self._job("arc_skeleton", self._arc_skeleton_input(request, bible))
+        arc = self._normalize_job_output(
+            "arc_skeleton", arc_raw, diagnostics, _FORBIDDEN_RENDER_KEYS
+        )
+        beats = self._validate_arc(arc, diagnostics)
+        self._reporter.message(
+            "story-plan-arc-skeleton complete: "
+            f"{self._describe_arc({'typed_beats': beats})}"
+        )
+
         self._reporter.step("story-plan-beat-allocation")
         allocation_raw = self._job(
-            "beat_allocation", self._allocation_input(request, bible)
+            "beat_allocation", self._allocation_input(request, bible, beats)
         )
-        allocation = self._normalize_job_output(
+        allocation_raw = self._normalize_job_output(
             "beat_allocation", allocation_raw, diagnostics, _FORBIDDEN_RENDER_KEYS
         )
+        brief_allocations = (
+            allocation_raw.get("brief_allocations", [])
+            if isinstance(allocation_raw, Mapping)
+            else allocation_raw
+        )
+        allocation = {
+            "beats": beats,
+            "brief_allocations": (
+                brief_allocations if isinstance(brief_allocations, list) else []
+            ),
+        }
         allocation = self._coerce_typed_allocation(request, allocation)
         self._validate_allocation(request, allocation, diagnostics)
-        self._reporter.message("story-plan-beat-allocation complete")
+        self._reporter.message(
+            "story-plan-beat-allocation complete: "
+            f"{len(allocation.get('briefs', []))} segment brief(s) allocated"
+        )
 
         self._reporter.step("story-plan-acting")
         acting = self._build_acting_in_batches(request, allocation, diagnostics)
         self._validate_acting(allocation, acting, diagnostics)
-        self._reporter.message("story-plan-acting complete")
+        self._reporter.message(
+            "story-plan-acting complete: "
+            f"{len(acting)} segment brief(s) covered"
+        )
 
         candidate = self._assemble_candidate(request, allocation, acting)
         try:
@@ -520,12 +548,30 @@ class StoryPlanService:
             "guide": request.guide,
         }
 
-    def _allocation_input(
+    def _arc_skeleton_input(
         self, request: StoryPlanRequest, bible: Mapping[str, Any]
     ) -> dict[str, Any]:
         return {
             "song_title": request.song_title,
             "lyrics": request.lyrics,
+            "narrative_bible": dict(bible),
+            "characters": [dict(character) for character in request.characters],
+            "locations": [dict(location) for location in request.locations],
+            "props": [dict(prop) for prop in request.props],
+            "terminal_window_seconds": request.terminal_window_seconds,
+            "guide": request.guide,
+        }
+
+    def _allocation_input(
+        self,
+        request: StoryPlanRequest,
+        bible: Mapping[str, Any],
+        beats: list[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        return {
+            "song_title": request.song_title,
+            "lyrics": request.lyrics,
+            "beats": [dict(beat) for beat in beats],
             "segments": [segment.to_compact_dict() for segment in request.segments],
             "narrative_bible": dict(bible),
             "characters": [dict(character) for character in request.characters],
@@ -534,6 +580,71 @@ class StoryPlanService:
             "terminal_window_seconds": request.terminal_window_seconds,
             "guide": request.guide,
         }
+
+    @staticmethod
+    def _validate_arc(
+        arc: Mapping[str, Any], diagnostics: list[Mapping[str, Any]]
+    ) -> list[Mapping[str, Any]]:
+        """Validate the arc skeleton as a whole; return the beats list.
+
+        Structural problems (missing beats, invalid phase) are hard fails;
+        arc-order problems (no opening/resolution) are soft diagnostics so
+        the bounded repair pass can fix them.
+        """
+        beats = arc.get("beats", arc.get("items")) if isinstance(arc, Mapping) else arc
+        if not isinstance(beats, list) or not beats:
+            raise StoryPlanError(
+                "arc_skeleton output must contain a non-empty beats list",
+                diagnostics=[
+                    {
+                        "code": "missing_beats",
+                        "subject_id": "arc",
+                        "message": "beats list missing or empty",
+                    }
+                ],
+            )
+        valid_phases = {"opening", "development", "climax", "resolution"}
+        for index, beat in enumerate(beats):
+            if not isinstance(beat, Mapping):
+                raise StoryPlanError(
+                    f"arc beat {index} must be an object",
+                    diagnostics=[
+                        {
+                            "code": "invalid_arc_beat",
+                            "subject_id": f"beat-{index:03d}",
+                            "message": "arc beat is not an object",
+                        }
+                    ],
+                )
+            phase = str(beat.get("phase", "") or "")
+            if phase not in valid_phases:
+                raise StoryPlanError(
+                    f"arc beat {index} has invalid phase {phase!r}",
+                    diagnostics=[
+                        {
+                            "code": "invalid_arc_phase",
+                            "subject_id": f"beat-{index:03d}",
+                            "message": f"invalid phase {phase!r}",
+                        }
+                    ],
+                )
+        if str(beats[0].get("phase", "")) != "opening":
+            diagnostics.append(
+                {
+                    "code": "arc_no_opening",
+                    "subject_id": "arc",
+                    "message": "first arc beat is not opening",
+                }
+            )
+        if str(beats[-1].get("phase", "")) != "resolution":
+            diagnostics.append(
+                {
+                    "code": "arc_no_resolution",
+                    "subject_id": "arc",
+                    "message": "last arc beat is not resolution",
+                }
+            )
+        return [dict(beat) for beat in beats]
 
     def _acting_input(
         self, request: StoryPlanRequest, allocation: Mapping[str, Any]
@@ -696,6 +807,10 @@ class StoryPlanService:
             ])
         if isinstance(raw, BaseModel):
             raw = raw.model_dump(mode="json")
+        if isinstance(raw, list):
+            # Some jobs (e.g. arc_skeleton) return a bare list; wrap it so
+            # the forbidden-key check and downstream access work uniformly.
+            raw = {"items": raw}
         if isinstance(raw, Mapping):
             payload = dict(raw)
         else:
@@ -1054,9 +1169,23 @@ class StoryPlanService:
                     "subject_id": str(error.get("subject_id", "")),
                     "message": str(error.get("message", "")),
                 }
-                for error in exc.errors
+                for error in diagnostics
             ],
         ) from exc
+
+    @staticmethod
+    def _describe_arc(allocation: Mapping[str, Any]) -> str:
+        """Summarize the beat count and arc phase sequence for observability."""
+        beats = allocation.get("typed_beats")
+        if not isinstance(beats, list):
+            return "0 beats, arc: (none)"
+        phases: list[str] = []
+        for beat in beats:
+            if isinstance(beat, Mapping):
+                phase = str(beat.get("phase", "") or "")
+                if phase:
+                    phases.append(phase)
+        return f"{len(phases)} beats, arc: {' -> '.join(phases) or '(none)'}"
 
     @staticmethod
     def _assemble_candidate(

@@ -83,11 +83,33 @@ class StoryPlanServiceAdapter:
         self._last_bible = result if isinstance(result, Mapping) else {}
         return result
 
+    def arc_skeleton(
+        self,
+        *,
+        song_title: str,
+        lyrics: str,
+        narrative_bible: Mapping[str, Any],
+        characters: list[Mapping[str, Any]],
+        terminal_window_seconds: float,
+        guide: str,
+        locations: list[Mapping[str, Any]] | None = None,
+        props: list[Mapping[str, Any]] | None = None,
+        **_extra: Any,
+    ) -> Any:
+        return self._modules.arc_skeleton(
+            creative_direction=self._creative_direction,
+            bible=dict(narrative_bible),
+            characters=[dict(c) for c in characters],
+            locations=[dict(location) for location in (locations or [])],
+            props=[dict(prop) for prop in (props or [])],
+        )
+
     def beat_allocation(
         self,
         *,
         song_title: str,
         lyrics: str,
+        beats: list[Mapping[str, Any]],
         segments: list[Mapping[str, Any]],
         narrative_bible: Mapping[str, Any],
         characters: list[Mapping[str, Any]],
@@ -100,6 +122,7 @@ class StoryPlanServiceAdapter:
         return self._modules.beat_allocation(
             creative_direction=self._creative_direction,
             bible=dict(narrative_bible),
+            beats=[dict(beat) for beat in beats],
             characters=[dict(c) for c in characters],
             locations=[dict(location) for location in (locations or [])],
             props=[dict(prop) for prop in (props or [])],

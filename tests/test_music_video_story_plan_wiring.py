@@ -162,13 +162,16 @@ class _FactoryPredictor:
     def __call__(self, **_kwargs: Any) -> dict[str, Any]:
         if self._name == "StoryPlanBible":
             return {"bible": {"premise": "A singer leaves home.", "theme": "release"}}
+        if self._name == "ArcSkeleton":
+            return {
+                "beats": [
+                    {"phase": "opening", "description": "Departure"},
+                    {"phase": "resolution", "description": "Release"},
+                ]
+            }
         if self._name == "BeatAllocation":
             return {
                 "allocation": {
-                    "beats": [
-                        {"phase": "opening", "description": "Departure"},
-                        {"phase": "resolution", "description": "Release"},
-                    ],
                     "brief_allocations": [
                         {"target": "seg-1", "beat_index": 0},
                         {"target": "seg-2", "beat_index": 1},
@@ -329,9 +332,13 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
                 calls["bible"] = kwargs
                 return {"premise": "p"}
 
+            def arc_skeleton(self, **kwargs: Any) -> dict[str, Any]:
+                calls["arc"] = kwargs
+                return {"beats": [{"phase": "opening", "description": "start"}, {"phase": "resolution", "description": "end"}]}
+
             def beat_allocation(self, **kwargs: Any) -> dict[str, Any]:
                 calls["allocation"] = kwargs
-                return {"beats": [{"phase": "resolution", "description": "end"}], "brief_allocations": []}
+                return {"brief_allocations": []}
 
             def acting(self, **kwargs: Any) -> dict[str, Any]:
                 calls["acting"] = kwargs
@@ -348,8 +355,15 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
                 "props": [{"id": "well"}],
             }, guide="",
         )
+        adapter.arc_skeleton(
+            song_title="Song", lyrics="orcs",
+            narrative_bible={}, characters=[], terminal_window_seconds=1, guide="",
+            locations=[{"id": "cave"}], props=[{"id": "well"}],
+        )
         adapter.beat_allocation(
-            song_title="Song", lyrics="orcs", segments=[{"segment_id": "seg-1"}],
+            song_title="Song", lyrics="orcs",
+            beats=[{"phase": "opening", "description": "start"}, {"phase": "resolution", "description": "end"}],
+            segments=[{"segment_id": "seg-1"}],
             narrative_bible={}, characters=[], terminal_window_seconds=1, guide="",
             locations=[{"id": "cave"}], props=[{"id": "well"}],
         )

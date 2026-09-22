@@ -543,10 +543,12 @@ class PromptGenerationPipeline:
         # Preserve compatibility with injected one-argument test factories,
         # while the production factory receives the user-configured bound.
         parameters = inspect.signature(factory).parameters
+        factory_kwargs: dict[str, Any] = {}
         if "acting_batch_size" in parameters:
-            service = factory(llm, acting_batch_size=acting_batch_size)
-        else:
-            service = factory(llm)
+            factory_kwargs["acting_batch_size"] = acting_batch_size
+        if "reporter" in parameters:
+            factory_kwargs["reporter"] = reporter
+        service = factory(llm, **factory_kwargs)
 
         global_context = global_context or {}
         effective_direction = (
@@ -693,6 +695,12 @@ class PromptGenerationPipeline:
                 if failure_policy == "block":
                     raise
                 reporter.message(f"[yellow]{message}[/yellow]")
+                for diagnostic in getattr(exc, "diagnostics", ()):
+                    code = str(diagnostic.get("code", "validation_error"))
+                    subject = str(diagnostic.get("subject_id", "") or "")
+                    detail = str(diagnostic.get("message", ""))
+                    suffix = f" ({subject})" if subject else ""
+                    reporter.message(f"[red]  - {code}{suffix}: {detail}[/red]")
                 return None, True
             plan = result.plan
 
