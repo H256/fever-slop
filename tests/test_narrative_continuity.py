@@ -119,16 +119,21 @@ class NarrativeContinuityTests(unittest.TestCase):
         self.assertEqual("segment_020", continuity["predecessor_id"])
         self.assertEqual("compatible", continuity["validation_result"])
 
-    def test_rejects_terminal_actor_return_without_authored_event(self):
+    def test_coerces_terminal_actor_return_to_required_state(self):
         previous = _concept(cast_states={"ravena": "ascended_absent"})
         previous["narrative"]["milestones"] = ["ascent_complete"]
         current = _concept(cast_states={"ravena": "corporeal"})
 
-        with self.assertRaisesRegex(ValueError, r"ravena.*ascended_absent"):
-            validate_and_annotate_concept_chronology(
-                {"segment_020": previous, "segment_051": current},
-                self.contract,
-            )
+        annotated = validate_and_annotate_concept_chronology(
+            {"segment_020": previous, "segment_051": current},
+            self.contract,
+        )
+
+        self.assertEqual(
+            "ascended_absent",
+            current["narrative"]["cast_states"]["ravena"],
+        )
+        self.assertEqual("accepted", annotated["segment_051"]["semantic_validation"]["outcome"])
 
     def test_marks_explicit_continuous_action_for_predecessor_handoff(self):
         previous = _concept(action="drink", action_phase="at_lips")
