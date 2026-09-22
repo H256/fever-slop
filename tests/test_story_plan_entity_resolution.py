@@ -160,3 +160,56 @@ class EntityResolutionInventTests(unittest.TestCase):
         self.assertEqual(decisions[0]["decision"], "invent")
         face = next(e for e in resolved["characters"] if e["id"] == "new_face")
         self.assertIn("Demo Song", face["description"])
+
+
+class EntityResolutionExtraKeyTests(unittest.TestCase):
+    def test_extra_keys_are_stripped_from_resolved_entities(self) -> None:
+        request = make_request(
+            characters=(
+                {
+                    "id": "char-1",
+                    "name": "Singer",
+                    "description": "The lead.",
+                    "is_singer": True,
+                    "visual_description": "a tall figure",
+                    "image_prompt": "cinematic portrait",
+                },
+            ),
+            locations=(
+                {
+                    "id": "cave",
+                    "name": "Cave",
+                    "description": "A dark cave.",
+                    "visual_description": "dark and cold",
+                    "image_prompt": "moody cave shot",
+                },
+            ),
+            props=(
+                {
+                    "id": "well",
+                    "name": "Well",
+                    "description": "An old well.",
+                    "visual_description": "weathered stone",
+                    "image_prompt": "close-up of the well",
+                },
+            ),
+        )
+        resolved, _ = _service()._resolve_entities(
+            request,
+            _allocation(
+                beat_character_ids=["char-1"],
+                beat_location_id="cave",
+                beat_prop_ids=["well"],
+            ),
+        )
+        singer = next(e for e in resolved["characters"] if e["id"] == "char-1")
+        self.assertEqual(
+            set(singer), {"id", "name", "description", "is_singer"}
+        )
+        cave = next(e for e in resolved["locations"] if e["id"] == "cave")
+        self.assertEqual(set(cave), {"id", "name", "description"})
+        well = next(e for e in resolved["props"] if e["id"] == "well")
+        self.assertEqual(set(well), {"id", "name", "description"})
+        # The allowed fields survive intact.
+        self.assertEqual(cave["description"], "A dark cave.")
+        self.assertTrue(singer["is_singer"])

@@ -20,7 +20,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -226,6 +226,7 @@ class StoryPlanResult:
     plan: StoryPlan
     acting: Mapping[str, Any]
     diagnostics: tuple[Mapping[str, Any], ...]
+    live_prompts: Mapping[str, Any] = field(default_factory=dict)
 
 
 class StoryPlanService:
@@ -361,10 +362,12 @@ class StoryPlanService:
                 )
 
         plan = StoryPlan.model_validate(candidate, strict=False)
+        live_prompts = self._build_live_prompts(request, plan, bible, diagnostics)
         return StoryPlanResult(
             plan=plan,
             acting=self._typed_acting(acting, plan),
             diagnostics=tuple(diagnostics),
+            live_prompts=live_prompts,
         )
 
     def _build_acting_in_batches(
@@ -1159,7 +1162,23 @@ class StoryPlanService:
                             "name": name,
                         }
                     )
-            return resolved
+            # The config dicts can carry extra keys (e.g. visual_description,
+            # image_prompt) that the canonical models forbid.  Normalize to the
+            # allowed fields so the candidate validates.
+            allowed = {
+                "character": ("id", "name", "description", "is_singer"),
+                "location": ("id", "name", "description"),
+                "prop": ("id", "name", "description"),
+            }[entity_type]
+            normalized: list[dict[str, Any]] = []
+            for entry in resolved:
+                clean: dict[str, Any] = {
+                    key: entry[key] for key in allowed if key in entry
+                }
+                if entity_type == "character" and "is_singer" not in clean:
+                    clean["is_singer"] = False
+                normalized.append(clean)
+            return normalized
 
         resolved_characters = _resolve("character", character_refs, config_characters, is_singer=True)
         resolved_locations = _resolve("location", location_refs, config_locations)
@@ -1644,6 +1663,102 @@ class StoryPlanService:
             return typed.model_dump()
         except Exception:
             return {"briefs": normalized_briefs, "character_arcs": normalized_arcs}
+
+    def _live_prompts_input(
+        self,
+        request: StoryPlanRequest,
+        plan: StoryPlan,
+        bible: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        briefs = [
+            {
+                "target": brief.target,
+                "visual_direction": brief.visual_direction,
+                "character_ids": list(brief.character_ids),
+                "location_id": brief.location_id,
+                "prop_ids": list(brief.prop_ids),
+            }
+            for brief in plan.segments
+        ]
+        creative_direction = str(
+            request.source_evidence.get("creative_direction", "")
+        ).strip()
+        return {
+            "creative_direction": creative_direction,
+            "bible": dict(bible),
+            "briefs": briefs,
+            "expected_targets": [brief.target for brief in plan.segments],
+        }
+
+    def _build_live_prompts(
+        self,
+        request: StoryPlanRequest,
+        plan: StoryPlan,
+        bible: Mapping[str, Any],
+        diagnostics: list[Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        """L3: live per-scene image + video prompts (soft-fail).
+
+        Live prompts are an additive layer: a missing, malformed, or
+        unvalidated prompt set is a diagnostic, never a hard failure, so an
+        unconfigured or failing prompt job never blocks plan production.
+        """
+        self._reporter.step("story-plan-live-prompts")
+        try:
+            raw = self._job(
+                "live_prompts", self._live_prompts_input(request, plan, bible)
+            )
+        except Exception as exc:
+            diagnostics.append(
+                {
+                    "code": "live_prompts_failed",
+                    "subject_id": "live_prompts",
+                    "message": f"live prompt job failed: {exc}",
+                }
+            )
+            self._reporter.message("story-plan-live-prompts failed; continuing")
+            return {}
+        prompts = self._normalize_live_prompts(raw, plan, diagnostics)
+        self._reporter.message(
+            "story-plan-live-prompts complete: "
+            f"{len(prompts)} scene prompt(s)"
+        )
+        return prompts
+
+    @staticmethod
+    def _normalize_live_prompts(
+        raw: Any, plan: StoryPlan, diagnostics: list[Mapping[str, Any]]
+    ) -> dict[str, dict[str, str]]:
+        """Normalize the live-prompt job output keyed by segment target.
+
+        Accepts a ``{prompts: [...]}`` mapping or a bare list; drops entries
+        whose target is not a supplied segment or whose image_prompt is empty.
+        """
+        items = raw.get("prompts") if isinstance(raw, Mapping) else raw
+        if not isinstance(items, list):
+            items = []
+        expected = {brief.target for brief in plan.segments}
+        result: dict[str, dict[str, str]] = {}
+        for item in items:
+            if not isinstance(item, Mapping):
+                continue
+            target = str(item.get("target", ""))
+            image_prompt = str(item.get("image_prompt", "") or "").strip()
+            if target not in expected or not image_prompt:
+                continue
+            result[target] = {
+                "image_prompt": image_prompt,
+                "video_prompt": str(item.get("video_prompt", "") or "").strip(),
+            }
+        if not result:
+            diagnostics.append(
+                {
+                    "code": "live_prompts_empty",
+                    "subject_id": "live_prompts",
+                    "message": "no valid live prompts returned",
+                }
+            )
+        return result
 
 
 def compute_source_fingerprint(

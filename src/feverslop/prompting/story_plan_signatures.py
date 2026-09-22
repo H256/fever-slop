@@ -215,6 +215,29 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         props: list[dict[str, Any]] = dspy_module.InputField()
         result: dict[str, Any] = dspy_module.OutputField()
 
+    class LivePrompts(dspy_module.Signature):
+        """Write live image and video prompts for each supplied segment.
+
+        Given the validated plan's per-brief creative direction, produce one
+        ``image_prompt`` and one ``video_prompt`` per supplied segment id
+        (``target``). Prompts are concrete, self-contained, and reference only
+        the supplied canonical ids. No timestamps, frame counts, or render
+        settings. The user direction is the highest-priority input.
+        """
+
+        guide: str = dspy_module.InputField()
+        creative_direction: str = dspy_module.InputField(
+            desc="Explicit user direction; highest-priority input.",
+        )
+        bible: dict[str, Any] = dspy_module.InputField()
+        briefs: list[dict[str, Any]] = dspy_module.InputField(
+            desc="Validated per-brief creative direction: target, visual_direction, entities.",
+        )
+        expected_targets: list[str] = dspy_module.InputField(
+            desc="Exact supplied segment ids to return, with no omissions or extras.",
+        )
+        result: dict[str, Any] = dspy_module.OutputField()
+
     class StoryPlanRepair(dspy_module.Signature):
         """Fix ONLY the named diagnostics in the prior typed plan.
 
@@ -232,5 +255,6 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         "arc_skeleton": ArcSkeleton,
         "beat_allocation": BeatAllocation,
         "acting": Acting,
+        "live_prompts": LivePrompts,
         "repair": StoryPlanRepair,
     }

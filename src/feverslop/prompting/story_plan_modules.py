@@ -8,6 +8,7 @@ from feverslop.prompting.llm_policy import (
     STORY_PLAN_ARC_SKELETON,
     STORY_PLAN_BEAT_ALLOCATION,
     STORY_PLAN_BIBLE,
+    STORY_PLAN_LIVE_PROMPTS,
     STORY_PLAN_REPAIR,
     policy_for,
 )
@@ -21,6 +22,7 @@ _BUNDLE_TASK_NAMES = {
     STORY_PLAN_ARC_SKELETON: "arc_skeleton",
     STORY_PLAN_BEAT_ALLOCATION: "beat_allocation",
     STORY_PLAN_BIBLE: "bible",
+    STORY_PLAN_LIVE_PROMPTS: "live_prompts",
     STORY_PLAN_REPAIR: "repair",
 }
 
@@ -177,6 +179,26 @@ class StoryPlanPromptModules:
                 "characters": characters,
                 "locations": locations,
                 "props": props,
+            },
+            "result",
+        )
+
+    def live_prompts(
+        self,
+        *,
+        creative_direction: str,
+        bible: Any,
+        briefs: list[dict[str, Any]],
+        expected_targets: list[str],
+    ) -> Any:
+        return self._call(
+            STORY_PLAN_LIVE_PROMPTS,
+            load_markdown_guide("story-plan-live-prompts"),
+            {
+                "creative_direction": creative_direction,
+                "bible": bible,
+                "briefs": briefs,
+                "expected_targets": list(expected_targets),
             },
             "result",
         )

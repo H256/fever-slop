@@ -173,6 +173,23 @@ def valid_acting() -> dict:
     return acting_for_brief_ids("brief-seg-1", "brief-seg-2")
 
 
+def valid_live_prompts() -> dict:
+    return {
+        "prompts": [
+            {
+                "target": "seg-1",
+                "image_prompt": "a concrete keyframe for seg-1",
+                "video_prompt": "camera motion for seg-1",
+            },
+            {
+                "target": "seg-2",
+                "image_prompt": "a concrete keyframe for seg-2",
+                "video_prompt": "camera motion for seg-2",
+            },
+        ]
+    }
+
+
 def duplicate_target_allocation() -> dict:
     return {
         "brief_allocations": [
@@ -289,6 +306,7 @@ class FakePromptModules:
         arc: dict | None = None,
         allocation: dict | None = None,
         acting: dict | None = None,
+        live_prompts: dict | None = None,
         repair: dict | None = None,
     ) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -297,6 +315,7 @@ class FakePromptModules:
             "arc_skeleton": arc if arc is not None else valid_arc(),
             "beat_allocation": allocation if allocation is not None else valid_allocation(),
             "acting": acting if acting is not None else valid_acting(),
+            "live_prompts": live_prompts if live_prompts is not None else valid_live_prompts(),
             "repair": repair if repair is not None else valid_repair_plan(),
         }
 
@@ -316,6 +335,10 @@ class FakePromptModules:
         self.calls.append(("acting", dict(kwargs)))
         return self.outputs["acting"]
 
+    def live_prompts(self, **kwargs: Any) -> dict:
+        self.calls.append(("live_prompts", dict(kwargs)))
+        return self.outputs["live_prompts"]
+
     def repair(self, **kwargs: Any) -> dict:
         self.calls.append(("repair", dict(kwargs)))
         return self.outputs["repair"]
@@ -325,7 +348,7 @@ class StrictPromptModules:
     """Records interface access and rejects any method outside the five jobs."""
 
     _ALLOWED = frozenset(
-        {"bible", "arc_skeleton", "beat_allocation", "acting", "repair"}
+        {"bible", "arc_skeleton", "beat_allocation", "acting", "live_prompts", "repair"}
     )
 
     def __init__(self, outputs: dict[str, Any]) -> None:
@@ -425,6 +448,28 @@ class StoryPlanModuleTests(unittest.TestCase):
                 "segments",
             ],
         )
+
+    def test_live_prompts_payload_allowlist(self) -> None:
+        self.modules.live_prompts(
+            creative_direction="cd",
+            bible={"premise": "p"},
+            briefs=[{"target": "seg-1", "visual_direction": "vd"}],
+            expected_targets=["seg-1"],
+        )
+        kwargs = _predictor(self.predictors, "LivePrompts").calls[0]
+        self.assertEqual(
+            sorted(kwargs),
+            [
+                "bible",
+                "briefs",
+                "config",
+                "creative_direction",
+                "expected_targets",
+                "guide",
+            ],
+        )
+        self.assertIsInstance(kwargs["guide"], str)
+        self.assertTrue(kwargs["guide"])
 
     def test_repair_payload_allowlist(self) -> None:
         self.modules.repair(
@@ -532,6 +577,7 @@ class StoryPlanModuleTests(unittest.TestCase):
                 ("openai/fake-model", 0.6),  # story_plan_arc_skeleton
                 ("openai/fake-model", 0.2),  # story_plan_beat_allocation
                 ("openai/fake-model", 0.2),  # story_plan_bible
+                ("openai/fake-model", 0.6),  # story_plan_live_prompts
                 ("openai/fake-model", 0.2),  # story_plan_repair
             ],
         )
@@ -568,7 +614,14 @@ class StoryPlanSignatureBundleTests(unittest.TestCase):
         bundle = build_story_plan_signature_bundle()
         self.assertEqual(
             sorted(bundle),
-            ["acting", "arc_skeleton", "beat_allocation", "bible", "repair"],
+            [
+                "acting",
+                "arc_skeleton",
+                "beat_allocation",
+                "bible",
+                "live_prompts",
+                "repair",
+            ],
         )
         self.assertIn("guide", bundle["bible"].input_fields)
         self.assertIn("story_text", bundle["bible"].input_fields)
@@ -823,7 +876,7 @@ class StoryPlanServiceTests(unittest.TestCase):
         result = service.build_plan(make_request())
         self.assertEqual(
             [name for name, _ in modules.calls],
-            ["bible", "arc_skeleton", "beat_allocation", "acting"],
+            ["bible", "arc_skeleton", "beat_allocation", "acting", "live_prompts"],
         )
         self.assertEqual(result.diagnostics, ())
         self.assertEqual(
@@ -894,6 +947,7 @@ class StoryPlanServiceTests(unittest.TestCase):
             "arc_skeleton": lambda **kwargs: valid_arc(),
             "beat_allocation": lambda **kwargs: valid_allocation(),
             "acting": lambda **kwargs: valid_acting(),
+            "live_prompts": lambda **kwargs: valid_live_prompts(),
             "repair": lambda **kwargs: valid_repair_plan(),
         }
         modules = StrictPromptModules(outputs)
@@ -901,7 +955,7 @@ class StoryPlanServiceTests(unittest.TestCase):
         service.build_plan(make_request())
         self.assertEqual(
             modules.accessed,
-            ["bible", "arc_skeleton", "beat_allocation", "acting"],
+            ["bible", "arc_skeleton", "beat_allocation", "acting", "live_prompts"],
         )
 
     def test_invalid_candidate_triggers_single_repair_with_diagnostics_only(self) -> None:
@@ -913,10 +967,14 @@ class StoryPlanServiceTests(unittest.TestCase):
         result = service.build_plan(make_request_3seg())
         self.assertEqual(
             [name for name, _ in modules.calls],
-            ["bible", "arc_skeleton", "beat_allocation", "acting", "repair"],
+            ["bible", "arc_skeleton", "beat_allocation", "acting", "repair", "live_prompts"],
         )
         self.assertEqual([name for name, _ in modules.calls].count("repair"), 1)
-        repair_kwargs = dict(modules.calls[-1][1])
+        repair_call = next(
+            (payload for name, payload in modules.calls if name == "repair"), None
+        )
+        self.assertIsNotNone(repair_call)
+        repair_kwargs = dict(repair_call)
         self.assertEqual(
             sorted(repair_kwargs),
             ["candidate", "guide", "lyrics", "song_style", "song_title", "validation_errors"],

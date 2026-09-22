@@ -34,6 +34,7 @@ DEFAULT_TASK_TEMPERATURES: dict[str, float] = {
     "story_plan_arc_skeleton": 0.6,
     "story_plan_beat_allocation": 0.2,
     "story_plan_acting": 0.6,
+    "story_plan_live_prompts": 0.6,
     "story_plan_repair": 0.2,
 }
 

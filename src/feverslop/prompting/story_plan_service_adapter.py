@@ -159,6 +159,22 @@ class StoryPlanServiceAdapter:
             props=[dict(prop) for prop in (props or [])],
         )
 
+    def live_prompts(
+        self,
+        *,
+        creative_direction: str,
+        bible: Mapping[str, Any],
+        briefs: list[Mapping[str, Any]],
+        expected_targets: list[str],
+        **_extra: Any,
+    ) -> Any:
+        return self._modules.live_prompts(
+            creative_direction=creative_direction,
+            bible=dict(bible),
+            briefs=[dict(brief) for brief in briefs],
+            expected_targets=list(expected_targets),
+        )
+
     def repair(
         self,
         *,
