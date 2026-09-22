@@ -1004,6 +1004,78 @@ class StoryPlanServiceTests(unittest.TestCase):
         self.assertEqual(len(audio_diagnostics), 1)
         self.assertEqual(audio_diagnostics[0]["keys"], ["audio_features"])
 
+    def test_service_reports_per_entity_resolution_decisions(self) -> None:
+        reporter = _RecordingReporter()
+        modules = FakePromptModules()
+        service = StoryPlanService(prompt_modules=modules, reporter=reporter)
+        service.build_plan(make_request())
+        # Every layer step is reported.
+        for step in (
+            "story-plan-bible",
+            "story-plan-arc-skeleton",
+            "story-plan-beat-allocation",
+            "story-plan-entity-resolution",
+            "story-plan-acting",
+        ):
+            self.assertIn(f"[STEP] {step}", reporter.messages)
+        # Per-entity use/extend/invent decisions are reported, not just counts.
+        for expected in (
+            "entity character char-1: extend (Singer)",
+            "entity location cave: extend (Cave)",
+            "entity location well: extend (Well Grotto)",
+            "entity prop well: extend (Well)",
+        ):
+            self.assertTrue(
+                any(expected in message for message in reporter.messages),
+                f"{expected!r} not reported",
+            )
+
+    def test_service_reports_validation_diagnostics_on_repair(self) -> None:
+        reporter = _RecordingReporter()
+        modules = FakePromptModules(
+            allocation=duplicate_target_allocation(),
+            acting=acting_for_brief_ids("brief-seg-1", "brief-seg-2", "brief-seg-3"),
+        )
+        service = StoryPlanService(prompt_modules=modules, reporter=reporter)
+        service.build_plan(make_request_3seg())
+        self.assertIn("[STEP] story-plan-repair", reporter.messages)
+        # The actual validation errors are surfaced to the console.
+        self.assertTrue(
+            any("validation error:" in message for message in reporter.messages),
+            reporter.messages,
+        )
+        # Accumulated soft diagnostics are surfaced at the end.
+        self.assertIn("[STEP] story-plan-diagnostics", reporter.messages)
+        self.assertTrue(
+            any(message.startswith("[WARN]") for message in reporter.messages),
+            reporter.messages,
+        )
+
+
+class _RecordingReporter:
+    """Reporter double that records step/message/warning calls."""
+
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    def step(self, title: str) -> None:
+        self.messages.append(f"[STEP] {title}")
+
+    def file(self, label: str, path: Any) -> None:
+        pass
+
+    def message(self, text: str) -> None:
+        self.messages.append(text)
+
+    def warning(self, text: str, *, title: str | None = None) -> None:
+        self.messages.append(f"[WARN] {text}")
+
+    def panel(self, text: str, *, title: str | None = None) -> None:
+        pass
+
+    def table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
+        pass
+
 
 class StoryPlanRequestValidationTests(unittest.TestCase):
     def test_request_validate_requires_terminal_window_inside_span(self) -> None:
