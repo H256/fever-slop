@@ -1,5 +1,6 @@
 import json
 import unittest
+from pathlib import Path
 
 from feverslop.prompting.concept_prompt_batcher import (
     ConceptPromptBatcher,
@@ -1927,6 +1928,58 @@ class ConceptCheckpointTests(unittest.TestCase):
             )
 
             self.assertEqual({"s1", "s2"}, set(result))
+            self.assertEqual(
+                [1, 2],
+                [call[1]["BATCH_INDEX"] for call in modules.calls if call[0] == "concepts"],
+            )
+            self.assertTrue(
+                any("Ignoring stale concept checkpoint" in message for message in progress),
+                progress,
+            )
+
+    def test_checkpoint_is_stale_when_story_bindings_change(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp:
+            crashing = self.CrashingModules([{"s1": "concept one"}, "summary"])
+            with self.assertRaises(RuntimeError):
+                self._batcher(crashing, temp).create_concept_prompts_batched(
+                    stage1_segments=self._segments(),
+                    story_idea="idea",
+                    global_context={},
+                    segment_briefs={},
+                )
+
+            class RecordingModules:
+                def __init__(self) -> None:
+                    self.calls = []
+
+                def concepts(self, payload, **_kwargs):
+                    self.calls.append(("concepts", payload))
+                    segment_id = payload["CURRENT_BATCH_SEGMENTS"][0]["segment_id"]
+                    return {segment_id: f"concept {segment_id}"}
+
+                def summary(self, payload, **_kwargs):
+                    self.calls.append(("summary", payload))
+                    return "summary"
+
+            modules = RecordingModules()
+            progress = []
+            batcher = ConceptPromptBatcher(
+                object(), prompt_modules=modules, batch_size=1, progress_callback=progress.append,
+            )
+            batcher.enable_checkpoint(
+                path=Path(temp) / "concept_checkpoint.json",
+                artifact_store=self._store(),
+            )
+
+            batcher.create_concept_prompts_batched(
+                stage1_segments=self._segments(),
+                story_idea="idea",
+                global_context={},
+                segment_briefs={"s1": {"objective": "Reveal the secret."}},
+            )
+
             self.assertEqual(
                 [1, 2],
                 [call[1]["BATCH_INDEX"] for call in modules.calls if call[0] == "concepts"],

@@ -572,6 +572,7 @@ class ConceptPromptBatcher:
                 notes=notes,
                 global_context=global_context,
                 stage1_segments=stage1_segments,
+                segment_briefs=segment_briefs,
             )
             restored, stale = self._load_checkpoint(checkpoint_identity)
             if stale:
@@ -711,6 +712,7 @@ class ConceptPromptBatcher:
         notes: str,
         global_context: dict,
         stage1_segments: list[dict],
+        segment_briefs: dict | None,
     ) -> str:
         material = json.dumps(
             {
@@ -719,6 +721,7 @@ class ConceptPromptBatcher:
                 "notes": notes,
                 "global_context": compact_planning_payload(global_context),
                 "segments": compact_planning_payload(stage1_segments),
+                "segment_briefs": compact_planning_payload(segment_briefs or {}),
             },
             ensure_ascii=False,
             sort_keys=True,
