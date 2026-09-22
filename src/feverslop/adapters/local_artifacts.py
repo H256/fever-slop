@@ -4,16 +4,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+from feverslop.utils.io import atomic_write_text
+
 
 class JsonArtifactStore:
     def read_text(self, path: str | Path) -> str:
         return Path(path).read_text(encoding="utf-8-sig")
 
     def write_text(self, path: str | Path, text: str) -> Path:
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-        return path
+        return atomic_write_text(Path(path), text)
 
     def read_json(self, path: str | Path) -> Any:
         return json.loads(self.read_text(path))

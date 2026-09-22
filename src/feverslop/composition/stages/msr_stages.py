@@ -18,6 +18,7 @@ from .plan_stages import (
     _get_reference_bible_parser,
     _get_resolution,
     _report_reference_fallbacks,
+    _require_video_pipeline,
     _run_render_plan_stage,
     _seed_reference_bindings,
 )
@@ -31,10 +32,11 @@ from .progress import (
 
 
 def _run_msr_references_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-i2v"):
-        raise ValueError(
-            "msr_references requires --video-pipeline ltx_msr, ltx_ingredients, minimax-h3-r2v, or minimax-h3-i2v",
-        )
+    _require_video_pipeline(
+        state,
+        ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-i2v"),
+        "msr_references",
+    )
     project_config_path = getattr(state.context, "project_config_path", None)
     if project_config_path is not None:
         config = ProjectConfig.load(project_config_path)
@@ -71,10 +73,11 @@ def _run_msr_references_stage(state: PipelineRunState) -> None:
 
 
 def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-i2v"):
-        raise ValueError(
-            "msr_reference_sheets requires --video-pipeline ltx_msr, ltx_ingredients, minimax-h3-r2v, or minimax-h3-i2v",
-        )
+    _require_video_pipeline(
+        state,
+        ("ltx_msr", "ltx_ingredients", "minimax-h3-r2v", "minimax-h3-i2v"),
+        "msr_reference_sheets",
+    )
     if not state.plan_for_next_step.is_file():
         _report(
             "[dim]Render plan missing; creating the intermediate plan before enriching MSR references...[/dim]",
@@ -106,8 +109,7 @@ def _run_msr_reference_sheets_stage(state: PipelineRunState) -> None:
 
 
 def _run_msr_prompt_enrich_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
-        raise ValueError("msr_prompt_enrich requires --video-pipeline ltx_msr or ltx_ingredients")
+    _require_video_pipeline(state, ("ltx_msr", "ltx_ingredients"), "msr_prompt_enrich")
     app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
@@ -137,8 +139,7 @@ def _run_ingredients_sheets_stage(state: PipelineRunState) -> None:
     from feverslop.application.render_plan_ingredients_sheets import (
         enrich_render_plan_with_ingredients_sheets,
     )
-    if state.args.video_pipeline != "ltx_ingredients":
-        raise ValueError("ingredients_sheets requires --video-pipeline ltx_ingredients")
+    _require_video_pipeline(state, ("ltx_ingredients",), "ingredients_sheets")
     project_config = ProjectConfig.load(state.context.project_config_path)
     resolution = _get_resolution(state.args)
     if resolution is not None:

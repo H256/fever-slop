@@ -67,6 +67,22 @@ def _get_resolution(args: argparse.Namespace) -> tuple[int, int] | None:
     return (res.width, res.height)
 
 
+def _require_video_pipeline(state: PipelineRunState, allowed: tuple[str, ...], stage_name: str) -> None:
+    """Raise ValueError if --video-pipeline is not in *allowed*."""
+    if state.args.video_pipeline not in allowed:
+        allowed_list = allowed[0] if len(allowed) == 1 else ", ".join(allowed[:-1]) + " or " + allowed[-1]
+        raise ValueError(f"{stage_name} requires --video-pipeline {allowed_list}")
+
+
+def _subject_anchor(state: PipelineRunState) -> str:
+    """Read and validate the subject anchor from the resolved context artifact."""
+    resolved_context = JsonArtifactStore().read_json(state.context.resolved_context)
+    subject_anchor = str(resolved_context.get("subject", "")).strip()
+    if not subject_anchor:
+        raise ValueError(f"No subject anchor found in {state.context.resolved_context}")
+    return subject_anchor
+
+
 def _run_tests_stage(_state: PipelineRunState) -> None:
     from feverslop.composition.stage_runners import run_unittest_suite
     run_unittest_suite()
@@ -502,10 +518,7 @@ def _preserve_enriched_reference_paths(
 def _run_relay_compact_stage(state: PipelineRunState) -> None:
     if state.args.render_mode == "single_prompt":
         raise ValueError("relay_compact requires render_mode relay or auto")
-    resolved_context = JsonArtifactStore().read_json(state.context.resolved_context)
-    subject_anchor = str(resolved_context.get("subject", "")).strip()
-    if not subject_anchor:
-        raise ValueError(f"No subject anchor found in {state.context.resolved_context}")
+    subject_anchor = _subject_anchor(state)
     app_config = AppConfig.load(state.app_config_path, required_keys=["llm", "comfyui"])
     llm = OpenAICompatibleLLMClient(
         base_url=app_config.llm.base_url,
@@ -530,10 +543,7 @@ def _run_relay_compact_stage(state: PipelineRunState) -> None:
 
 def _run_anchor_fix_stage(state: PipelineRunState) -> None:
     state.context.artifact_layout.plans_dir.mkdir(parents=True, exist_ok=True)
-    resolved_context = JsonArtifactStore().read_json(state.context.resolved_context)
-    subject_anchor = str(resolved_context.get("subject", "")).strip()
-    if not subject_anchor:
-        raise ValueError(f"No subject anchor found in {state.context.resolved_context}")
+    subject_anchor = _subject_anchor(state)
 
     state.plan_for_next_step = LTXPromptAnchorFixer(subject_anchor=subject_anchor).fix_file(
         input_render_plan=state.plan_for_next_step,

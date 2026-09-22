@@ -1142,10 +1142,7 @@ def _commit_staged_reference(staging_dir: Path, final_dir: Path, manifest_name: 
                 return value.replace(staging_token, final_token)
             return value
 
-        manifest_path.write_text(
-            json.dumps(rewrite(payload), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        atomic_write_json(manifest_path, rewrite(payload))
     final_dir.parent.mkdir(parents=True, exist_ok=True)
     backup_dir = final_dir.with_name(f".{final_dir.name}.previous")
     shutil.rmtree(backup_dir, ignore_errors=True)
@@ -1263,7 +1260,7 @@ def enrich_render_plan_with_reference_sheets(
             on_scene_complete(int(scene.get("scene", index)), index, total)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(render_plan, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_json(output_path, render_plan)
     return output_path
 
 
