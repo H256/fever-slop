@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import os
 import shutil
 import tempfile
@@ -37,8 +38,19 @@ class MediaStore:
         header, separator, encoded = data_url.partition(",")
         if not separator or not header.startswith("data:image/"):
             raise StudioPathError("Expected an image data URL")
+        # Reject oversized payloads before decoding so a multi-GB data URL does not
+        # force a full decode/allocation before the limit rejects it.
+        estimated_size = len(encoded) * 3 // 4
+        if estimated_size > self.max_upload_size:
+            raise StudioPathError(
+                f"Media upload exceeds size limit ({estimated_size} estimated bytes > "
+                f"{self.max_upload_size} bytes)",
+            )
         media_path.parent.mkdir(parents=True, exist_ok=True)
-        raw = base64.b64decode(encoded)
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except binascii.Error as exc:
+            raise StudioPathError(f"Invalid base64 in media data URL: {exc}") from exc
         if len(raw) > self.max_upload_size:
             raise StudioPathError(
                 f"Media upload exceeds size limit ({len(raw)} bytes > {self.max_upload_size} bytes)",

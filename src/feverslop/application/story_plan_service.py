@@ -180,6 +180,9 @@ class StoryPlanRequest:
     source_evidence: Mapping[str, Any]
     guide: str
     terminal_window_seconds: float
+    story_idea: str = ""
+    locations: tuple[Mapping[str, Any], ...] = ()
+    props: tuple[Mapping[str, Any], ...] = ()
 
     def validate(self) -> None:
         if not re.fullmatch(r"[0-9a-f]{64}", self.source_fingerprint):
@@ -392,6 +395,9 @@ class StoryPlanService:
             "sections": [dict(section) for section in request.sections],
             "characters": [dict(character) for character in request.characters],
             "source_evidence": dict(request.source_evidence),
+            "story_idea": request.story_idea,
+            "locations": [dict(location) for location in request.locations],
+            "props": [dict(prop) for prop in request.props],
             "guide": request.guide,
         }
 
@@ -404,6 +410,8 @@ class StoryPlanService:
             "segments": [segment.to_compact_dict() for segment in request.segments],
             "narrative_bible": dict(bible),
             "characters": [dict(character) for character in request.characters],
+            "locations": [dict(location) for location in request.locations],
+            "props": [dict(prop) for prop in request.props],
             "terminal_window_seconds": request.terminal_window_seconds,
             "guide": request.guide,
         }
@@ -419,6 +427,10 @@ class StoryPlanService:
             "song_language": request.song_language,
             "lyrics": request.lyrics,
             "briefs": [dict(brief) for brief in briefs],
+            "typed_beats": [dict(beat) for beat in allocation.get("typed_beats", []) if isinstance(beat, Mapping)],
+            "segments": [segment.to_compact_dict() for segment in request.segments],
+            "locations": [dict(location) for location in request.locations],
+            "props": [dict(prop) for prop in request.props],
             "characters": [dict(character) for character in request.characters],
             "guide": request.guide,
         }
@@ -490,6 +502,14 @@ class StoryPlanService:
             target = str(item.get("target", ""))
             briefs.append({
                 "brief_id": by_target.get(target, target),
+                "target": target,
+                "character_ids": list(item.get("character_ids", [])),
+                "location_id": item.get("location_id"),
+                "prop_ids": list(item.get("prop_ids", [])),
+                "vocal_presentation": item.get("vocal_presentation", "offscreen"),
+                "visual_direction": item.get("visual_direction", ""),
+                "exclusive": bool(item.get("exclusive", False)),
+                "beat_id": item.get("beat_id"),
                 "objective": item.get("objective", ""),
                 "emotional_turn": item.get("emotional_turn", ""),
                 "actor_states": list(item.get("actor_states", [])),
@@ -946,6 +966,12 @@ class StoryPlanService:
             fingerprint = hashlib.sha256(
                 f"{target}:{request.source_fingerprint}".encode("utf-8")
             ).hexdigest()
+            acting_by_id = {
+                str(item.get("brief_id")): item
+                for item in acting.get("briefs", [])
+                if isinstance(item, Mapping)
+            }
+            acting_brief = acting_by_id.get(brief_id, {})
             segments.append(
                 {
                     "id": brief_id,
@@ -955,10 +981,12 @@ class StoryPlanService:
                         if beats and raw.get("beat_indices")
                         else None
                     ),
-                    "character_ids": [],
-                    "vocal_presentation": "offscreen",
-                    "visual_direction": "",
-                    "exclusive": False,
+                    "character_ids": list(acting_brief.get("character_ids", [])),
+                    "location_id": acting_brief.get("location_id"),
+                    "prop_ids": list(acting_brief.get("prop_ids", [])),
+                    "vocal_presentation": str(acting_brief.get("vocal_presentation", "offscreen")),
+                    "visual_direction": str(acting_brief.get("visual_direction", "")),
+                    "exclusive": bool(acting_brief.get("exclusive", False)),
                     "audio_ref": {"segment_id": target, "fingerprint": fingerprint},
                 }
             )
@@ -1070,6 +1098,9 @@ def compute_source_fingerprint(
     segments: Sequence[Mapping[str, Any]],
     characters: Sequence[Mapping[str, Any]],
     creative_direction: str = "",
+    story_idea: str = "",
+    locations: Sequence[Mapping[str, Any]] = (),
+    props: Sequence[Mapping[str, Any]] = (),
 ) -> str:
     """Deterministic sha256 fingerprint of the planning inputs."""
     canonical = {
@@ -1081,6 +1112,9 @@ def compute_source_fingerprint(
         "segments": [dict(segment) for segment in segments],
         "characters": [dict(character) for character in characters],
         "creative_direction": creative_direction,
+        "story_idea": story_idea,
+        "locations": [dict(location) for location in locations],
+        "props": [dict(prop) for prop in props],
     }
     encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
