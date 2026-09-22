@@ -22,6 +22,7 @@ def _build_story_text(
     song_style: str,
     lyrics: str,
     sections: list[Mapping[str, Any]],
+    story_idea: str = "",
 ) -> str:
     parts: list[str] = [
         f"Title: {song_title}",
@@ -29,6 +30,8 @@ def _build_story_text(
     ]
     if song_style:
         parts.append(f"Style: {song_style}")
+    if story_idea:
+        parts.append(f"Story idea:\n{story_idea}")
     if lyrics:
         parts.append(f"Lyrics:\n{lyrics}")
     if sections:
@@ -60,6 +63,9 @@ class StoryPlanServiceAdapter:
         self._creative_direction = str(
             source_evidence.get("creative_direction", "")
         ) if isinstance(source_evidence, Mapping) else ""
+        story_idea = str(source_evidence.get("story_idea", "")) if isinstance(source_evidence, Mapping) else ""
+        locations = list(source_evidence.get("locations", ())) if isinstance(source_evidence, Mapping) else []
+        props = list(source_evidence.get("props", ())) if isinstance(source_evidence, Mapping) else []
         result = self._modules.bible(
             story_text=_build_story_text(
                 song_title=song_title,
@@ -67,11 +73,12 @@ class StoryPlanServiceAdapter:
                 song_style=song_style,
                 lyrics=lyrics,
                 sections=list(sections),
+                story_idea=story_idea,
             ),
             creative_direction=self._creative_direction,
             characters=[dict(character) for character in characters],
-            locations=[],
-            props=[],
+            locations=[dict(location) for location in locations if isinstance(location, Mapping)],
+            props=[dict(prop) for prop in props if isinstance(prop, Mapping)],
         )
         self._last_bible = result if isinstance(result, Mapping) else {}
         return result
@@ -86,14 +93,16 @@ class StoryPlanServiceAdapter:
         characters: list[Mapping[str, Any]],
         terminal_window_seconds: float,
         guide: str,
+        locations: list[Mapping[str, Any]] | None = None,
+        props: list[Mapping[str, Any]] | None = None,
         **_extra: Any,
     ) -> Any:
         return self._modules.beat_allocation(
             creative_direction=self._creative_direction,
             bible=dict(narrative_bible),
             characters=[dict(c) for c in characters],
-            locations=[],
-            props=[],
+            locations=[dict(location) for location in (locations or [])],
+            props=[dict(prop) for prop in (props or [])],
             segments=[dict(s) for s in segments],
         )
 
@@ -106,16 +115,23 @@ class StoryPlanServiceAdapter:
         briefs: list[Mapping[str, Any]],
         characters: list[Mapping[str, Any]],
         guide: str,
+        segments: list[Mapping[str, Any]] | None = None,
+        locations: list[Mapping[str, Any]] | None = None,
+        props: list[Mapping[str, Any]] | None = None,
+        typed_beats: list[Mapping[str, Any]] | None = None,
         **_extra: Any,
     ) -> Any:
         return self._modules.acting(
             creative_direction=self._creative_direction,
             bible=dict(self._last_bible),
-            beats=[dict(b) for b in briefs],
-            segments=[],
+            beats=[
+                {"beat_id": f"beat-{index:03d}", **dict(beat)}
+                for index, beat in enumerate(typed_beats or briefs, start=1)
+            ],
+            segments=[dict(segment) for segment in (segments or [])],
             characters=[dict(c) for c in characters],
-            locations=[],
-            props=[],
+            locations=[dict(location) for location in (locations or [])],
+            props=[dict(prop) for prop in (props or [])],
         )
 
     def repair(

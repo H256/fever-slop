@@ -88,8 +88,3 @@ explicit = true
 [tool.uv.sources]
 torch = { index = "pytorch-cu130" }
 torchaudio = { index = "pytorch-cu130" }
-
-[project.urls]
-Homepage = "https://forgejo.elysium.lan/H256/fever-slop"
-Repository = "https://forgejo.elysium.lan/H256/fever-slop"
-"Issue Tracker" = "https://forgejo.elysium.lan/H256/fever-slop/issues"
