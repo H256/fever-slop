@@ -40,7 +40,7 @@ class MusicVideoDspyContractTests(unittest.TestCase):
         bundle = build_music_video_signature_bundle()
 
         self.assertEqual(
-            {"story_idea", "style_block", "subject_locations", "narrative_contract", "concept_map", "detail", "t2i", "i2v", "summary", "repair_concepts"},
+            {"story_idea", "style_block", "subject_locations", "narrative_contract", "narrative_milestone_bindings", "concept_map", "detail", "t2i", "i2v", "summary", "repair_concepts"},
             set(bundle),
         )
         self.assertIn("guide", bundle["story_idea"].input_fields)

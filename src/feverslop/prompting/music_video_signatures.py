@@ -19,6 +19,10 @@ class NarrativeMilestoneBinding(BaseModel):
     relative_position: float
 
 
+class NarrativeMilestoneBindingsResult(BaseModel):
+    bindings: list[NarrativeMilestoneBinding] = Field(default_factory=list)
+
+
 class MusicVideoNarrativeContract(BaseModel):
     """Structured story arch the concept LLM is constrained by.
 
@@ -83,6 +87,16 @@ def build_music_video_signature_bundle(dspy_module: Any | None = None):
         notes: str = dspy_module.InputField()
         contract: MusicVideoNarrativeContract = dspy_module.OutputField()
 
+    class NarrativeMilestoneBindings(dspy_module.Signature):
+        """Place only missing narrative milestones in canonical locations."""
+
+        guide: str = dspy_module.InputField()
+        story_idea: str = dspy_module.InputField()
+        location_order: list[Any] = dspy_module.InputField()
+        milestone_order: list[Any] = dspy_module.InputField()
+        missing_milestone_ids: list[str] = dspy_module.InputField()
+        result: NarrativeMilestoneBindingsResult = dspy_module.OutputField()
+
     class ConceptMap(dspy_module.Signature):
         """Map every supplied timed segment to one visual concept."""
 
@@ -132,6 +146,7 @@ def build_music_video_signature_bundle(dspy_module: Any | None = None):
         "style_block": StyleBlock,
         "subject_locations": SubjectLocations,
         "narrative_contract": NarrativeContract,
+        "narrative_milestone_bindings": NarrativeMilestoneBindings,
         "concept_map": ConceptMap,
         "detail": Detail,
         "t2i": T2I,

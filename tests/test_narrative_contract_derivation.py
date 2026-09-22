@@ -12,10 +12,12 @@ from feverslop.prompting.music_video_signatures import MusicVideoNarrativeContra
 class NarrativeContractPromptPipeline:
     """Fake prompt pipeline with a controllable narrative-contract derivation."""
 
-    def __init__(self, *, contract=None, contract_error=None):
+    def __init__(self, *, contract=None, contract_error=None, bindings=None):
         self.contract = contract
         self.contract_error = contract_error
+        self.bindings = bindings
         self.narrative_calls = 0
+        self.binding_calls = []
 
     def create_story_idea(self, lyrics, notes=""):
         return "a singer descends into a cave and reaches a hidden fountain"
@@ -47,6 +49,12 @@ class NarrativeContractPromptPipeline:
         if self.contract_error is not None:
             raise self.contract_error
         return self.contract
+
+    def create_narrative_milestone_bindings(
+        self, story_idea, location_order, milestone_order, missing_milestone_ids,
+    ):
+        self.binding_calls.append(list(missing_milestone_ids))
+        return self.bindings
 
 
 class NoContractPipeline:
@@ -96,6 +104,26 @@ def _resolve(prompt_pipeline, config):
 
 
 class NarrativeContractDerivationTests(unittest.TestCase):
+    def test_derived_contract_repairs_only_missing_milestone_placements(self):
+        pipeline = NarrativeContractPromptPipeline(
+            contract={
+                "location_order": ["cave_entrance", "fountain"],
+                "milestone_order": ["arrival", "decision"],
+                "milestone_bindings": [
+                    {"milestone_id": "arrival", "location_id": "cave_entrance", "relative_position": 0.0},
+                ],
+            },
+            bindings=[
+                {"milestone_id": "decision", "location_id": "fountain", "relative_position": 1.0},
+            ],
+        )
+
+        context = _resolve(pipeline, _config())
+
+        self.assertEqual(["decision"], pipeline.binding_calls[0])
+        self.assertEqual(2, len(context["narrative_contract"]["milestone_bindings"]))
+        self.assertEqual("llm", context["narrative_contract_source"])
+
     def test_config_contract_wins_and_llm_not_called(self):
         configured = {
             "location_order": [{"id": "cave_entrance", "source": "enter the cave"}],

@@ -10,6 +10,7 @@ from feverslop.prompting.llm_policy import (
     DETAIL,
     I2V,
     NARRATIVE_CONTRACT,
+    NARRATIVE_MILESTONE_BINDINGS,
     REPAIR_CONCEPTS,
     STORY_IDEA,
     STYLE_BLOCK,
@@ -117,6 +118,25 @@ class MusicVideoPromptModules:
                 "notes": notes,
             },
             "contract",
+        )
+
+    def narrative_milestone_bindings(
+        self,
+        story_idea: str,
+        location_order: list[Any],
+        milestone_order: list[Any],
+        missing_milestone_ids: list[str],
+    ) -> Any:
+        return self._call(
+            NARRATIVE_MILESTONE_BINDINGS,
+            load_markdown_guide("narrative-milestone-bindings"),
+            {
+                "story_idea": story_idea,
+                "location_order": location_order,
+                "milestone_order": milestone_order,
+                "missing_milestone_ids": missing_milestone_ids,
+            },
+            "result",
         )
 
     def concepts(self, payload: dict[str, Any], *, batch: bool = False, silent_mode: bool = False, timeout=None) -> Any:

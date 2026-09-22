@@ -403,6 +403,21 @@ class PromptGenerationPipeline:
         if resume and resolved_context_json.is_file():
             reporter.message("[yellow]Resuming resolved context; using existing resolved context.[/yellow]")
             global_context = artifact_store.read_json(resolved_context_json)
+            if global_context.get("narrative_contract_source") != "config":
+                contract = global_context.get("narrative_contract") or {}
+                completed = self._complete_narrative_contract_bindings(
+                    contract=contract,
+                    prompt_pipeline=prompt_pipeline,
+                    story_idea=str(global_context.get("story_idea") or ""),
+                    actors=global_context.get("actors") or [],
+                    structured_locations=global_context.get("structured_locations") or [],
+                    run_spinner=run_spinner,
+                    reporter=reporter,
+                )
+                if completed != contract:
+                    global_context["narrative_contract"] = completed
+                    artifact_store.write_json(resolved_context_json, global_context)
+                    reporter.message("[green]Resolved context updated with repaired milestone bindings.[/green]")
             log_file("Resolved Context JSON", resolved_context_json)
             self._report_global_context(reporter, global_context)
         else:
@@ -684,6 +699,7 @@ class PromptGenerationPipeline:
             story_idea=story_idea,
             locations=locations,
             props=props,
+            narrative_contract=global_context.get("narrative_contract") or {},
         )
 
         plan_path = paths.prompts_dir / f"story_plan_{song_id}.json"
@@ -1598,6 +1614,15 @@ class PromptGenerationPipeline:
             if reporter is not None:
                 reporter.message("[yellow]Narrative contract: LLM returned empty; using empty contract.[/yellow]")
             return {}, "empty"
+        derived = self._complete_narrative_contract_bindings(
+            contract=derived,
+            prompt_pipeline=prompt_pipeline,
+            story_idea=story_idea,
+            actors=actors,
+            structured_locations=structured_locations,
+            run_spinner=run_spinner,
+            reporter=reporter,
+        )
         warnings = self._validate_narrative_contract(derived, actors, structured_locations)
         if warnings:
             if reporter is not None:
@@ -1613,6 +1638,81 @@ class PromptGenerationPipeline:
                 f"{len(derived.get('milestone_order') or [])} milestones).[/green]"
             )
         return derived, "llm"
+
+    def _complete_narrative_contract_bindings(
+        self,
+        *,
+        contract: dict[str, Any],
+        prompt_pipeline: Any,
+        story_idea: str,
+        actors: list[dict],
+        structured_locations: list[dict],
+        run_spinner: Callable[[str, Callable[[], Any]], Any],
+        reporter: Any,
+    ) -> dict[str, Any]:
+        """Fill only missing inferred placements using a bounded DSPy job."""
+        if not isinstance(contract, dict):
+            return {}
+        milestone_order = contract.get("milestone_order") or []
+        location_order = contract.get("location_order") or []
+        milestone_ids = [_contract_entry_id(item) for item in milestone_order]
+        location_ids = {_contract_entry_id(item) for item in location_order}
+        existing = contract.get("milestone_bindings") or []
+        if not milestone_ids or not location_ids or not isinstance(existing, list):
+            return contract
+        valid_existing = [
+            binding for binding in existing
+            if isinstance(binding, dict)
+            and str(binding.get("milestone_id") or "") in milestone_ids
+            and str(binding.get("location_id") or "") in location_ids
+            and self._valid_relative_position(binding.get("relative_position"))
+        ]
+        bound_ids = {str(binding["milestone_id"]) for binding in valid_existing}
+        missing = [milestone for milestone in milestone_ids if milestone not in bound_ids]
+        if not missing:
+            return contract
+        method = getattr(prompt_pipeline, "create_narrative_milestone_bindings", None)
+        if not callable(method):
+            return contract
+        if reporter is not None:
+            reporter.message(
+                f"[cyan]Story contract: placing {len(missing)} missing milestones in canonical locations…[/cyan]"
+            )
+        try:
+            additions = run_spinner(
+                "Story contract - repairing milestone placements",
+                lambda: method(
+                    story_idea=story_idea,
+                    location_order=location_order,
+                    milestone_order=milestone_order,
+                    missing_milestone_ids=missing,
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - validated below, visible at boundary
+            if reporter is not None:
+                reporter.message(f"[yellow]Milestone placement repair failed: {exc}[/yellow]")
+            return contract
+        if not isinstance(additions, list):
+            return contract
+        candidate = {**contract, "milestone_bindings": [*valid_existing, *additions]}
+        if self._validate_narrative_contract(candidate, actors, structured_locations):
+            if reporter is not None:
+                reporter.message("[yellow]Milestone placement repair returned invalid bindings.[/yellow]")
+            return contract
+        if reporter is not None:
+            reporter.message(
+                f"[green]Story contract: all {len(milestone_ids)} milestones have canonical placements.[/green]"
+            )
+        return candidate
+
+    @staticmethod
+    def _valid_relative_position(value: Any) -> bool:
+        if isinstance(value, bool):
+            return False
+        try:
+            return 0.0 <= float(value) <= 1.0
+        except (TypeError, ValueError):
+            return False
 
     def _validate_narrative_contract(
         self,

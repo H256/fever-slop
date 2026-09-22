@@ -814,11 +814,19 @@ class StoryPlanService:
         milestone_by_position: dict[int, str] = {}
         for location_index, items in by_location.items():
             positions = [i for i, value in enumerate(assignments) if value == location_index]
-            for milestone, relative_position in items:
-                if not positions:
-                    continue
-                target = positions[round(relative_position * (len(positions) - 1))]
-                milestone_by_position[target] = milestone
+            items.sort(key=lambda item: milestone_ids.index(item[0]))
+            if len(items) > len(positions):
+                raise StoryPlanError(
+                    f"narrative contract has {len(items)} milestones but only "
+                    f"{len(positions)} scenes at location {location_ids[location_index]}"
+                )
+            next_available = 0
+            for item_index, (milestone, relative_position) in enumerate(items):
+                desired = round(relative_position * (len(positions) - 1))
+                latest = len(positions) - (len(items) - item_index)
+                chosen = min(max(desired, next_available), latest)
+                milestone_by_position[positions[chosen]] = milestone
+                next_available = chosen + 1
 
         briefs: list[dict[str, Any]] = []
         for position, segment in enumerate(request.segments):
@@ -1582,6 +1590,7 @@ def compute_source_fingerprint(
     story_idea: str = "",
     locations: Sequence[Mapping[str, Any]] = (),
     props: Sequence[Mapping[str, Any]] = (),
+    narrative_contract: Mapping[str, Any] | None = None,
 ) -> str:
     """Deterministic sha256 fingerprint of the planning inputs."""
     canonical = {
@@ -1596,6 +1605,7 @@ def compute_source_fingerprint(
         "story_idea": story_idea,
         "locations": [dict(location) for location in locations],
         "props": [dict(prop) for prop in props],
+        "narrative_contract": dict(narrative_contract or {}),
     }
     encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()

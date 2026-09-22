@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from feverslop.application.story_plan_service import (
     STORY_PLAN_PRODUCER,
+    compute_source_fingerprint,
     SegmentDescriptor,
     StoryPlanError,
     StoryPlanRequest,
@@ -43,6 +44,25 @@ def _sha(label: str) -> str:
 
 
 _FP = _sha("source-1385")
+
+
+class StoryPlanFingerprintTests(unittest.TestCase):
+    def test_milestone_binding_change_invalidates_plan(self) -> None:
+        inputs = dict(
+            song_title="song", song_language="en", song_style="dark",
+            lyrics="", sections=(), segments=(), characters=(),
+        )
+        initial = compute_source_fingerprint(
+            **inputs,
+            narrative_contract={"milestone_bindings": []},
+        )
+        repaired = compute_source_fingerprint(
+            **inputs,
+            narrative_contract={"milestone_bindings": [
+                {"milestone_id": "arrival", "location_id": "well", "relative_position": 0.8},
+            ]},
+        )
+        self.assertNotEqual(initial, repaired)
 
 
 # -- fixtures ---------------------------------------------------------------
@@ -957,6 +977,36 @@ class StoryPlanServiceTests(unittest.TestCase):
 
         self.assertEqual("arrival", allocation["briefs"][0]["milestone_id"])
         self.assertEqual("decision", allocation["briefs"][1]["milestone_id"])
+
+    def test_close_milestone_positions_keep_all_events_in_order(self) -> None:
+        request = make_request(
+            source_evidence={"narrative_contract": {
+                "location_order": ["cave"],
+                "milestone_order": ["arrival", "choice", "departure"],
+                "milestone_bindings": [
+                    {"milestone_id": milestone, "location_id": "cave", "relative_position": 0.5}
+                    for milestone in ("arrival", "choice", "departure")
+                ],
+            }},
+            segments=tuple(
+                SegmentDescriptor(
+                    segment_id=f"seg-{index}",
+                    start_seconds=float(index - 1),
+                    end_seconds=float(index),
+                )
+                for index in range(1, 6)
+            ),
+        )
+
+        allocation = StoryPlanService._coerce_typed_allocation(
+            request,
+            {"beats": [{"description": "one place"}]},
+        )
+
+        self.assertEqual(
+            ["arrival", "choice", "departure"],
+            [brief["milestone_id"] for brief in allocation["briefs"] if brief["milestone_id"]],
+        )
 
     def test_story_plan_bindings_override_creative_location_choices(self) -> None:
         modules = FakePromptModules(
