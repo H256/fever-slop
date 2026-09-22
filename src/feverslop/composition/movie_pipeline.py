@@ -440,7 +440,7 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
         elif not continuity_plan_path.exists():
             raise FileNotFoundError(f"Movie continuity plan not found: {continuity_plan_path}")
         if not args.skip_movie_plan:
-            _log_stage("Movie render plan", "syncing render plan with bible")
+            _log_stage("Movie render plan", "ensuring render plan exists")
             ensure_movie_render_plan_matches_bible(project_dir)
     else:
         if args.force_movie_bible:
