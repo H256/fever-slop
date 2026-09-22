@@ -130,3 +130,44 @@ class SceneRecoveryTests(unittest.TestCase):
         os.utime(ref, ns=(stat.st_atime_ns, stat.st_mtime_ns))
         with self.store.recovery_session(item) as session:
             self.assertTrue(session.reserve('generate'))
+
+    def test_blocked_scenes_expose_h3_block_guide(self):
+        from feverslop.domain.scene_recovery import require_ready_scenes
+        scenes = [
+            {
+                "scene": "7",
+                "readiness": {
+                    "status": "blocked",
+                    "reason_codes": ["h3.fallback.plan_missing"],
+                },
+            }
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            require_ready_scenes(scenes)
+        message = str(ctx.exception)
+        # The scene id and the computed guidance must both reach the consumer.
+        self.assertIn("7", message)
+        self.assertIn("the planner did not produce a usable typed plan", message)
+
+    def test_blocked_scenes_expose_guide_for_unknown_codes(self):
+        from feverslop.domain.scene_recovery import require_ready_scenes
+        scenes = [
+            {
+                "segment_id": "9",
+                "readiness": {
+                    "status": "blocked",
+                    "reason_codes": ["some.unknown.code"],
+                },
+            }
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            require_ready_scenes(scenes)
+        message = str(ctx.exception)
+        self.assertIn("some.unknown.code", message)
+
+    def test_ready_scenes_raise_nothing(self):
+        from feverslop.domain.scene_recovery import require_ready_scenes
+        scenes = [
+            {"scene": "1", "readiness": {"status": "ready", "reason_codes": []}}
+        ]
+        self.assertIsNone(require_ready_scenes(scenes))
