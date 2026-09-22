@@ -431,7 +431,26 @@ class StoryPlanService:
             for brief_id in (str(brief.get("brief_id", "")) for brief in ordered_briefs)
             if brief_id in by_id
         ]
+        self._dedup_exclusive_allocations(merged["briefs"])
         return merged
+
+    @staticmethod
+    def _dedup_exclusive_allocations(briefs: list[Mapping[str, Any]]) -> None:
+        """Keep at most one exclusive brief per beat (first in canonical order).
+
+        The model may mark several briefs in one beat exclusive; the plan
+        allows at most one.  Clear the rest so the allocation validates.
+        """
+        exclusive_seen: set[str] = set()
+        for brief in briefs:
+            if not isinstance(brief, Mapping):
+                continue
+            if brief.get("exclusive") and brief.get("beat_id"):
+                beat_id = str(brief["beat_id"])
+                if beat_id in exclusive_seen:
+                    brief["exclusive"] = False
+                else:
+                    exclusive_seen.add(beat_id)
 
     @staticmethod
     def _acting_brief_ids(acting: Mapping[str, Any]) -> set[str]:
@@ -458,7 +477,7 @@ class StoryPlanService:
         acting = self._normalize_job_output(
             "acting", raw, diagnostics, _FORBIDDEN_AUDIO_DATA_KEYS
         )
-        acting = self._coerce_typed_acting(batch_allocation, acting)
+        acting = self._coerce_typed_acting(request, batch_allocation, acting)
         raw_output = acting.get("briefs", [])
         output_ids = [
             str(brief.get("brief_id", ""))
@@ -791,7 +810,22 @@ class StoryPlanService:
         return {"briefs": briefs, "typed_beats": raw_beats}
 
     @staticmethod
-    def _coerce_typed_acting(allocation: Mapping[str, Any], acting: Mapping[str, Any]) -> Mapping[str, Any]:
+    def _lead_character_id(request: StoryPlanRequest) -> str:
+        """The lead character id: the singer if present, else the first."""
+        for character in request.characters:
+            if isinstance(character, Mapping) and character.get("is_singer"):
+                return str(character.get("id", "")).strip()
+        for character in request.characters:
+            if isinstance(character, Mapping):
+                return str(character.get("id", "")).strip()
+        return ""
+
+    def _coerce_typed_acting(
+        self,
+        request: StoryPlanRequest,
+        allocation: Mapping[str, Any],
+        acting: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
         """Bind typed acting briefs to service-owned brief ids by target."""
         if "briefs" not in acting or not isinstance(acting.get("briefs"), list):
             return acting
@@ -818,15 +852,29 @@ class StoryPlanService:
             target = str(item.get("target", ""))
             actor_states = list(item.get("actor_states", []))
             if not actor_states:
+                # Prefer the brief's own character_ids, then the beat's, then
+                # the lead character so instrumental segments always get a state.
+                candidate_ids: list[str] = []
+                for character_id in list(item.get("character_ids", [])):
+                    value = str(character_id).strip()
+                    if value and value not in candidate_ids:
+                        candidate_ids.append(value)
                 beat = beat_by_index.get(beat_index_by_target.get(target))
+                for character_id in (beat or {}).get("character_ids", []):
+                    value = str(character_id).strip()
+                    if value and value not in candidate_ids:
+                        candidate_ids.append(value)
+                if not candidate_ids:
+                    lead = self._lead_character_id(request)
+                    if lead:
+                        candidate_ids.append(lead)
                 actor_states = [
                     {
-                        "character_id": str(character_id),
+                        "character_id": character_id,
                         "inner_state": "present",
                         "physical_state": "",
                     }
-                    for character_id in (beat or {}).get("character_ids", [])
-                    if str(character_id).strip()
+                    for character_id in candidate_ids
                 ]
             briefs.append({
                 "brief_id": by_target.get(target, target),

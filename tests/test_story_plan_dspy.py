@@ -1267,5 +1267,32 @@ class StoryPlanReviewExportTests(unittest.TestCase):
             self.assertEqual(manifest["plan_fingerprint"], expected_plan_fingerprint)
 
 
+class StoryPlanExclusiveDedupTests(unittest.TestCase):
+    def test_dedup_keeps_first_exclusive_per_beat(self) -> None:
+        briefs = [
+            {"brief_id": "b1", "beat_id": "beat-001", "exclusive": True},
+            {"brief_id": "b2", "beat_id": "beat-001", "exclusive": True},
+            {"brief_id": "b3", "beat_id": "beat-002", "exclusive": True},
+            {"brief_id": "b4", "beat_id": "beat-002", "exclusive": True},
+            {"brief_id": "b5", "beat_id": None, "exclusive": True},
+        ]
+        StoryPlanService._dedup_exclusive_allocations(briefs)
+        self.assertTrue(briefs[0]["exclusive"])
+        self.assertFalse(briefs[1]["exclusive"])
+        self.assertTrue(briefs[2]["exclusive"])
+        self.assertFalse(briefs[3]["exclusive"])
+        # A brief with no beat_id is never deduplicated.
+        self.assertTrue(briefs[4]["exclusive"])
+
+    def test_dedup_leaves_non_exclusive_briefs_untouched(self) -> None:
+        briefs = [
+            {"brief_id": "b1", "beat_id": "beat-001", "exclusive": False},
+            {"brief_id": "b2", "beat_id": "beat-001", "exclusive": False},
+        ]
+        StoryPlanService._dedup_exclusive_allocations(briefs)
+        self.assertFalse(briefs[0]["exclusive"])
+        self.assertFalse(briefs[1]["exclusive"])
+
+
 if __name__ == "__main__":
     unittest.main()
