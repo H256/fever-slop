@@ -715,6 +715,34 @@ class StoryPlanServiceTests(unittest.TestCase):
             "seg-1", "00:00–00:30", "Objective for brief-1.", "Nervous to determined.", "offscreen",
         ])
 
+    def test_service_reports_a_locked_story_plan_summary(self) -> None:
+        class RecordingReporter:
+            def __init__(self) -> None:
+                self.tables: list[tuple[str, list[str], list[list[str]]]] = []
+
+            def step(self, _title: str) -> None:
+                pass
+
+            def message(self, _text: str) -> None:
+                pass
+
+            def warning(self, _text: str, *, title: str | None = None) -> None:
+                pass
+
+            def table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
+                self.tables.append((title, columns, rows))
+
+            def run_progress(self, _description: str, func: Any) -> Any:
+                return func()
+
+        reporter = RecordingReporter()
+        StoryPlanService(prompt_modules=FakePromptModules(), reporter=reporter).build_plan(make_request())
+
+        self.assertIn(
+            ("Story plan locked", ["Scenes", "Beats", "Acting briefs"], [["2", "0", "2"]]),
+            reporter.tables,
+        )
+
     def test_pydantic_bible_output_is_accepted_from_typed_dspy(self) -> None:
         """DSPy may deserialize an annotated output before the service sees it."""
         modules = FakePromptModules(
@@ -774,8 +802,8 @@ class StoryPlanServiceTests(unittest.TestCase):
         self.assertEqual("Guarded to hopeful.", result.plan.segments[0].emotional_turn)
         self.assertEqual("guarded", result.plan.segments[0].actor_states[0].state)
 
-    def test_string_false_exclusive_from_dspy_does_not_invalidate_shared_beat(self) -> None:
-        """Untyped DSPy mappings must not treat the non-empty string ``false`` as true."""
+    def test_creative_acting_cannot_mark_a_shared_beat_exclusive(self) -> None:
+        """Only service-owned narrative allocation may declare exclusivity."""
         modules = FakePromptModules(
             allocation={
                 "beats": [
@@ -788,7 +816,7 @@ class StoryPlanServiceTests(unittest.TestCase):
                     {
                         "target": target,
                         "vocal_presentation": "offscreen",
-                        "exclusive": "false",
+                        "exclusive": True,
                         "objective": "Continue the journey.",
                         "emotional_turn": "Steady to resolved.",
                         "actor_states": [{"character_id": "char-1", "state": "steady"}],

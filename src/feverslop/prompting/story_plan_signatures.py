@@ -75,7 +75,6 @@ class SegmentBriefDraft(BaseModel):
     prop_ids: list[str] = Field(default_factory=list)
     vocal_presentation: str
     visual_direction: str = ""
-    exclusive: bool = False
     objective: str = ""
     emotional_turn: str = ""
     actor_states: list[ActorStateRef] = Field(default_factory=list)
