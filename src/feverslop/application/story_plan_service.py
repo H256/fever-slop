@@ -493,6 +493,16 @@ class StoryPlanService:
             str(item.get("segment_id")): str(item.get("brief_id"))
             for item in allocation.get("briefs", []) if isinstance(item, Mapping)
         }
+        beat_by_index = {
+            index: item
+            for index, item in enumerate(allocation.get("typed_beats", []))
+            if isinstance(item, Mapping)
+        }
+        beat_index_by_target = {
+            str(item.get("segment_id")): next(iter(item.get("beat_indices", [])), None)
+            for item in allocation.get("briefs", [])
+            if isinstance(item, Mapping)
+        }
         if not any(isinstance(item, Mapping) and "target" in item for item in acting["briefs"]):
             return acting
         briefs = []
@@ -500,6 +510,18 @@ class StoryPlanService:
             if not isinstance(item, Mapping):
                 continue
             target = str(item.get("target", ""))
+            actor_states = list(item.get("actor_states", []))
+            if not actor_states:
+                beat = beat_by_index.get(beat_index_by_target.get(target))
+                actor_states = [
+                    {
+                        "character_id": str(character_id),
+                        "inner_state": "present",
+                        "physical_state": "",
+                    }
+                    for character_id in (beat or {}).get("character_ids", [])
+                    if str(character_id).strip()
+                ]
             briefs.append({
                 "brief_id": by_target.get(target, target),
                 "target": target,
@@ -512,7 +534,7 @@ class StoryPlanService:
                 "beat_id": item.get("beat_id"),
                 "objective": item.get("objective", ""),
                 "emotional_turn": item.get("emotional_turn", ""),
-                "actor_states": list(item.get("actor_states", [])),
+                "actor_states": actor_states,
             })
         return {**dict(acting), "briefs": briefs}
 
@@ -940,6 +962,28 @@ class StoryPlanService:
                     "is_singer": bool(character.get("is_singer", False)),
                 }
             )
+        locations = [
+            {
+                "id": str(location.get("id", "")).strip(),
+                "name": str(location.get("name", "")).strip(),
+                "description": str(location.get("description", "")),
+            }
+            for location in request.locations
+            if isinstance(location, Mapping)
+            and str(location.get("id", "")).strip()
+            and str(location.get("name", "")).strip()
+        ]
+        props = [
+            {
+                "id": str(prop.get("id", "")).strip(),
+                "name": str(prop.get("name", "")).strip(),
+                "description": str(prop.get("description", "")),
+            }
+            for prop in request.props
+            if isinstance(prop, Mapping)
+            and str(prop.get("id", "")).strip()
+            and str(prop.get("name", "")).strip()
+        ]
         segments: list[dict[str, Any]] = []
         beats = [
             {
@@ -953,6 +997,17 @@ class StoryPlanService:
             for index, item in enumerate(allocation.get("typed_beats", []), start=1)
             if isinstance(item, Mapping)
         ]
+        for beat, item in zip(
+            beats,
+            (item for item in allocation.get("typed_beats", []) if isinstance(item, Mapping)),
+        ):
+            if item.get("milestone_id"):
+                beat["milestone_id"] = str(item["milestone_id"])
+        beat_by_index = {
+            index: item
+            for index, item in enumerate(allocation.get("typed_beats", []))
+            if isinstance(item, Mapping)
+        }
         raw_briefs = allocation.get("briefs")
         if not isinstance(raw_briefs, list):
             raw_briefs = []
@@ -972,8 +1027,15 @@ class StoryPlanService:
                 if isinstance(item, Mapping)
             }
             acting_brief = acting_by_id.get(brief_id, {})
-            segments.append(
-                {
+            beat_index = next(iter(raw.get("beat_indices", [])), None)
+            binding = beat_by_index.get(beat_index, {}) if isinstance(beat_index, int) else {}
+            # Narrative bindings come from allocation, never from the creative
+            # acting response. Acting may only fill creative fields.
+            bound_character_ids = list(binding.get("character_ids", []))
+            bound_prop_ids = list(binding.get("prop_ids", []))
+            bound_location_id = binding.get("location_id")
+            bound_milestone_id = binding.get("milestone_id")
+            segment = {
                     "id": brief_id,
                     "target": target,
                     "beat_id": (
@@ -981,15 +1043,29 @@ class StoryPlanService:
                         if beats and raw.get("beat_indices")
                         else None
                     ),
-                    "character_ids": list(acting_brief.get("character_ids", [])),
-                    "location_id": acting_brief.get("location_id"),
-                    "prop_ids": list(acting_brief.get("prop_ids", [])),
+                    "character_ids": (
+                        bound_character_ids
+                        if binding
+                        else list(acting_brief.get("character_ids", []))
+                    ),
+                    "location_id": (
+                        bound_location_id
+                        if binding
+                        else acting_brief.get("location_id")
+                    ),
+                    "prop_ids": (
+                        bound_prop_ids
+                        if binding
+                        else list(acting_brief.get("prop_ids", []))
+                    ),
                     "vocal_presentation": str(acting_brief.get("vocal_presentation", "offscreen")),
                     "visual_direction": str(acting_brief.get("visual_direction", "")),
                     "exclusive": bool(acting_brief.get("exclusive", False)),
                     "audio_ref": {"segment_id": target, "fingerprint": fingerprint},
                 }
-            )
+            if bound_milestone_id:
+                segment["milestone_id"] = str(bound_milestone_id)
+            segments.append(segment)
         creative_direction = str(request.source_evidence.get("creative_direction", ""))
         return {
             "mode": "music_video",
@@ -1000,6 +1076,8 @@ class StoryPlanService:
                 "notes": creative_direction,
             },
             "characters": characters,
+            "locations": locations,
+            "props": props,
             "beats": beats,
             "arcs": [],
             "segments": segments,
