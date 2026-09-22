@@ -1,11 +1,10 @@
 """Typed DSPy planning service for the story-plan contract (issue #1385).
 
-``StoryPlanService`` drives four narrow DSPy jobs -- narrative bible,
-beat allocation, per-brief acting, and one bounded repair -- with
-deterministic validation between stages.  The final candidate is
-validated with ``validate_story_plan_payload`` and then converted with
-``StoryPlan.model_validate(..., strict=False)``; on validation failure the
-service performs exactly one repair pass before raising ``StoryPlanError``.
+``StoryPlanService`` drives three narrow DSPy jobs -- narrative bible, a
+small beat sheet, and per-brief acting -- with deterministic validation and
+scene binding between stages.  The LLM never allocates every scene and never
+receives a complete generated plan for a retry: Python owns that large,
+mechanical mapping.
 
 The service is pure application code: it imports no DSPy, no
 ``feverslop.render.*``, no ``feverslop.audio.*``, and no
@@ -229,21 +228,17 @@ class StoryPlanResult:
 
 
 class StoryPlanService:
-    """Builds a validated ``StoryPlan`` through four narrow DSPy jobs."""
+    """Build a validated ``StoryPlan`` from small creative DSPy jobs."""
 
     def __init__(
         self,
         *,
         prompt_modules: Any,
         reporter: Reporter | None = None,
-        max_repair_attempts: int = 1,
         acting_batch_size: int = 8,
     ) -> None:
         self._prompt_modules = prompt_modules
         self._reporter: Reporter = reporter if reporter is not None else NullReporter()
-        if max_repair_attempts < 1:
-            raise StoryPlanError("max_repair_attempts must be at least 1")
-        self._max_repair_attempts = max_repair_attempts
         if acting_batch_size < 1:
             raise StoryPlanError("acting_batch_size must be at least 1")
         self._acting_batch_size = acting_batch_size
@@ -252,28 +247,46 @@ class StoryPlanService:
         request.validate()
         diagnostics: list[Mapping[str, Any]] = []
 
-        self._reporter.step("story-plan-bible")
-        bible_raw = self._job("bible", self._bible_input(request))
+        self._reporter.step("Story plan - narrative bible")
+        self._reporter.message("[cyan]Extracting the premise, stakes, and story facts…[/cyan]")
+        bible_raw = self._reporter.run_progress(
+            "Story plan - reading the story", lambda: self._job("bible", self._bible_input(request))
+        )
         bible = self._normalize_job_output(
             "bible", bible_raw, diagnostics, _FORBIDDEN_RENDER_KEYS
         )
         self._reporter.message("story-plan-bible complete")
 
-        self._reporter.step("story-plan-beat-allocation")
-        allocation_raw = self._job(
-            "beat_allocation", self._allocation_input(request, bible)
+        self._reporter.step("Story plan - story arc")
+        self._reporter.message(
+            "[cyan]Writing a compact beat sheet; scene timing will be bound deterministically…[/cyan]"
+        )
+        allocation_raw = self._reporter.run_progress(
+            "Story plan - shaping the arc",
+            lambda: self._job("beat_allocation", self._allocation_input(request, bible)),
         )
         allocation = self._normalize_job_output(
             "beat_allocation", allocation_raw, diagnostics, _FORBIDDEN_RENDER_KEYS
         )
         allocation = self._coerce_typed_allocation(request, allocation)
         self._validate_allocation(request, allocation, diagnostics)
-        self._reporter.message("story-plan-beat-allocation complete")
+        self._reporter.table(
+            "Story arc - model-authored beats",
+            ["#", "Phase", "What is happening"],
+            [
+                [str(index + 1), str(beat.get("phase", "development")), str(beat.get("description", ""))]
+                for index, beat in enumerate(allocation.get("typed_beats", []))
+                if isinstance(beat, Mapping)
+            ],
+        )
+        self._reporter.message(
+            f"[green]Bound {len(allocation.get('briefs', []))} scenes to the arc deterministically.[/green]"
+        )
 
-        self._reporter.step("story-plan-acting")
+        self._reporter.step("Story plan - acting beats")
         acting = self._build_acting_in_batches(request, allocation, diagnostics)
         self._validate_acting(allocation, acting, diagnostics)
-        self._reporter.message("story-plan-acting complete")
+        self._reporter.message("[green]Story plan acting complete.[/green]")
 
         candidate = self._assemble_candidate(request, allocation, acting)
         try:
@@ -284,20 +297,18 @@ class StoryPlanService:
             validation_errors = []
 
         if validation_errors:
-            self._reporter.step("story-plan-repair")
-            repaired_raw = self._job(
-                "repair",
-                self._repair_input(request, candidate, validation_errors),
+            self._reporter.warning(
+                "The locally assembled plan did not satisfy its contract. "
+                "No full-plan LLM repair was attempted; the diagnostics identify the failing boundary.",
+                title="Story plan validation",
             )
-            repaired = self._normalize_job_output(
-                "repair", repaired_raw, diagnostics, _FORBIDDEN_RENDER_KEYS
+            self._raise_validation_failure(
+                StoryPlanValidationError(
+                    "story plan candidate failed deterministic validation",
+                    errors=validation_errors,
+                ),
+                diagnostics,
             )
-            candidate = self._assemble_candidate(request, repaired, acting)
-            try:
-                self._validate_payload(candidate, diagnostics)
-            except StoryPlanValidationError as exc:
-                self._raise_validation_failure(exc, diagnostics)
-            self._reporter.message("story-plan-repair complete")
 
         plan = StoryPlan.model_validate(candidate, strict=False)
         return StoryPlanResult(
@@ -390,7 +401,10 @@ class StoryPlanService:
             "briefs": [dict(brief) for brief in batch],
             "expected_brief_ids": list(expected),
         }
-        raw = self._job("acting", self._acting_input(request, batch_allocation))
+        raw = self._reporter.run_progress(
+            "Story plan - writing acting",
+            lambda: self._job("acting", self._acting_input(request, batch_allocation)),
+        )
         acting = self._normalize_job_output(
             "acting", raw, diagnostics, _FORBIDDEN_AUDIO_DATA_KEYS
         )
@@ -526,7 +540,7 @@ class StoryPlanService:
         return {
             "song_title": request.song_title,
             "lyrics": request.lyrics,
-            "segments": [segment.to_compact_dict() for segment in request.segments],
+            "segment_count": len(request.segments),
             "narrative_bible": dict(bible),
             "characters": [dict(character) for character in request.characters],
             "locations": [dict(location) for location in request.locations],
@@ -580,54 +594,54 @@ class StoryPlanService:
             "guide": request.guide,
         }
 
-    def _repair_input(
-        self,
-        request: StoryPlanRequest,
-        candidate: Mapping[str, Any],
-        validation_errors: Sequence[Mapping[str, Any]],
-    ) -> dict[str, Any]:
-        return {
-            "song_title": request.song_title,
-            "song_style": request.song_style,
-            "lyrics": request.lyrics,
-            "candidate": dict(candidate),
-            "validation_errors": [dict(error) for error in validation_errors],
-            "guide": request.guide,
-        }
-
     # -- normalization and validation ---------------------------------------
 
     @staticmethod
     def _coerce_typed_allocation(
         request: StoryPlanRequest, allocation: Mapping[str, Any]
     ) -> Mapping[str, Any]:
-        """Map the public typed allocation DTO to service-owned bindings."""
+        """Map a small model-authored beat sheet to service-owned bindings."""
         if "briefs" in allocation:
             return allocation
         raw_beats = allocation.get("beats")
-        raw_allocations = allocation.get("brief_allocations")
-        if not isinstance(raw_beats, list) or not isinstance(raw_allocations, list):
+        if not isinstance(raw_beats, list) or not raw_beats:
             return allocation
-        segments = {segment.segment_id: segment for segment in request.segments}
+        typed_beats = [dict(item) for item in raw_beats if isinstance(item, Mapping)]
+        if not typed_beats:
+            return allocation
+        for index, beat in enumerate(typed_beats):
+            phase = str(beat.get("phase", "development")).strip().lower()
+            beat["phase"] = "resolution" if index == len(typed_beats) - 1 else (
+                phase if phase in {"opening", "development", "climax"} else "development"
+            )
+
+        terminal_segments = [
+            segment for segment in request.segments
+            if segment.end_seconds > request.terminal_window_seconds
+        ]
+        terminal_ids = {segment.segment_id for segment in terminal_segments}
+        preterminal_segments = [
+            segment for segment in request.segments if segment.segment_id not in terminal_ids
+        ]
+        nonterminal_beat_count = max(1, len(typed_beats) - 1)
         briefs: list[dict[str, Any]] = []
-        for item in raw_allocations:
-            if not isinstance(item, Mapping):
-                continue
-            target = str(item.get("target", ""))
-            segment = segments.get(target)
-            if segment is None:
-                continue
-            index = item.get("beat_index")
-            if not isinstance(index, int) or isinstance(index, bool):
-                continue
+        for position, segment in enumerate(request.segments):
+            if segment.segment_id in terminal_ids:
+                index = len(typed_beats) - 1
+            else:
+                preterminal_position = preterminal_segments.index(segment)
+                index = min(
+                    nonterminal_beat_count - 1,
+                    (preterminal_position * nonterminal_beat_count) // max(1, len(preterminal_segments)),
+                )
             briefs.append({
-                "brief_id": f"brief-{target}", "segment_id": target,
+                "brief_id": f"brief-{segment.segment_id}", "segment_id": segment.segment_id,
                 "start_seconds": segment.start_seconds, "end_seconds": segment.end_seconds,
                 "beat_indices": [index],
-                "required": [f"beat-{value + 1:03d}" for value in item.get("required_beat_indices", [])],
-                "forbidden": [f"beat-{value + 1:03d}" for value in item.get("forbidden_beat_indices", [])],
+                "required": [f"beat-{index + 1:03d}"],
+                "forbidden": [],
             })
-        return {"briefs": briefs, "typed_beats": raw_beats}
+        return {"briefs": briefs, "typed_beats": typed_beats}
 
     @staticmethod
     def _coerce_typed_acting(allocation: Mapping[str, Any], acting: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -1047,7 +1061,7 @@ class StoryPlanService:
         exc: StoryPlanValidationError, diagnostics: list[Mapping[str, Any]]
     ) -> None:
         raise StoryPlanError(
-            "story plan validation failed after repair",
+            "story plan validation failed after deterministic assembly",
             diagnostics=[
                 {
                     "code": str(error.get("code", "validation_error")),

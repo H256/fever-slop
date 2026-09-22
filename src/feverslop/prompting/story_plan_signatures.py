@@ -1,7 +1,7 @@
-"""Typed DSPy signatures for the four story-plan jobs (issue #1385).
+"""Typed DSPy signatures for the small story-plan jobs (issue #1385).
 
 The story plan is produced by divide-and-conquer: four narrow jobs (bible,
-beat allocation, acting, repair) instead of one model writing the full
+beat allocation and acting) instead of one model writing the full
 screenplay plus concepts. Every output model uses ``extra="forbid"`` so the
 LLM cannot smuggle in timestamps, lyrics, render settings, frame counts, or
 audio bindings as extra fields; the service's deterministic validator is the
@@ -41,24 +41,12 @@ class BeatAllocationDraft(BaseModel):
     prop_ids: list[str] = Field(default_factory=list)
 
 
-class BriefBeatAllocation(BaseModel):
-    """Per-brief beat constraints for one supplied segment/shot id."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    target: str
-    beat_index: int
-    required_beat_indices: list[int] = Field(default_factory=list)
-    forbidden_beat_indices: list[int] = Field(default_factory=list)
-
-
 class BeatAllocationResult(BaseModel):
-    """Beats in narrative order plus one allocation per supplied segment."""
+    """A compact model-authored beat sheet in narrative order."""
 
     model_config = ConfigDict(extra="forbid")
 
     beats: list[BeatAllocationDraft] = Field(min_length=1)
-    brief_allocations: list[BriefBeatAllocation] = Field(default_factory=list)
 
 
 class ActorStateRef(BaseModel):
@@ -136,12 +124,11 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         bible: dict[str, Any] = dspy_module.OutputField()
 
     class BeatAllocation(dspy_module.Signature):
-        """Allocate beats across the supplied segments in narrative order.
+        """Write a small story arc in narrative order.
 
         The LAST beat reserves the terminal window (phase ``resolution``);
-        every supplied segment gets exactly one brief allocation with
-        ``beat_index``, ``required_beat_indices``, and
-        ``forbidden_beat_indices``. No timestamps or frame counts.
+        Python assigns every segment to this beat sheet deterministically.
+        Do not emit per-segment allocations, timestamps, or frame counts.
         """
 
         guide: str = dspy_module.InputField()
@@ -152,9 +139,6 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         characters: list[dict[str, Any]] = dspy_module.InputField()
         locations: list[dict[str, Any]] = dspy_module.InputField()
         props: list[dict[str, Any]] = dspy_module.InputField()
-        segments: list[dict[str, Any]] = dspy_module.InputField(
-            desc="Compact segment/shot descriptors: id, fingerprint, duration only.",
-        )
         allocation: dict[str, Any] = dspy_module.OutputField()
 
     class Acting(dspy_module.Signature):
@@ -184,21 +168,8 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         props: list[dict[str, Any]] = dspy_module.InputField()
         result: dict[str, Any] = dspy_module.OutputField()
 
-    class StoryPlanRepair(dspy_module.Signature):
-        """Fix ONLY the named diagnostics in the prior typed plan.
-
-        Preserve every other field; never add ids, timestamps, lyrics,
-        render settings, or audio bindings.
-        """
-
-        guide: str = dspy_module.InputField()
-        prior_plan: dict[str, Any] = dspy_module.InputField()
-        diagnostics: list[dict[str, Any]] = dspy_module.InputField()
-        plan: dict[str, Any] = dspy_module.OutputField()
-
     return {
         "bible": StoryPlanBible,
         "beat_allocation": BeatAllocation,
         "acting": Acting,
-        "repair": StoryPlanRepair,
     }

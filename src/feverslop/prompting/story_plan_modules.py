@@ -7,7 +7,6 @@ from feverslop.prompting.llm_policy import (
     STORY_PLAN_ACTING,
     STORY_PLAN_BEAT_ALLOCATION,
     STORY_PLAN_BIBLE,
-    STORY_PLAN_REPAIR,
     policy_for,
 )
 from feverslop.prompting.story_plan_signatures import (
@@ -19,7 +18,6 @@ _BUNDLE_TASK_NAMES = {
     STORY_PLAN_ACTING: "acting",
     STORY_PLAN_BEAT_ALLOCATION: "beat_allocation",
     STORY_PLAN_BIBLE: "bible",
-    STORY_PLAN_REPAIR: "repair",
 }
 
 
@@ -41,8 +39,13 @@ class StoryPlanPromptModules:
     """
 
     def __init__(self, llm: Any, *, dspy_runtime: Any | None = None):
-        if not isinstance(getattr(llm, "model", None), str) or getattr(llm, "client", None) is None:
-            raise RuntimeError("DSPy story-plan prompts require a configured DSPy-compatible LLM")
+        if (
+            not isinstance(getattr(llm, "model", None), str)
+            or getattr(llm, "client", None) is None
+        ):
+            raise RuntimeError(
+                "DSPy story-plan prompts require a configured DSPy-compatible LLM"
+            )
         import dspy
 
         bundle = build_story_plan_signature_bundle(dspy)
@@ -72,7 +75,9 @@ class StoryPlanPromptModules:
     ) -> Any:
         from feverslop.prompting.planning_payload import compact_planning_payload
 
-        predictor_kwargs = {key: compact_planning_payload(value) for key, value in inputs.items()}
+        predictor_kwargs = {
+            key: compact_planning_payload(value) for key, value in inputs.items()
+        }
         predictor_kwargs["guide"] = compact_planning_payload(guide)
         config = {"max_tokens": policy_for(name).max_tokens}
         if timeout is not None:
@@ -111,7 +116,6 @@ class StoryPlanPromptModules:
         characters: list[dict[str, Any]],
         locations: list[dict[str, Any]],
         props: list[dict[str, Any]],
-        segments: list[dict[str, Any]],
     ) -> Any:
         return self._call(
             STORY_PLAN_BEAT_ALLOCATION,
@@ -122,7 +126,6 @@ class StoryPlanPromptModules:
                 "characters": characters,
                 "locations": locations,
                 "props": props,
-                "segments": segments,
             },
             "allocation",
         )
@@ -153,20 +156,4 @@ class StoryPlanPromptModules:
                 "props": props,
             },
             "result",
-        )
-
-    def repair(
-        self,
-        *,
-        prior_plan: dict[str, Any],
-        diagnostics: list[dict[str, Any]],
-    ) -> Any:
-        return self._call(
-            STORY_PLAN_REPAIR,
-            load_markdown_guide("story-plan-repair"),
-            {
-                "prior_plan": prior_plan,
-                "diagnostics": diagnostics,
-            },
-            "plan",
         )

@@ -381,7 +381,6 @@ class StoryPlanModuleTests(unittest.TestCase):
             characters=[],
             locations=[],
             props=[],
-            segments=[{"segment_id": "seg-1", "vocal_events": [{"t": 1.0}]}],
         )
         kwargs = _predictor(self.predictors, "BeatAllocation").calls[0]
         self.assertEqual(
@@ -394,7 +393,6 @@ class StoryPlanModuleTests(unittest.TestCase):
                 "guide",
                 "locations",
                 "props",
-                "segments",
             ],
         )
 
@@ -425,14 +423,6 @@ class StoryPlanModuleTests(unittest.TestCase):
             ],
         )
 
-    def test_repair_payload_allowlist(self) -> None:
-        self.modules.repair(
-            prior_plan={"mode": "music_video"},
-            diagnostics=[{"code": "x", "message": "m"}],
-        )
-        kwargs = _predictor(self.predictors, "StoryPlanRepair").calls[0]
-        self.assertEqual(sorted(kwargs), ["config", "diagnostics", "guide", "prior_plan"])
-
     def test_module_compacts_acoustic_evidence_from_inputs(self) -> None:
         self.modules.bible(
             story_text="A singer leaves.",
@@ -443,22 +433,8 @@ class StoryPlanModuleTests(unittest.TestCase):
         )
         bible_payload = json.dumps(_predictor(self.predictors, "StoryPlanBible").calls[0])
         self.assertNotIn("alignment", bible_payload)
-        self.modules.beat_allocation(
-            creative_direction="cd",
-            bible={"premise": "p"},
-            characters=[],
-            locations=[],
-            props=[],
-            segments=[
-                {
-                    "segment_id": "seg-1",
-                    "vocal_events": [{"t": 1.0}],
-                    "word_timestamps": [{"w": "la"}],
-                }
-            ],
-        )
         allocation_payload = json.dumps(
-            _predictor(self.predictors, "BeatAllocation").calls[0]
+            _predictor(self.predictors, "BeatAllocation").calls
         )
         self.assertNotIn("vocal_events", allocation_payload)
         self.assertNotIn("word_timestamps", allocation_payload)
@@ -477,7 +453,6 @@ class StoryPlanModuleTests(unittest.TestCase):
             characters=[],
             locations=[],
             props=[],
-            segments=[],
         )
         self.modules.acting(
             creative_direction="cd",
@@ -488,7 +463,6 @@ class StoryPlanModuleTests(unittest.TestCase):
             locations=[],
             props=[],
         )
-        self.modules.repair(prior_plan={}, diagnostics=[])
         self.assertEqual(
             _predictor(self.predictors, "StoryPlanBible").calls[0]["config"],
             {"max_tokens": 4096},
@@ -501,14 +475,10 @@ class StoryPlanModuleTests(unittest.TestCase):
             _predictor(self.predictors, "Acting").calls[0]["config"],
             {"max_tokens": 4096},
         )
-        self.assertEqual(
-            _predictor(self.predictors, "StoryPlanRepair").calls[0]["config"],
-            {"max_tokens": 8192},
-        )
 
     def test_module_resolves_per_task_temperature(self) -> None:
         # __init__ creates one LM per job in _BUNDLE_TASK_NAMES order:
-        # acting, beat_allocation, bible, repair. The per-task values come
+        # acting, beat_allocation, bible. The per-task values come
         # from DEFAULT_TASK_TEMPERATURES, never the global dspy_temperature.
         self.assertEqual(
             [(name, temperature) for name, temperature, _ in self.lm_calls],
@@ -516,7 +486,6 @@ class StoryPlanModuleTests(unittest.TestCase):
                 ("openai/fake-model", 0.6),  # story_plan_acting
                 ("openai/fake-model", 0.2),  # story_plan_beat_allocation
                 ("openai/fake-model", 0.2),  # story_plan_bible
-                ("openai/fake-model", 0.2),  # story_plan_repair
             ],
         )
         self.assertNotIn(0.4, [t for _, t, _ in self.lm_calls])
@@ -548,16 +517,15 @@ class StoryPlanSignatureBundleTests(unittest.TestCase):
         self.assertEqual(dict[str, Any], bundle["acting"].input_fields["bible"].annotation)
         self.assertEqual(dict[str, Any], bundle["acting"].output_fields["result"].annotation)
 
-    def test_signature_bundle_covers_four_jobs(self) -> None:
+    def test_signature_bundle_covers_three_small_jobs(self) -> None:
         bundle = build_story_plan_signature_bundle()
-        self.assertEqual(sorted(bundle), ["acting", "beat_allocation", "bible", "repair"])
+        self.assertEqual(sorted(bundle), ["acting", "beat_allocation", "bible"])
         self.assertIn("guide", bundle["bible"].input_fields)
         self.assertIn("story_text", bundle["bible"].input_fields)
         self.assertIn("creative_direction", bundle["bible"].input_fields)
         self.assertIn("bible", bundle["bible"].output_fields)
         self.assertIn("allocation", bundle["beat_allocation"].output_fields)
         self.assertIn("result", bundle["acting"].output_fields)
-        self.assertIn("plan", bundle["repair"].output_fields)
 
 
 class StoryPlanGuideTests(unittest.TestCase):
@@ -566,7 +534,6 @@ class StoryPlanGuideTests(unittest.TestCase):
             "story-plan-bible",
             "story-plan-beat-allocation",
             "story-plan-acting",
-            "story-plan-repair",
         ):
             guide = load_markdown_guide(name)
             self.assertIsInstance(guide, str)
@@ -606,6 +573,62 @@ class StoryPlanTypedContractTests(unittest.TestCase):
 
 
 class StoryPlanServiceTests(unittest.TestCase):
+    def test_service_deterministically_binds_every_segment_to_a_small_beat_sheet(self) -> None:
+        """The LLM writes the arc; Python owns the complete scene binding."""
+        modules = FakePromptModules(
+            allocation={
+                "beats": [
+                    {"phase": "opening", "description": "The journey begins."},
+                    {"phase": "development", "description": "The danger closes in."},
+                    {"phase": "resolution", "description": "Renewal in the well."},
+                ]
+            },
+            acting=acting_for_brief_ids("brief-seg-1", "brief-seg-2"),
+        )
+
+        result = StoryPlanService(prompt_modules=modules).build_plan(make_request())
+
+        self.assertEqual(
+            [(brief.target, brief.beat_id) for brief in result.plan.segments],
+            [("seg-1", "beat-001"), ("seg-2", "beat-003")],
+        )
+        allocation_call = next(payload for name, payload in modules.calls if name == "beat_allocation")
+        self.assertNotIn("segments", allocation_call)
+        self.assertNotIn("repair", [name for name, _ in modules.calls])
+
+    def test_service_reports_visible_progress_for_each_creative_job(self) -> None:
+        class RecordingReporter:
+            def __init__(self) -> None:
+                self.progress: list[str] = []
+
+            def step(self, _title: str) -> None:
+                pass
+
+            def message(self, _text: str) -> None:
+                pass
+
+            def warning(self, _text: str, *, title: str | None = None) -> None:
+                pass
+
+            def table(self, _title: str, _columns: list[str], _rows: list[list[str]]) -> None:
+                pass
+
+            def run_progress(self, description: str, func: Any) -> Any:
+                self.progress.append(description)
+                return func()
+
+        reporter = RecordingReporter()
+        StoryPlanService(prompt_modules=FakePromptModules(), reporter=reporter).build_plan(make_request())
+
+        self.assertEqual(
+            reporter.progress,
+            [
+                "Story plan - reading the story",
+                "Story plan - shaping the arc",
+                "Story plan - writing acting",
+            ],
+        )
+
     def test_pydantic_bible_output_is_accepted_from_typed_dspy(self) -> None:
         """DSPy may deserialize an annotated output before the service sees it."""
         modules = FakePromptModules(
@@ -824,7 +847,7 @@ class StoryPlanServiceTests(unittest.TestCase):
                 "lyrics",
                 "narrative_bible",
                 "props",
-                "segments",
+                "segment_count",
                 "song_title",
                 "terminal_window_seconds",
             ],
@@ -859,27 +882,16 @@ class StoryPlanServiceTests(unittest.TestCase):
         service.build_plan(make_request())
         self.assertEqual(modules.accessed, ["bible", "beat_allocation", "acting"])
 
-    def test_invalid_candidate_triggers_single_repair_with_diagnostics_only(self) -> None:
+    def test_invalid_candidate_fails_without_a_full_plan_repair(self) -> None:
         modules = FakePromptModules(
             allocation=duplicate_target_allocation(),
             acting=acting_for_brief_ids("brief-1", "brief-2", "brief-3", "brief-4"),
         )
         service = StoryPlanService(prompt_modules=modules)
-        result = service.build_plan(make_request_3seg())
-        self.assertEqual(
-            [name for name, _ in modules.calls],
-            ["bible", "beat_allocation", "acting", "repair"],
-        )
-        self.assertEqual([name for name, _ in modules.calls].count("repair"), 1)
-        repair_kwargs = dict(modules.calls[-1][1])
-        self.assertEqual(
-            sorted(repair_kwargs),
-            ["candidate", "guide", "lyrics", "song_style", "song_title", "validation_errors"],
-        )
-        self.assertTrue(repair_kwargs["validation_errors"])
-        for error in repair_kwargs["validation_errors"]:
-            self.assertEqual(sorted(error), ["code", "message", "subject_id"])
-        self.assertEqual(validate_story_plan_payload(result.plan.model_dump()), [])
+        with self.assertRaises(StoryPlanError) as ctx:
+            service.build_plan(make_request_3seg())
+        self.assertIn("deterministic assembly", str(ctx.exception))
+        self.assertNotIn("repair", [name for name, _ in modules.calls])
 
     def test_second_invalid_repair_result_raises_story_plan_error(self) -> None:
         bad_repair = valid_repair_plan()
@@ -892,19 +904,16 @@ class StoryPlanServiceTests(unittest.TestCase):
         service = StoryPlanService(prompt_modules=modules)
         with self.assertRaises(StoryPlanError) as ctx:
             service.build_plan(make_request_3seg())
-        self.assertIn("after repair", str(ctx.exception))
+        self.assertIn("deterministic assembly", str(ctx.exception))
         self.assertIn(
             "plan_validation_failed",
             [diagnostic["code"] for diagnostic in ctx.exception.diagnostics],
         )
 
-    def test_repair_pass_through_rederives_provenance_user_direction(self) -> None:
-        modules = FakePromptModules(
-            allocation=duplicate_target_allocation(),
-            acting=acting_for_brief_ids("brief-1", "brief-2", "brief-3", "brief-4"),
-        )
+    def test_assembled_plan_derives_provenance_from_user_direction(self) -> None:
+        modules = FakePromptModules()
         service = StoryPlanService(prompt_modules=modules)
-        result = service.build_plan(make_request_3seg())
+        result = service.build_plan(make_request())
         self.assertEqual(result.plan.provenance.producer, STORY_PLAN_PRODUCER)
         self.assertEqual(result.plan.provenance.source_refs, ["Demo Song"])
         self.assertEqual(result.plan.provenance.notes, "Keep it intimate.")

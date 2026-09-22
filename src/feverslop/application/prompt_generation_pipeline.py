@@ -679,6 +679,19 @@ class PromptGenerationPipeline:
             try:
                 result = service.build_plan(plan_request)
             except StoryPlanError as exc:
+                if exc.diagnostics:
+                    reporter.table(
+                        "Story plan diagnostics",
+                        ["Code", "Boundary", "What needs attention"],
+                        [
+                            [
+                                str(diagnostic.get("code", "unknown")),
+                                str(diagnostic.get("subject_id", "")),
+                                str(diagnostic.get("message", "")),
+                            ]
+                            for diagnostic in exc.diagnostics
+                        ],
+                    )
                 story_planning_config = getattr(
                     getattr(app_config, "llm", None), "story_planning", None
                 )
@@ -686,14 +699,13 @@ class PromptGenerationPipeline:
                     getattr(story_planning_config, "failure_policy", "warn")
                 ).strip().lower()
                 message = (
-                    "Story plan unavailable; stopping before concept generation "
-                    "so no unbound or stale story can be produced: "
+                    "Story plan unavailable; continuing without optional story bindings: "
                     f"{exc}"
                 )
                 if failure_policy == "block":
                     raise
                 reporter.message(f"[yellow]{message}[/yellow]")
-                return None, True
+                return {}, False
             plan = result.plan
 
             if plan.schema_version not in SUPPORTED_SCHEMA_VERSIONS:

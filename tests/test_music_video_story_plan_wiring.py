@@ -119,6 +119,7 @@ def _legacy_stage1_segments() -> list[dict]:
 class _RecordingReporter:
     def __init__(self) -> None:
         self.messages: list[str] = []
+        self.tables: list[tuple[Any, ...]] = []
 
     def message(self, text: str) -> None:
         self.messages.append(text)
@@ -130,7 +131,7 @@ class _RecordingReporter:
         pass
 
     def table(self, *args: Any, **kwargs: Any) -> None:
-        pass
+        self.tables.append(args)
 
     def warning(self, *args: Any, **kwargs: Any) -> None:
         self.messages.append(str(args[0]) if args else "warning")
@@ -349,7 +350,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             }, guide="",
         )
         adapter.beat_allocation(
-            song_title="Song", lyrics="orcs", segments=[{"segment_id": "seg-1"}],
+            song_title="Song", lyrics="orcs",
             narrative_bible={}, characters=[], terminal_window_seconds=1, guide="",
             locations=[{"id": "cave"}], props=[{"id": "well"}],
         )
@@ -363,11 +364,20 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
         self.assertEqual(calls["allocation"]["locations"], [{"id": "cave"}])
         self.assertEqual(calls["acting"]["segments"], [{"segment_id": "seg-1"}])
 
-    def test_warn_policy_stops_before_unbound_concept_generation(self) -> None:
+    def test_warn_policy_continues_without_story_bindings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             class FailingService:
                 def build_plan(self, request: Any) -> Any:
-                    raise StoryPlanError("acting output must contain a non-empty briefs list")
+                    raise StoryPlanError(
+                        "acting output must contain a non-empty briefs list",
+                        diagnostics=[
+                            {
+                                "code": "missing_acting_briefs",
+                                "subject_id": "acting",
+                                "message": "acting briefs list missing or empty",
+                            }
+                        ],
+                    )
 
             pipeline = _build_pipeline(story_plan_service_factory=lambda _llm: FailingService())
             reporter = _RecordingReporter()
@@ -376,9 +386,10 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
                 resume=False, stage1_segments=_stage1_segments(), paths=_make_paths(Path(tmp)),
                 reporter=reporter, artifact_store=None, log_file=lambda *_args: None,
             )
-            self.assertIsNone(result)
-            self.assertTrue(stopped)
-            self.assertIn("stopping", " ".join(reporter.messages).lower())
+            self.assertEqual(result, {})
+            self.assertFalse(stopped)
+            self.assertIn("continuing", " ".join(reporter.messages).lower())
+            self.assertEqual("Story plan diagnostics", reporter.tables[0][0])
     """Wiring tests for the music-video StoryPlan pipeline (issue #1386)."""
 
     def test_resume_accepts_existing_stage1_start_end_schema(self) -> None:
