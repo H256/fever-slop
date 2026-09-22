@@ -7,7 +7,9 @@ from typing import Any
 
 from feverslop.config.video_settings import VideoSettings
 from feverslop.domain.ensemble import EnsembleConfig, load_ensembles
+from feverslop.errors import FeverSlopConfigError
 from feverslop.path_utils import coerce_local_path
+from feverslop.utils.io import atomic_write_json
 
 SCENE_PROMPT_WORD_COUNT_MIN = 40
 SCENE_PROMPT_WORD_COUNT_MAX = 50
@@ -481,7 +483,13 @@ class ProjectConfig:
     @classmethod
     def load(cls, config_path: str | Path) -> ProjectConfig:
         config_path = coerce_local_path(config_path).resolve()
-        raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
+        try:
+            raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError as exc:
+            raise FeverSlopConfigError(
+                f"Project config is not valid JSON (possibly truncated or "
+                f"corrupted): {config_path}: {exc}"
+            ) from exc
 
         project_dir = config_path.parent
         video_raw = _ensure_dict(raw.get("video", {}), "video")
@@ -829,7 +837,7 @@ class ProjectConfig:
             raw["video"]["height"] = height
         if megapixels is not None:
             raw["video"]["megapixels"] = megapixels
-        config_path.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        atomic_write_json(config_path, raw)
 
     @property
     def song_id(self) -> str:
