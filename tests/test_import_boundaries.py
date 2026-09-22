@@ -284,6 +284,9 @@ class ImportBoundaryTests(unittest.TestCase):
             # This application service materializes the review export and the
             # story-plan artifact manifest, so it intentionally owns pathlib access.
             "story_plan_service.py",
+            # This application service scans, archives, and deletes project
+            # artifacts, so it intentionally owns pathlib access.
+            "artifact_prune.py",
         }
         forbidden_roots = {"pathlib", "os", "subprocess", "PySide6"}
         offenders = []
