@@ -36,6 +36,7 @@ from feverslop.domain.story_plan_artifacts import (
 from feverslop.errors import FeverSlopError
 from feverslop.ports.reporting import NullReporter, Reporter
 from feverslop.utils.io import atomic_write_text
+from feverslop.utils.sub_step_progress import SubStepProgress
 
 __all__ = [
     "STORY_PLAN_PRODUCER",
@@ -329,12 +330,23 @@ class StoryPlanService:
             raw_briefs = []
         merged: dict[str, Any] = {"briefs": [], "character_arcs": []}
         ordered_briefs = [brief for brief in raw_briefs if isinstance(brief, Mapping)]
+        total_briefs = len(ordered_briefs)
+        total_batches = (total_briefs + self._acting_batch_size - 1) // self._acting_batch_size
+        progress = SubStepProgress(
+            self._reporter,
+            "Story plan - acting",
+            total_briefs,
+            interval=1,
+        )
+        progress.update(0, detail=f"batch 1/{total_batches}", force=True)
         for start in range(0, len(ordered_briefs), self._acting_batch_size):
             batch = ordered_briefs[start:start + self._acting_batch_size]
             expected = [str(brief.get("brief_id", "")) for brief in batch]
+            batch_number = start // self._acting_batch_size + 1
+            batch_end = start + len(batch)
             self._reporter.message(
-                f"story-plan-acting batch {start // self._acting_batch_size + 1}: "
-                f"requested {len(expected)} briefs"
+                f"story-plan-acting batch {batch_number}/{total_batches}: "
+                f"requested {len(expected)} briefs (scenes {start + 1}-{batch_end}/{total_briefs})"
             )
             response = self._acting_batch(
                 request, allocation, batch, diagnostics, expected
@@ -370,6 +382,7 @@ class StoryPlanService:
                 arc for arc in response.get("character_arcs", [])
                 if isinstance(arc, Mapping)
             )
+            progress.update(batch_end, detail=f"batch {batch_number}/{total_batches}")
         # Model order is not authoritative.  The allocation order is the
         # canonical narrative order and must survive every batch/retry.
         by_id = {str(brief.get("brief_id")): brief for brief in merged["briefs"]}

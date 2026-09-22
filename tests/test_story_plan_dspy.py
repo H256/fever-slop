@@ -641,6 +641,49 @@ class StoryPlanServiceTests(unittest.TestCase):
             ],
         )
 
+    def test_service_reports_acting_batch_and_total_scene_progress(self) -> None:
+        class RecordingReporter:
+            def __init__(self) -> None:
+                self.messages: list[str] = []
+
+            def step(self, _title: str) -> None:
+                pass
+
+            def message(self, text: str) -> None:
+                self.messages.append(text)
+
+            def warning(self, _text: str, *, title: str | None = None) -> None:
+                pass
+
+            def table(self, _title: str, _columns: list[str], _rows: list[list[str]]) -> None:
+                pass
+
+            def run_progress(self, _description: str, func: Any) -> Any:
+                return func()
+
+        class PerBatchPromptModules(FakePromptModules):
+            def acting(self, **kwargs: Any) -> dict:
+                return acting_for_brief_ids(*kwargs["expected_brief_ids"])
+
+        reporter = RecordingReporter()
+        StoryPlanService(
+            prompt_modules=PerBatchPromptModules(),
+            reporter=reporter,
+            acting_batch_size=1,
+        ).build_plan(make_request())
+
+        self.assertTrue(
+            any("Story plan - acting: 0/2" in message for message in reporter.messages)
+        )
+        self.assertTrue(
+            any("Story plan - acting: 1/2" in message and "batch 1/2" in message
+                for message in reporter.messages)
+        )
+        self.assertTrue(
+            any("Story plan - acting: 2/2" in message and "batch 2/2" in message
+                for message in reporter.messages)
+        )
+
     def test_pydantic_bible_output_is_accepted_from_typed_dspy(self) -> None:
         """DSPy may deserialize an annotated output before the service sees it."""
         modules = FakePromptModules(
