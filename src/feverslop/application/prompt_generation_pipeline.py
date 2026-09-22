@@ -510,6 +510,10 @@ class PromptGenerationPipeline:
             artifact_store=artifact_store,
             log_file=log_file,
             segment_briefs=segment_briefs,
+            semantic_enforcement=(
+                getattr(config, "narrative_contract_enforcement", None)
+                or getattr(app_config.llm, "narrative_contract_enforcement", "warn")
+            ),
         )
         if resume and scene_details_json.is_file():
             reporter.message("[yellow]Resuming scene details; using existing scene details.[/yellow]")
@@ -1075,6 +1079,7 @@ class PromptGenerationPipeline:
         artifact_store: Any,
         log_file: Callable[[str, Path], None],
         segment_briefs: dict[str, Any] | None = None,
+        semantic_enforcement: str = "block",
     ) -> dict[str, Any]:
         concept_prompts, extra_concepts = validate_and_order_concept_prompts(stage1_segments, concept_prompts)
         if extra_concepts:
@@ -1082,7 +1087,20 @@ class PromptGenerationPipeline:
         concept_prompts = validate_and_annotate_concept_chronology(
             concept_prompts,
             global_context.get("narrative_contract") or {},
+            semantic_enforcement=semantic_enforcement,
         )
+        warnings = [
+            (segment_id, value["semantic_validation"]["unresolved_diagnostic"])
+            for segment_id, value in concept_prompts.items()
+            if isinstance(value, dict)
+            and isinstance(value.get("semantic_validation"), dict)
+            and value["semantic_validation"].get("outcome") == "warning"
+        ]
+        if warnings:
+            reporter.message(
+                f"[yellow]Concept chronology: {len(warnings)} unresolved scene(s) "
+                "recorded as warnings; inspect concept diagnostics before rendering.[/yellow]"
+            )
         prompt_pipeline.save_json(
             concept_prompts_json,
             concept_prompts,

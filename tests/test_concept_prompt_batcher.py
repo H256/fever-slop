@@ -4,9 +4,93 @@ from pathlib import Path
 
 from feverslop.prompting.concept_prompt_batcher import (
     ConceptPromptBatcher,
+    _adjacent_continuity_plan,
     _apply_locked_segment_bindings,
     validate_and_annotate_concept_chronology,
 )
+
+
+class LockedContinuityRegressionTests(unittest.TestCase):
+    def test_removed_actor_does_not_persist_into_next_locked_cast(self):
+        previous = {
+            "segment_001": {
+                "references": {"actor_ids": ["lead", "visitor"]},
+                "narrative": {"location": "old_room", "cast_states": {"lead": "ready", "visitor": "watching"}},
+            },
+        }
+        current = {
+            "references": {"actor_ids": ["lead"], "actor_ids_authoritative": True},
+            "narrative": {"location": "new_room", "cast_states": {"lead": "walking"}},
+        }
+
+        result = _adjacent_continuity_plan(
+            "segment_002", current["narrative"], previous, {}, selected_actor_ids=["lead"],
+        )
+
+        self.assertEqual({"lead": "ready"}, result["incoming"]["cast_states"])
+        self.assertEqual({"lead": "walking"}, result["outgoing"]["cast_states"])
+
+    def test_locked_binding_controls_explicit_outgoing_location_and_cast(self):
+        concepts = {"segment_002": {
+            "narrative": {
+                "location": "wrong_room", "cast_states": {"visitor": "watching"},
+                "incoming": {"cast_states": {"visitor": "watching"}},
+                "outgoing": {"location": "wrong_room", "cast_states": {"visitor": "watching"}},
+            },
+        }}
+
+        _apply_locked_segment_bindings(concepts, {"segment_002": {
+            "location_id": "new_room", "character_ids": ["lead"],
+            "actor_states": [{"character_id": "lead", "state": "walking"}],
+        }})
+
+        narrative = concepts["segment_002"]["narrative"]
+        self.assertEqual("new_room", narrative["outgoing"]["location"])
+        self.assertEqual({"lead": "walking"}, narrative["outgoing"]["cast_states"])
+        self.assertEqual({}, narrative["incoming"]["cast_states"])
+
+    def test_warn_final_chronology_keeps_diagnostics_instead_of_crashing(self):
+        concepts = {
+            "segment_001": {"narrative": {"location": "old_room", "milestones": ["arrival"]}},
+            "segment_002": {"narrative": {"location": "old_room", "milestones": ["arrival"]}},
+        }
+        contract = {"milestone_order": ["arrival"], "one_shot_milestones": ["arrival"]}
+
+        result = validate_and_annotate_concept_chronology(
+            concepts, contract, semantic_enforcement="warn",
+        )
+
+        self.assertEqual("warning", result["segment_002"]["semantic_validation"]["outcome"])
+        self.assertIn("repeats", result["segment_002"]["semantic_validation"]["unresolved_diagnostic"])
+
+    def test_warn_final_chronology_marks_premature_terminal_event(self):
+        concepts = {
+            "segment_001": {"narrative": {"milestones": ["story_complete"]}},
+            "segment_002": {"narrative": {"milestones": []}},
+        }
+
+        result = validate_and_annotate_concept_chronology(
+            concepts, {}, semantic_enforcement="warn",
+        )
+
+        self.assertEqual("warning", result["segment_001"]["semantic_validation"]["outcome"])
+        self.assertIn("terminal milestone", result["segment_001"]["semantic_validation"]["unresolved_diagnostic"])
+
+    def test_final_gate_preserves_batch_warning_diagnostic(self):
+        concepts = {"segment_001": {
+            "concept": "An incomplete scene.",
+            "narrative": {"story_beat": "arrival", "milestones": []},
+            "semantic_validation": {
+                "outcome": "warning", "unresolved_diagnostic": "selected actor missing from prose",
+            },
+        }}
+
+        result = validate_and_annotate_concept_chronology(
+            concepts, {}, semantic_enforcement="warn",
+        )
+
+        self.assertEqual("warning", result["segment_001"]["semantic_validation"]["outcome"])
+        self.assertIn("selected actor missing", result["segment_001"]["semantic_validation"]["unresolved_diagnostic"])
 
 
 class FakeConceptModules:
@@ -1888,7 +1972,7 @@ class ConceptCheckpointTests(unittest.TestCase):
         )
         return batcher
 
-    def test_checkpoint_skips_completed_batches_and_is_cleared_on_success(self):
+    def test_checkpoint_skips_completed_batches_and_remains_until_final_validation(self):
         import tempfile
         from pathlib import Path
 
@@ -1924,7 +2008,7 @@ class ConceptCheckpointTests(unittest.TestCase):
                 any("Resuming concept generation from checkpoint" in message for message in progress),
                 progress,
             )
-            self.assertFalse(checkpoint.exists(), "checkpoint must be cleared after success")
+            self.assertTrue(checkpoint.exists(), "checkpoint must remain until final validation succeeds")
 
     def test_stale_checkpoint_is_ignored_and_inputs_regenerated(self):
         import tempfile

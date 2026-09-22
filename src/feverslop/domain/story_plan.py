@@ -37,7 +37,7 @@ STORY_PLAN_SCHEMA_VERSION = "story-plan/v1"
 SUPPORTED_SCHEMA_VERSIONS = frozenset({STORY_PLAN_SCHEMA_VERSION})
 
 #: Revision of the planner that produced the plan.
-PLANNER_REVISION = "planner/v5"
+PLANNER_REVISION = "planner/v6"
 
 #: Maximum length of any stable ID.
 MAX_ID = 128

@@ -414,6 +414,7 @@ class GeneratePipelineDependencyTests(unittest.TestCase):
                 scene_prompt_builder_factory=lambda _llm: scene_prompt_builder,
             )
             context = _prompt_context(temp, concept_batch_size=0)
+            context.config.narrative_contract_enforcement = "block"
             context.config.narrative_contract = {
                 "milestone_order": [
                     {"id": "caves_entered", "source": "story_idea: enter the caves"},

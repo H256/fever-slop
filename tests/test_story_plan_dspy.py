@@ -65,6 +65,67 @@ class StoryPlanFingerprintTests(unittest.TestCase):
         self.assertNotEqual(initial, repaired)
 
 
+class StoryPlanActingBindingTests(unittest.TestCase):
+    def test_explicit_empty_cast_discards_acting_state(self) -> None:
+        request = make_request(source_evidence={"narrative_contract": {
+            "location_order": ["cave"],
+        }})
+        allocation = {
+            "typed_beats": [{"phase": "opening", "location_id": "cave", "character_ids": []}],
+            "briefs": [{"brief_id": "brief-1", "segment_id": "seg-1", "beat_indices": [0],
+                        "character_ids": [], "location_id": "cave"}],
+        }
+        acting = {"briefs": [{"brief_id": "brief-1", "actor_states": [
+            {"character_id": "char-1", "state": "watching"},
+        ]}]}
+
+        candidate = StoryPlanService._assemble_candidate(request, allocation, acting)
+
+        self.assertEqual([], candidate["segments"][0]["actor_states"])
+
+    def test_assembly_keeps_only_cast_and_preserves_terminal_state(self) -> None:
+        request = make_request(
+            characters=(
+                {"id": "lead", "name": "Lead"},
+                {"id": "visitor", "name": "Visitor"},
+            ),
+            segments=tuple(
+                SegmentDescriptor(segment_id=f"seg-{i}", start_seconds=float(i - 1), end_seconds=float(i))
+                for i in range(1, 4)
+            ),
+            source_evidence={"narrative_contract": {
+                "terminal_states": {"lead": {"milestone": "ascent", "state": "transformed"}},
+            }},
+        )
+        allocation = {
+            "typed_beats": [{"phase": "resolution", "location_id": "well", "character_ids": ["lead"]}],
+            "briefs": [
+                {"brief_id": f"brief-{i}", "segment_id": f"seg-{i}", "beat_indices": [0],
+                 "character_ids": ["lead"], "location_id": "well",
+                 **({"milestone_id": "ascent"} if i == 2 else {})}
+                for i in range(1, 4)
+            ],
+        }
+        acting = {"briefs": [
+            {"brief_id": f"brief-{i}", "actor_states": [
+                {"character_id": "lead", "state": "ordinary"},
+                {"character_id": "visitor", "state": "watching"},
+            ]}
+            for i in range(1, 4)
+        ]}
+
+        candidate = StoryPlanService._assemble_candidate(request, allocation, acting)
+
+        states = [
+            {item["character_id"]: item["state"] for item in segment["actor_states"]}
+            for segment in candidate["segments"]
+        ]
+        self.assertEqual(
+            [{"lead": "ordinary"}, {"lead": "transformed"}, {"lead": "transformed"}],
+            states,
+        )
+
+
 # -- fixtures ---------------------------------------------------------------
 
 

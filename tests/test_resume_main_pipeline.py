@@ -297,6 +297,34 @@ class SceneTimelineResumeTests(unittest.TestCase):
 
 
 class PromptGenerationResumeTests(unittest.TestCase):
+    def test_final_concept_gate_honors_warn_policy(self):
+        pipeline = self._make_pipeline(
+            llm_factory=lambda _app: None,
+            prompt_pipeline_factory=lambda _llm: None,
+            concept_batcher_factory=lambda _llm, _size: None,
+            scene_prompt_builder_factory=lambda _llm: None,
+        )
+        concepts = {
+            f"segment_{i:03d}": {"narrative": {"milestones": ["arrival"], "location": "room"}}
+            for i in (1, 2)
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = pipeline._finalize_concept_prompts(
+                prompt_pipeline=SimpleNamespace(save_json=lambda path, value, **kwargs: None),
+                reporter=SimpleNamespace(message=lambda text: None),
+                stage1_segments=[{"segment_id": key} for key in concepts],
+                concept_prompts=concepts,
+                global_context={"narrative_contract": {
+                    "milestone_order": ["arrival"], "one_shot_milestones": ["arrival"],
+                }},
+                concept_prompts_json=Path(temp_dir) / "concept_prompts.json",
+                artifact_store=SimpleNamespace(write_json=lambda path, value: None),
+                log_file=lambda label, path: None,
+                semantic_enforcement="warn",
+            )
+
+        self.assertEqual("warning", result["segment_002"]["semantic_validation"]["outcome"])
+
     def test_resume_repairs_legacy_contract_before_story_plan_consumes_it(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

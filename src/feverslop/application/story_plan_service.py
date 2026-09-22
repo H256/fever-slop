@@ -1392,6 +1392,11 @@ class StoryPlanService:
         if not isinstance(raw_briefs, list):
             raw_briefs = []
         canonical_character_ids = {character["id"] for character in characters}
+        contract = request.source_evidence.get("narrative_contract") or {}
+        if not isinstance(contract, Mapping):
+            contract = {}
+        terminal_rules = contract.get("terminal_states") or {}
+        active_terminal_states: dict[str, str] = {}
         for raw in raw_briefs:
             if not isinstance(raw, Mapping):
                 continue
@@ -1413,6 +1418,10 @@ class StoryPlanService:
             # Narrative bindings come from allocation, never from the creative
             # acting response. Acting may only fill creative fields.
             bound_character_ids = list(raw.get("character_ids", binding.get("character_ids", [])))
+            bound_character_set = set(bound_character_ids)
+            cast_is_locked = bool(bound_character_set) or (
+                bool(contract.get("location_order")) and "character_ids" in raw
+            )
             bound_prop_ids = list(binding.get("prop_ids", []))
             bound_location_id = raw.get("location_id", binding.get("location_id"))
             bound_milestone_id = raw.get("milestone_id") or binding.get("milestone_id")
@@ -1430,14 +1439,32 @@ class StoryPlanService:
                 if (
                     isinstance(state, Mapping)
                     and str(state.get("character_id", "")) in canonical_character_ids
+                    and (not cast_is_locked or str(state.get("character_id", "")) in bound_character_set)
                 )
             }
+            if isinstance(terminal_rules, Mapping):
+                for actor_id, rule in terminal_rules.items():
+                    if not isinstance(rule, Mapping):
+                        continue
+                    if rule.get("reset_event") and bound_milestone_id == rule["reset_event"]:
+                        active_terminal_states.pop(str(actor_id), None)
+                    if bound_milestone_id == rule.get("milestone"):
+                        required_state = str(rule.get("state") or "").strip()
+                        if required_state:
+                            active_terminal_states[str(actor_id)] = required_state
+            for actor_id, state in active_terminal_states.items():
+                if not cast_is_locked or actor_id in bound_character_set:
+                    actor_states_by_id[actor_id] = {
+                        "character_id": actor_id,
+                        "state": state,
+                        "physical_state": "",
+                    }
             for state in raw.get("required_actor_states", []):
                 if not isinstance(state, Mapping):
                     continue
                 actor_id = str(state.get("character_id", ""))
                 required_state = str(state.get("state", "")).strip()
-                if actor_id in canonical_character_ids and required_state:
+                if required_state and (not cast_is_locked or actor_id in bound_character_set):
                     actor_states_by_id[actor_id] = {
                         "character_id": actor_id,
                         "state": required_state,
