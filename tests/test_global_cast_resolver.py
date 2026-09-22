@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from feverslop.adapters.global_library import GlobalLibraryAdapter
-from feverslop.application.global_cast_resolver import GlobalCastResolver
+from feverslop.application.global_cast_resolver import GlobalCastResolver, materialize_global_assets
 from feverslop.config.project_config import GlobalAssetConfig
 from feverslop.domain.global_library import AssetKind, AssetLook, GlobalAsset
 
@@ -63,6 +63,47 @@ class GlobalCastResolverTests(unittest.TestCase):
             self.assertTrue(Path(location["anchor_path"]).is_file())
             self.assertTrue(Path(location["sequence_path"]).is_file())
             self.assertEqual(1, len(location["selected_frame_paths"]))
+
+
+    def test_materialize_global_assets_always_reflects_latest_state(self):
+        # The removed `refresh` flag was dead: materialization always re-copies and
+        # rewrites the snapshot, so a changed asset must be reflected on re-call.
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            adapter = GlobalLibraryAdapter(root / "library")
+            media = root / "library" / "character" / "ava" / "looks" / "default" / "hero.png"
+            media.parent.mkdir(parents=True)
+            media.write_bytes(b"hero-v1")
+            adapter.create(GlobalAsset("ava", AssetKind.CHARACTER, "Ava", description="Singer v1", looks=(
+                AssetLook("default", "Default", hero_image="looks/default/hero.png"),
+            )))
+            project_config = SimpleNamespace(
+                global_cast=(GlobalAssetConfig("ava", "default", "lead"),),
+                global_locations=(), global_styles=(), global_props=(),
+                project_dir=root / "project",
+            )
+            app_config = SimpleNamespace(global_library_path=root / "library")
+            def resolve():
+                return materialize_global_assets(
+                    project_config, app_config, library_factory=lambda path: adapter,
+                )
+
+            first = resolve()
+            self.assertEqual("Singer v1", first.actors[0]["visual_description"])
+            self.assertEqual(1, first.actors[0]["global_revision"])
+
+            media.write_bytes(b"hero-v2")
+            updated = adapter.get(AssetKind.CHARACTER, "ava")
+            adapter.update(
+                GlobalAsset("ava", AssetKind.CHARACTER, "Ava", description="Singer v2",
+                          looks=updated.looks, revision=2),
+                expected_revision=1,
+            )
+            second = resolve()
+
+            self.assertEqual(2, second.actors[0]["global_revision"])
+            self.assertTrue(Path(second.actors[0]["hero_path"]).read_bytes() == b"hero-v2")
 
 
 if __name__ == "__main__":
