@@ -684,6 +684,37 @@ class StoryPlanServiceTests(unittest.TestCase):
                 for message in reporter.messages)
         )
 
+    def test_service_shows_a_compact_acting_brief_card_for_each_batch(self) -> None:
+        class RecordingReporter:
+            def __init__(self) -> None:
+                self.tables: list[tuple[str, list[str], list[list[str]]]] = []
+
+            def step(self, _title: str) -> None:
+                pass
+
+            def message(self, _text: str) -> None:
+                pass
+
+            def warning(self, _text: str, *, title: str | None = None) -> None:
+                pass
+
+            def table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
+                self.tables.append((title, columns, rows))
+
+            def run_progress(self, _description: str, func: Any) -> Any:
+                return func()
+
+        reporter = RecordingReporter()
+        StoryPlanService(
+            prompt_modules=FakePromptModules(), reporter=reporter
+        ).build_plan(make_request())
+
+        acting_table = next(table for table in reporter.tables if table[0] == "Acting briefs - batch 1/1")
+        self.assertEqual(acting_table[1], ["Scene", "Time", "Objective", "Emotional turn", "Voice"])
+        self.assertEqual(acting_table[2][0], [
+            "seg-1", "00:00–00:30", "Objective for brief-1.", "Nervous to determined.", "offscreen",
+        ])
+
     def test_pydantic_bible_output_is_accepted_from_typed_dspy(self) -> None:
         """DSPy may deserialize an annotated output before the service sees it."""
         modules = FakePromptModules(

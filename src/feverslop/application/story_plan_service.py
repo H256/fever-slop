@@ -382,6 +382,25 @@ class StoryPlanService:
                 arc for arc in response.get("character_arcs", [])
                 if isinstance(arc, Mapping)
             )
+            acting_by_id = {
+                str(brief.get("brief_id", "")): brief
+                for brief in response.get("briefs", [])
+                if isinstance(brief, Mapping)
+            }
+            self._reporter.table(
+                f"Acting briefs - batch {batch_number}/{total_batches}",
+                ["Scene", "Time", "Objective", "Emotional turn", "Voice"],
+                [
+                    [
+                        str(brief.get("segment_id", "")),
+                        self._brief_time_range(brief),
+                        self._brief_excerpt(acting_by_id.get(str(brief.get("brief_id", "")), {}).get("objective", "")),
+                        self._brief_excerpt(acting_by_id.get(str(brief.get("brief_id", "")), {}).get("emotional_turn", "")),
+                        self._brief_excerpt(acting_by_id.get(str(brief.get("brief_id", "")), {}).get("vocal_presentation", "offscreen")),
+                    ]
+                    for brief in batch
+                ],
+            )
             progress.update(batch_end, detail=f"batch {batch_number}/{total_batches}")
         # Model order is not authoritative.  The allocation order is the
         # canonical narrative order and must survive every batch/retry.
@@ -400,6 +419,19 @@ class StoryPlanService:
             for brief in acting.get("briefs", [])
             if isinstance(brief, Mapping) and str(brief.get("brief_id", ""))
         }
+
+    @staticmethod
+    def _brief_time_range(brief: Mapping[str, Any]) -> str:
+        def timestamp(value: Any) -> str:
+            seconds = max(0, round(float(value)))
+            return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+        return f"{timestamp(brief.get('start_seconds', 0))}–{timestamp(brief.get('end_seconds', 0))}"
+
+    @staticmethod
+    def _brief_excerpt(value: Any, *, limit: int = 72) -> str:
+        text = " ".join(str(value).split())
+        return text if len(text) <= limit else f"{text[:limit - 1].rstrip()}…"
 
     def _acting_batch(
         self,
