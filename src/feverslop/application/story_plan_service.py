@@ -295,6 +295,18 @@ class StoryPlanService:
             f"{len(allocation.get('briefs', []))} segment brief(s) allocated"
         )
 
+        self._reporter.step("story-plan-entity-resolution")
+        resolved_config, entity_decisions = self._resolve_entities(
+            request, allocation
+        )
+        use_count = sum(1 for d in entity_decisions if d["decision"] == "use")
+        extend_count = sum(1 for d in entity_decisions if d["decision"] == "extend")
+        invent_count = sum(1 for d in entity_decisions if d["decision"] == "invent")
+        self._reporter.message(
+            "story-plan-entity-resolution complete: "
+            f"{use_count} use, {extend_count} extend, {invent_count} invent"
+        )
+
         self._reporter.step("story-plan-acting")
         acting = self._build_acting_in_batches(request, allocation, diagnostics)
         self._validate_acting(allocation, acting, diagnostics)
@@ -303,7 +315,9 @@ class StoryPlanService:
             f"{len(acting)} segment brief(s) covered"
         )
 
-        candidate = self._assemble_candidate(request, allocation, acting)
+        candidate = self._assemble_candidate(
+            request, allocation, acting, resolved_config
+        )
         try:
             self._validate_payload(candidate, diagnostics)
         except StoryPlanValidationError as exc:
@@ -320,7 +334,9 @@ class StoryPlanService:
             repaired = self._normalize_job_output(
                 "repair", repaired_raw, diagnostics, _FORBIDDEN_RENDER_KEYS
             )
-            candidate = self._assemble_candidate(request, repaired, acting)
+            candidate = self._assemble_candidate(
+                request, repaired, acting, resolved_config
+            )
             try:
                 self._validate_payload(candidate, diagnostics)
             except StoryPlanValidationError as exc:
@@ -998,6 +1014,150 @@ class StoryPlanService:
                 ],
             )
 
+    def _resolve_entities(
+        self,
+        request: StoryPlanRequest,
+        allocation: Mapping[str, Any],
+    ) -> tuple[dict[str, list[dict[str, Any]]], list[Mapping[str, Any]]]:
+        """Resolve entity refs in beats/briefs to config entities (L2).
+
+        For each entity ref, determines the resolution:
+        - use: config has a complete matching entity (non-empty description)
+        - extend: config has a partial entity (empty description) -> fill it
+        - invent: no config entity -> invent, constrained to the story's world
+
+        Returns (resolved_config, decisions) where resolved_config has
+        'characters', 'locations', 'props' lists and decisions is a list
+        of {entity_type, entity_id, decision, name}.
+        """
+        typed_beats = [
+            beat for beat in allocation.get("typed_beats", [])
+            if isinstance(beat, Mapping)
+        ]
+        briefs = [
+            brief for brief in allocation.get("briefs", [])
+            if isinstance(brief, Mapping)
+        ]
+
+        character_refs: set[str] = set()
+        location_refs: set[str] = set()
+        prop_refs: set[str] = set()
+        for beat in typed_beats:
+            for cid in beat.get("character_ids", []):
+                character_refs.add(str(cid))
+            if beat.get("location_id"):
+                location_refs.add(str(beat["location_id"]))
+            for pid in beat.get("prop_ids", []):
+                prop_refs.add(str(pid))
+        for brief in briefs:
+            for cid in brief.get("character_ids", []):
+                character_refs.add(str(cid))
+            if brief.get("location_id"):
+                location_refs.add(str(brief["location_id"]))
+            for pid in brief.get("prop_ids", []):
+                prop_refs.add(str(pid))
+
+        def _config_map(
+            items: tuple[Mapping[str, Any], ...]
+        ) -> dict[str, dict[str, Any]]:
+            return {
+                str(item.get("id", "")).strip(): dict(item)
+                for item in items
+                if isinstance(item, Mapping)
+                and str(item.get("id", "")).strip()
+                and str(item.get("name", "")).strip()
+            }
+
+        config_characters = _config_map(request.characters)
+        config_locations = _config_map(request.locations)
+        config_props = _config_map(request.props)
+
+        decisions: list[Mapping[str, Any]] = []
+
+        def _resolve(
+            entity_type: str,
+            refs: set[str],
+            config: dict[str, dict[str, Any]],
+            is_singer: bool = False,
+        ) -> list[dict[str, Any]]:
+            resolved = [dict(entry) for entry in config.values()]
+            for ref in sorted(refs):
+                if ref in config:
+                    entity = config[ref]
+                    if entity.get("description"):
+                        decisions.append(
+                            {
+                                "entity_type": entity_type,
+                                "entity_id": ref,
+                                "decision": "use",
+                                "name": entity.get("name", ref),
+                            }
+                        )
+                    else:
+                        for entry in resolved:
+                            if entry.get("id") == ref:
+                                entry["description"] = self._generate_entity_description(
+                                    entity_type, ref, request
+                                )
+                                break
+                        decisions.append(
+                            {
+                                "entity_type": entity_type,
+                                "entity_id": ref,
+                                "decision": "extend",
+                                "name": entity.get("name", ref),
+                            }
+                        )
+                else:
+                    name = self._derive_entity_name(entity_type, ref)
+                    new_entity: dict[str, Any] = {
+                        "id": ref,
+                        "name": name,
+                        "description": self._generate_entity_description(
+                            entity_type, ref, request
+                        ),
+                    }
+                    if is_singer:
+                        new_entity["is_singer"] = False
+                    resolved.append(new_entity)
+                    decisions.append(
+                        {
+                            "entity_type": entity_type,
+                            "entity_id": ref,
+                            "decision": "invent",
+                            "name": name,
+                        }
+                    )
+            return resolved
+
+        resolved_characters = _resolve("character", character_refs, config_characters, is_singer=True)
+        resolved_locations = _resolve("location", location_refs, config_locations)
+        resolved_props = _resolve("prop", prop_refs, config_props)
+
+        return (
+            {
+                "characters": resolved_characters,
+                "locations": resolved_locations,
+                "props": resolved_props,
+            },
+            decisions,
+        )
+
+    @staticmethod
+    def _derive_entity_name(entity_type: str, entity_id: str) -> str:
+        """Derive a human-readable name from an entity ID."""
+        name = entity_id.replace("_", " ").replace("-", " ").strip()
+        return name.title() if name else entity_type.title()
+
+    def _generate_entity_description(
+        self, entity_type: str, entity_id: str, request: StoryPlanRequest
+    ) -> str:
+        """Generate a description for an entity, constrained to the story's world."""
+        context = str(request.source_evidence.get("creative_direction", "")).strip()
+        if context:
+            return f"A {entity_type} in the story: {context[:200]}"
+        return f"A {entity_type} in the music video for {request.song_title}"
+
     @staticmethod
     def _validate_acting(
         allocation: Mapping[str, Any],
@@ -1192,6 +1352,7 @@ class StoryPlanService:
         request: StoryPlanRequest,
         allocation: Mapping[str, Any],
         acting: Mapping[str, Any],
+        resolved_config: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build a domain ``StoryPlan`` candidate from the job outputs.
 
@@ -1220,44 +1381,58 @@ class StoryPlanService:
                     "notes": creative_direction,
                 },
             }
-        characters: list[dict[str, Any]] = []
-        for character in request.characters:
-            if not isinstance(character, Mapping):
-                continue
-            character_id = str(character.get("id", "")).strip()
-            name = str(character.get("name", "")).strip()
-            if not character_id or not name:
-                continue
-            characters.append(
+        if resolved_config is not None:
+            characters = [
+                dict(entry) for entry in resolved_config.get("characters", [])
+                if isinstance(entry, Mapping)
+            ]
+            locations = [
+                dict(entry) for entry in resolved_config.get("locations", [])
+                if isinstance(entry, Mapping)
+            ]
+            props = [
+                dict(entry) for entry in resolved_config.get("props", [])
+                if isinstance(entry, Mapping)
+            ]
+        else:
+            characters: list[dict[str, Any]] = []
+            for character in request.characters:
+                if not isinstance(character, Mapping):
+                    continue
+                character_id = str(character.get("id", "")).strip()
+                name = str(character.get("name", "")).strip()
+                if not character_id or not name:
+                    continue
+                characters.append(
+                    {
+                        "id": character_id,
+                        "name": name,
+                        "description": str(character.get("description", "")),
+                        "is_singer": bool(character.get("is_singer", False)),
+                    }
+                )
+            locations = [
                 {
-                    "id": character_id,
-                    "name": name,
-                    "description": str(character.get("description", "")),
-                    "is_singer": bool(character.get("is_singer", False)),
+                    "id": str(location.get("id", "")).strip(),
+                    "name": str(location.get("name", "")).strip(),
+                    "description": str(location.get("description", "")),
                 }
-            )
-        locations = [
-            {
-                "id": str(location.get("id", "")).strip(),
-                "name": str(location.get("name", "")).strip(),
-                "description": str(location.get("description", "")),
-            }
-            for location in request.locations
-            if isinstance(location, Mapping)
-            and str(location.get("id", "")).strip()
-            and str(location.get("name", "")).strip()
-        ]
-        props = [
-            {
-                "id": str(prop.get("id", "")).strip(),
-                "name": str(prop.get("name", "")).strip(),
-                "description": str(prop.get("description", "")),
-            }
-            for prop in request.props
-            if isinstance(prop, Mapping)
-            and str(prop.get("id", "")).strip()
-            and str(prop.get("name", "")).strip()
-        ]
+                for location in request.locations
+                if isinstance(location, Mapping)
+                and str(location.get("id", "")).strip()
+                and str(location.get("name", "")).strip()
+            ]
+            props = [
+                {
+                    "id": str(prop.get("id", "")).strip(),
+                    "name": str(prop.get("name", "")).strip(),
+                    "description": str(prop.get("description", "")),
+                }
+                for prop in request.props
+                if isinstance(prop, Mapping)
+                and str(prop.get("id", "")).strip()
+                and str(prop.get("name", "")).strip()
+            ]
         segments: list[dict[str, Any]] = []
         beats = [
             {
