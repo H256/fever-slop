@@ -10,6 +10,7 @@ class FullAutoRequest:
     idea: str
     style: str
     music_style: str | None = None
+    story_direction: str = ""
     cast_idea: str | None = None
     cast_mode: str | None = None
     cast_target_size: int | None = None

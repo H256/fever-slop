@@ -84,6 +84,7 @@ class FullAutoUseCase:
             video_pipeline=video_pipeline,
             render_profile=str(request.runner_options.get("render_profile") or "ltx25-i2v-draft"),
             silent_mode=bool(request.silent_mode),
+            story_direction=str(request.story_direction or ""),
         )
         _persist_workflow_settings(
             scaffold.project_config_path,

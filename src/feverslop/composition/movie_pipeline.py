@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import contextvars
+import hashlib
 import json
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -13,6 +15,7 @@ from rich.console import Console
 from feverslop.adapters.movie_references import LocalMovieImageBackend
 from feverslop.adapters.movie_visual import LocalMovieVisualAdapter
 from feverslop.application.movie_artifacts import (
+    _movie_source_metadata,
     ensure_movie_bible,
     ensure_movie_continuity_plan,
     ensure_movie_narrative_plan,
@@ -37,11 +40,38 @@ from feverslop.composition.movie_pipeline_jobs import (
 )
 from feverslop.composition.movie_planner import build_movie_planner
 from feverslop.config.app_config import AppConfig
+from feverslop.domain.movie_utils import safe_id
+from feverslop.domain.story_plan import (
+    PLANNER_REVISION,
+    SUPPORTED_SCHEMA_VERSIONS,
+    CanonicalCharacter,
+    CanonicalLocation,
+    PlanProvenance,
+    SegmentBrief,
+    StoryBeat,
+    StoryMode,
+    StoryPlan,
+    StoryPhase,
+)
+from feverslop.domain.story_plan_artifacts import (
+    ArtifactClass,
+    RegenerationPolicy,
+    StoryPlanArtifactManifest,
+    manifest_matches_story_plan,
+    manifest_is_stale,
+    read_manifest,
+    read_story_plan,
+    story_plan_fingerprint,
+    write_manifest,
+    write_story_plan,
+)
+from feverslop.errors import FeverSlopDataError
 from feverslop.path_utils import coerce_local_path
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.adapters.reporting import ConsoleReporter
 from feverslop.ports.reporting import install_reporter_logging
 from feverslop.ports.reporting import Reporter
+from feverslop.utils.io import read_json_object
 from feverslop.utils.rich_progress import build_progress
 
 console = Console()
@@ -263,6 +293,7 @@ class MoviePipelineResult:
     final_video_path: Path | None = None
     openshot_project_path: Path | None = None
     debug_workflows_dir: Path | None = None
+    story_plan_path: Path | None = None
 
 
 def run(args: argparse.Namespace) -> MoviePipelineResult:
@@ -354,6 +385,8 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
 
     if not render_plan_path.exists():
         raise FileNotFoundError(f"Movie render plan not found: {render_plan_path}")
+    _log_stage("Movie planning", "resolving canonical story plan")
+    story_plan_path = _resolve_movie_story_plan(project_dir, render_plan_path)
     if any(
         (
             args.skip_movie_bible,
@@ -450,27 +483,30 @@ def _run(args: argparse.Namespace, config: dict[str, Any]) -> MoviePipelineResul
     if config["movie_video_workflow"] == "startframe-director":
         return _run_startframe_director_workflow(args, config, project_dir, bible_path, story_design_path,
             screenplay_path, narrative_plan_path, scene_cards_path, shot_cards_path,
-            render_plan_path, continuity_plan_path, reference_manifest_path, render_plan_ingredients_path, manifest_path)
+            render_plan_path, continuity_plan_path, reference_manifest_path, render_plan_ingredients_path, manifest_path,
+            story_plan_path)
 
     # --- i2v-edit workflow ---
     if config["movie_video_workflow"] == "i2v-edit":
         return _run_i2v_edit_workflow(args, config, project_dir, bible_path, story_design_path,
             screenplay_path, narrative_plan_path, scene_cards_path, shot_cards_path,
-            render_plan_path, continuity_plan_path, reference_manifest_path)
+            render_plan_path, continuity_plan_path, reference_manifest_path, story_plan_path)
 
     # --- ingredients workflow ---
     if config["movie_video_workflow"] == "ingredients":
         return _run_ingredients_workflow(args, config, project_dir, bible_path, story_design_path,
             screenplay_path, narrative_plan_path, scene_cards_path, shot_cards_path,
             render_plan_path, continuity_plan_path, reference_manifest_path,
-            render_plan_ingredients_path, ingredients_llm, report_ingredients_analysis, manifest_path)
+            render_plan_ingredients_path, ingredients_llm, report_ingredients_analysis, manifest_path,
+            story_plan_path)
 
     # --- default MSR workflow ---
     return _run_msr_workflow(args, config, project_dir, bible_path, story_design_path,
         screenplay_path, narrative_plan_path, scene_cards_path, shot_cards_path,
         render_plan_path, continuity_plan_path, render_plan_msr_path,
         reference_manifest_path,
-        ingredients_llm, report_msr_analysis, report_ingredients_analysis, manifest_path)
+        ingredients_llm, report_msr_analysis, report_ingredients_analysis, manifest_path,
+        story_plan_path)
 
 
 def _run_movie_openshot_export_stage(args: argparse.Namespace, project_dir: Path) -> MoviePipelineResult:
@@ -577,6 +613,7 @@ def _run_startframe_director_workflow(
     args, config, project_dir, bible_path, story_design_path, screenplay_path,
     narrative_plan_path, scene_cards_path, shot_cards_path, render_plan_path,
     continuity_plan_path, reference_manifest_path, render_plan_ingredients_path, manifest_path,
+    story_plan_path,
 ) -> MoviePipelineResult:
     from feverslop.adapters.startframe_director_visual import (
         LocalStartframeDirectorVisualAdapter,
@@ -663,13 +700,14 @@ def _run_startframe_director_workflow(
         reference_manifest_path=reference_manifest_path,
         final_video_path=final_video_path,
         debug_workflows_dir=startframe_debug_workflows_dir,
+        story_plan_path=story_plan_path,
     )
 
 
 def _run_i2v_edit_workflow(
     args, config, project_dir, bible_path, story_design_path, screenplay_path,
     narrative_plan_path, scene_cards_path, shot_cards_path, render_plan_path,
-    continuity_plan_path, reference_manifest_path,
+    continuity_plan_path, reference_manifest_path, story_plan_path,
 ) -> MoviePipelineResult:
     from feverslop.adapters.movie_i2v_visual import LocalMovieI2VEditVisualAdapter
     from feverslop.application.movie_i2v_render_plan import write_movie_i2v_render_plan
@@ -718,6 +756,7 @@ def _run_i2v_edit_workflow(
         render_plan_i2v_path=render_plan_i2v_path,
         reference_manifest_path=reference_manifest_path,
         final_video_path=final_video_path,
+        story_plan_path=story_plan_path,
     )
 
 
@@ -725,7 +764,7 @@ def _run_ingredients_workflow(
     args, config, project_dir, bible_path, story_design_path, screenplay_path,
     narrative_plan_path, scene_cards_path, shot_cards_path, render_plan_path,
     continuity_plan_path, reference_manifest_path, render_plan_ingredients_path,
-    ingredients_llm, report_ingredients_analysis, manifest_path,
+    ingredients_llm, report_ingredients_analysis, manifest_path, story_plan_path,
 ) -> MoviePipelineResult:
     if not args.skip_movie_ingredients_sheets:
         from feverslop.application.movie_ingredients_sheets import (
@@ -801,6 +840,7 @@ def _run_ingredients_workflow(
         reference_manifest_path=reference_manifest_path,
         final_video_path=final_video_path,
         debug_workflows_dir=ingredients_debug_workflows_dir,
+        story_plan_path=story_plan_path,
     )
 
 
@@ -809,6 +849,7 @@ def _run_msr_workflow(
     narrative_plan_path, scene_cards_path, shot_cards_path, render_plan_path,
     continuity_plan_path, render_plan_msr_path, reference_manifest_path,
     ingredients_llm, report_msr_analysis, report_ingredients_analysis, manifest_path,
+    story_plan_path,
 ) -> MoviePipelineResult:
     if _movie_uses_msr_reference_enrichment(config["movie_video_workflow"]) and not args.skip_movie_msr_enrich:
         from feverslop.application.movie_msr_enrichment import (
@@ -923,6 +964,7 @@ def _run_msr_workflow(
         reference_manifest_path=reference_manifest_path,
         final_video_path=final_video_path,
         debug_workflows_dir=debug_workflows_dir,
+        story_plan_path=story_plan_path,
     )
 
 
@@ -952,6 +994,307 @@ def _format_startframe_step(event: dict[str, Any]) -> str:
     actor_id = str(event.get("actor_id") or "").strip()
     actor_suffix = f" actor {actor_id}" if actor_id else ""
     return f"rendered {kind} {completed}/{total}: scene {scene}{actor_suffix}"
+
+
+# --- Canonical story plan (narrative film) ---
+
+def _movie_plan_paths(project_dir: Path) -> tuple[Path, Path]:
+    movie_dir = Path(project_dir) / "movie"
+    return movie_dir / "plan.json", movie_dir / "plan.manifest.json"
+
+
+def _try_read_json(path: Path) -> dict:
+    try:
+        return read_json_object(path)
+    except (OSError, ValueError, FeverSlopDataError):
+        return {}
+
+
+def _configured_location_items(config: Mapping[str, Any]) -> list:
+    raw = config.get("structured_locations")
+    if not isinstance(raw, list) or not raw:
+        raw = config.get("locations") if isinstance(config.get("locations"), list) else []
+    return raw
+
+
+def _movie_plan_inputs(project_dir: Path, render_plan: Mapping[str, Any], config: Mapping[str, Any]) -> dict[str, Any]:
+    """Canonical planning inputs used for the movie plan fingerprint."""
+    source_type, story_text, desired_length = _movie_source_metadata(project_dir, render_plan)
+    return {
+        "name": str(render_plan.get("title") or Path(project_dir).name),
+        "source_type": source_type,
+        "story_text": story_text,
+        "desired_length": desired_length,
+        "width": int((render_plan.get("resolution") or {}).get("width") or 1280),
+        "height": int((render_plan.get("resolution") or {}).get("height") or 704),
+        "actors": config.get("actors") if isinstance(config.get("actors"), list) else [],
+        "locations": _configured_location_items(config),
+        "shots": [
+            {
+                "shot_id": _movie_shot_id(shot, index),
+                "description": str(shot.get("description") or shot.get("action") or ""),
+                "actor_ids": [str(item) for item in _movie_shot_actor_ids(shot)],
+                "location_id": _movie_shot_location_id(shot),
+            }
+            for index, shot in enumerate(render_plan.get("shots") or [], start=1)
+            if isinstance(shot, Mapping)
+        ],
+    }
+
+
+def _movie_plan_fingerprint(inputs: Mapping[str, Any]) -> str:
+    """Deterministic sha256 fingerprint of the movie planning inputs."""
+    encoded = json.dumps(inputs, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _beat_phase(index: int, total: int) -> StoryPhase:
+    """Deterministic narrative phase for the index-th beat of the plan."""
+    if total == 1:
+        return StoryPhase.resolution
+    if index == 0:
+        return StoryPhase.opening
+    if index == total - 1:
+        return StoryPhase.resolution
+    if index == total - 2:
+        return StoryPhase.climax
+    return StoryPhase.development
+
+
+def _shot_character_ids(shot: Mapping[str, Any], known: set[str]) -> list[str]:
+    raw = _movie_shot_actor_ids(shot)
+    result: list[str] = []
+    for value in raw:
+        actor_id = str(value).strip()
+        if actor_id and actor_id in known and actor_id not in result:
+            result.append(actor_id)
+    return result
+
+
+def _shot_location_id(shot: Mapping[str, Any], known: set[str]) -> str:
+    location_id = _movie_shot_location_id(shot)
+    return location_id if location_id in known else ""
+
+
+def _movie_shot_id(shot: Mapping[str, Any], index: int) -> str:
+    return str(shot.get("shot_id") or f"shot_{index:04d}").strip()
+
+
+def _movie_shot_actor_ids(shot: Mapping[str, Any]) -> list[Any]:
+    references = shot.get("reference_ids")
+    if not isinstance(references, Mapping):
+        references = {}
+    raw = shot.get("actor_ids") or references.get("actors") or []
+    return raw if isinstance(raw, list) else []
+
+
+def _movie_shot_location_id(shot: Mapping[str, Any]) -> str:
+    references = shot.get("reference_ids")
+    if not isinstance(references, Mapping):
+        references = {}
+    return str(shot.get("location_id") or references.get("location") or "").strip()
+
+
+def _plan_cast_and_locations(
+    config: Mapping[str, Any],
+    shots: list[Mapping[str, Any]],
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Deterministic cast and locations: configured first, then shot references."""
+    characters: list[dict[str, str]] = []
+    seen_characters: set[str] = set()
+    for actor in config.get("actors") or []:
+        if not isinstance(actor, Mapping):
+            continue
+        actor_id = safe_id(actor.get("id") or actor.get("name"), "")
+        if not actor_id or actor_id in seen_characters:
+            continue
+        seen_characters.add(actor_id)
+        characters.append({"id": actor_id, "name": str(actor.get("name") or actor.get("id") or actor_id).strip()})
+    for shot in shots:
+        for value in _movie_shot_actor_ids(shot):
+            actor_id = str(value).strip()
+            if actor_id and actor_id not in seen_characters:
+                seen_characters.add(actor_id)
+                characters.append({"id": actor_id, "name": actor_id})
+    locations: list[dict[str, str]] = []
+    seen_locations: set[str] = set()
+    for item in _configured_location_items(config):
+        if isinstance(item, Mapping):
+            location_id = safe_id(item.get("id") or item.get("name"), "")
+            name = str(item.get("name") or item.get("id") or "").strip()
+        else:
+            location_id = safe_id(item, "")
+            name = str(item).strip()
+        if not location_id or location_id in seen_locations:
+            continue
+        seen_locations.add(location_id)
+        locations.append({"id": location_id, "name": name or location_id})
+    for shot in shots:
+        location_id = _movie_shot_location_id(shot)
+        if location_id and location_id not in seen_locations:
+            seen_locations.add(location_id)
+            locations.append({"id": location_id, "name": location_id})
+    return characters, locations
+
+
+def _build_movie_story_plan(
+    project_dir: Path,
+    render_plan: Mapping[str, Any],
+    config: Mapping[str, Any],
+    source_fingerprint: str,
+) -> StoryPlan:
+    """Build StoryPlan(mode="narrative_film") deterministically.
+
+    Shot IDs and beat order come from the render plan; shot timing/duration
+    stays in the render plan (the plan never carries timestamps). Cast and
+    locations come from the project config plus shot references.
+    """
+    shots = [entry for entry in render_plan.get("shots") or [] if isinstance(entry, Mapping)]
+    characters, locations = _plan_cast_and_locations(config, shots)
+    character_ids = {item["id"] for item in characters}
+    location_ids = {item["id"] for item in locations}
+    # Group shots into beats (scenes) by location, preserving render plan order.
+    groups: list[tuple[str, list[Mapping[str, Any]]]] = []
+    group_index: dict[str, int] = {}
+    for index, shot in enumerate(shots, start=1):
+        shot_id = _movie_shot_id(shot, index)
+        if not shot_id:
+            continue
+        location_id = _shot_location_id(shot, location_ids)
+        if location_id not in group_index:
+            group_index[location_id] = len(groups)
+            groups.append((location_id, []))
+        groups[group_index[location_id]][1].append(shot)
+    total = len(groups)
+    beats: list[StoryBeat] = []
+    segments: list[SegmentBrief] = []
+    for beat_index, (location_id, group_shots) in enumerate(groups):
+        beat_id = f"beat_{beat_index + 1:04d}"
+        beat_character_ids: list[str] = []
+        for shot in group_shots:
+            for actor_id in _shot_character_ids(shot, character_ids):
+                if actor_id not in beat_character_ids:
+                    beat_character_ids.append(actor_id)
+        description = next(
+            (
+                str(shot.get("description") or shot.get("action") or "").strip()
+                for shot in group_shots
+                if str(shot.get("description") or shot.get("action") or "").strip()
+            ),
+            f"Scene {beat_index + 1}",
+        )
+        beats.append(
+            StoryBeat(
+                id=beat_id,
+                phase=_beat_phase(beat_index, total),
+                description=description,
+                character_ids=beat_character_ids,
+                location_id=location_id or None,
+            )
+        )
+        for shot in group_shots:
+            shot_id = _movie_shot_id(shot, len(segments) + 1)
+            visual_direction = str(shot.get("description") or shot.get("action") or "").strip() or f"Shot {len(segments) + 1}"
+            segments.append(
+                SegmentBrief(
+                    id=f"segment_{len(segments) + 1:04d}",
+                    target=shot_id,
+                    beat_id=beat_id,
+                    character_ids=_shot_character_ids(shot, character_ids),
+                    location_id=_shot_location_id(shot, location_ids) or None,
+                    visual_direction=visual_direction,
+                )
+            )
+    source_refs = ["movie/render_plan.json"]
+    if (Path(project_dir) / "config.json").is_file():
+        source_refs.append("config.json")
+    return StoryPlan(
+        mode=StoryMode.narrative_film,
+        source_fingerprint=source_fingerprint,
+        provenance=PlanProvenance(
+            producer="feverslop.movie_pipeline",
+            source_refs=source_refs,
+            notes=f"narrative_film plan: {len(segments)} shots across {len(beats)} beats",
+        ),
+        characters=[CanonicalCharacter(id=item["id"], name=item["name"]) for item in characters],
+        locations=[CanonicalLocation(id=item["id"], name=item["name"]) for item in locations],
+        beats=beats,
+        segments=segments,
+    )
+
+
+def _try_read_plan_manifest(path: Path) -> StoryPlanArtifactManifest | None:
+    if not path.is_file():
+        return None
+    try:
+        return read_manifest(path)
+    except (FeverSlopDataError, OSError, ValueError):
+        return None
+
+
+def _try_read_story_plan(path: Path) -> StoryPlan | None:
+    if not path.is_file():
+        return None
+    try:
+        return read_story_plan(path)
+    except (FeverSlopDataError, OSError, ValueError):
+        return None
+
+
+def _resolve_movie_story_plan(project_dir: Path, render_plan_path: Path) -> Path:
+    """Build or reuse the authoritative movie story plan at movie/plan.json.
+
+    A persisted plan is reused only when its manifest is not stale and its
+    schema/planner revision match; otherwise the plan is rebuilt
+    deterministically and persisted as authoritative. The plan is the single
+    source of truth for scene/shot IDs; the render plan remains the source
+    of truth for shot timing and duration.
+    """
+    project_dir = Path(project_dir)
+    plan_path, manifest_path = _movie_plan_paths(project_dir)
+    render_plan = read_json_object(render_plan_path)
+    config = _try_read_json(project_dir / "config.json")
+    inputs = _movie_plan_inputs(project_dir, render_plan, config)
+    fingerprint = _movie_plan_fingerprint(inputs)
+    if plan_path.is_file() and manifest_path.is_file():
+        manifest = _try_read_plan_manifest(manifest_path)
+        if (
+            manifest is not None
+            and manifest.artifact_class is ArtifactClass.authoritative
+            and not manifest_is_stale(manifest, input_fingerprint=fingerprint)
+        ):
+            plan = _try_read_story_plan(plan_path)
+            if (
+                plan is not None
+                and plan.mode is StoryMode.narrative_film
+                and plan.schema_version in SUPPORTED_SCHEMA_VERSIONS
+                and plan.planner_revision == PLANNER_REVISION
+                and manifest_matches_story_plan(manifest, plan)
+            ):
+                _log_stage("Movie planning", "reusing canonical story plan (fingerprint match)")
+                return plan_path
+        _log_stage("Movie planning", "canonical story plan invalidated (fingerprint or revision mismatch)")
+    else:
+        _log_stage("Movie planning", "no persisted canonical story plan found")
+    shot_count = len([entry for entry in render_plan.get("shots") or [] if isinstance(entry, Mapping)])
+    _log_stage("Movie planning", f"building canonical story plan ({shot_count} shots)")
+    plan = _build_movie_story_plan(project_dir, render_plan, config, fingerprint)
+    if plan.schema_version not in SUPPORTED_SCHEMA_VERSIONS:
+        raise FeverSlopDataError(f"unsupported story plan schema: {plan.schema_version}")
+    if plan.planner_revision != PLANNER_REVISION:
+        raise FeverSlopDataError(f"planner revision mismatch: {plan.planner_revision}")
+    write_story_plan(plan_path, plan)
+    write_manifest(
+        manifest_path,
+        StoryPlanArtifactManifest(
+            artifact_class=ArtifactClass.authoritative,
+            regeneration_policy=RegenerationPolicy.on_input_change,
+            input_fingerprint=fingerprint,
+            plan_fingerprint=story_plan_fingerprint(plan),
+        ),
+    )
+    _log_stage("Movie planning", f"canonical story plan persisted to movie/plan.json ({len(plan.segments)} shots, {len(plan.beats)} beats)")
+    return plan_path
 
 
 # --- Adapter builders ---

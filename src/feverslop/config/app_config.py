@@ -10,6 +10,7 @@ from typing import Any
 
 from feverslop.config.comfyui import ComfyUIModelOverride
 from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS
+from feverslop.domain.story_plan import PLANNER_REVISION
 from feverslop.domain.video_workflow_profile import VideoWorkflowProfile
 from feverslop.path_utils import coerce_local_path
 from feverslop.ports.reporting import parse_log_level
@@ -17,6 +18,21 @@ from feverslop.prompting.dspy_runtime import DEFAULT_TASK_TEMPERATURES
 from feverslop.utils.io import read_json
 
 _logger = logging.getLogger(__name__)
+
+
+@dataclass
+class StoryPlanningConfig:
+    """Story-plan build/approval settings (issue #1386).
+
+    ``require_approval`` gates a freshly built plan behind an explicit
+    ``--story-plan-approve`` before concept generation. ``planner_revision``
+    names the planner that produced the plan so a revision change invalidates
+    cached planning state on resume.
+    """
+
+    require_approval: bool = False
+    planner_revision: str = PLANNER_REVISION
+    failure_policy: str = "warn"
 
 
 @dataclass
@@ -41,6 +57,7 @@ class LLMConfig:
     # bounded repair: "warn" (default) preserves structurally valid concepts
     # and continues with a diagnostic warning; "block" raises and aborts.
     narrative_contract_enforcement: str = "warn"
+    story_planning: StoryPlanningConfig = field(default_factory=StoryPlanningConfig)
     chat_template_kwargs: dict[str, Any] = field(default_factory=dict)
     models: dict[str, str] = field(default_factory=dict)
     # Per-task DSPy temperatures (planner, renderer, judge, analyzer). Always
@@ -384,6 +401,27 @@ class AppConfig:
             raise ValueError(
                 "llm.narrative_contract_enforcement must be 'warn' or 'block'"
             )
+        story_planning_raw = llm_raw.get("story_planning")
+        if story_planning_raw is None:
+            story_planning_raw = raw.get("story_planning", {})
+        if story_planning_raw is None:
+            story_planning_raw = {}
+        if not isinstance(story_planning_raw, dict):
+            raise ValueError("story_planning must be an object")
+        story_planning_require_approval = _parse_bool(
+            story_planning_raw.get("require_approval", False),
+            "story_planning.require_approval",
+        )
+        story_planning_planner_revision = str(
+            story_planning_raw.get("planner_revision", PLANNER_REVISION)
+        ).strip()
+        if not story_planning_planner_revision:
+            raise ValueError("story_planning.planner_revision must be a non-empty string")
+        story_planning_failure_policy = str(
+            story_planning_raw.get("failure_policy", "warn")
+        ).strip().lower()
+        if story_planning_failure_policy not in ("warn", "block"):
+            raise ValueError("story_planning.failure_policy must be 'warn' or 'block'")
         llm_chat_template_kwargs_raw = llm_raw.get("chat_template_kwargs", {})
         if not isinstance(llm_chat_template_kwargs_raw, dict):
             raise ValueError("llm.chat_template_kwargs must be an object")
@@ -458,6 +496,11 @@ class AppConfig:
                 prompt_judge_blocking=llm_prompt_judge_blocking,
                 prompt_planner_max_tokens=llm_prompt_planner_max_tokens,
                 narrative_contract_enforcement=llm_narrative_enforcement,
+                story_planning=StoryPlanningConfig(
+                    require_approval=story_planning_require_approval,
+                    planner_revision=story_planning_planner_revision,
+                    failure_policy=story_planning_failure_policy,
+                ),
                 chat_template_kwargs=llm_chat_template_kwargs,
                 models=llm_models,
                 task_temperatures=llm_task_temperatures,

@@ -101,10 +101,18 @@ class MusicVideoPromptPipeline:
         story_idea: str,
         global_context: dict | None = None,
         notes: str = "",
+        segment_briefs: dict | None = None,
     ) -> dict:
+        payload: dict = {
+            "STORY_IDEA": story_idea,
+            "GLOBAL_CONTEXT": global_context or {},
+            "NOTES": notes,
+            "SEGMENT_TIMELINE_JSON": stage1_segments,
+        }
+        if segment_briefs:
+            payload["SEGMENT_BRIEFS"] = segment_briefs
         response = self.prompt_modules.concepts(
-            {"STORY_IDEA": story_idea, "GLOBAL_CONTEXT": global_context or {}, "NOTES": notes,
-             "SEGMENT_TIMELINE_JSON": stage1_segments},
+            payload,
             silent_mode=bool((global_context or {}).get("silent_mode", False)),
         )
         return response if isinstance(response, dict) else extract_json_object(str(response))

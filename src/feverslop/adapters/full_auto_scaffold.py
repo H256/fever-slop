@@ -30,6 +30,7 @@ class LocalProjectScaffold:
         video_pipeline: str = "ltx_i2v",
         render_profile: str = "ltx25-i2v-draft",
         silent_mode: bool = False,
+        story_direction: str = "",
     ) -> ProjectScaffoldResult:
         if not is_safe_identifier(project_slug) or sanitize_path_component(project_slug) != project_slug:
             raise ValueError(f"Unsafe project slug: {project_slug!r}")
@@ -94,6 +95,7 @@ class LocalProjectScaffold:
                         "smooth_frames": 10,
                     },
                     "story_idea": spec.visual_story_idea,
+                    **({"story_direction": story_direction} if story_direction else {}),
                     "style": spec.visual_style,
                     "music_style": spec.music_style or spec.tags,
                     **({"cast_idea": spec.visual_cast_idea} if getattr(spec, "visual_cast_idea", "") else {}),
