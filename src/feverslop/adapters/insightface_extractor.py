@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import urllib.request
-from dataclasses import replace
 from pathlib import Path
 
 import cv2
@@ -10,7 +9,7 @@ import numpy as np
 from insightface.app import FaceAnalysis
 from insightface.model_zoo import get_model
 
-from feverslop.domain.face_detection import FaceBox, cosine_similarity
+from feverslop.domain.face_detection import FaceBox
 
 logger = logging.getLogger(__name__)
 
@@ -240,76 +239,6 @@ class InsightFaceExtractor:
             )
 
         return results
-
-    def detect_and_match(
-        self,
-        video_frame_rgb: np.ndarray,
-        actor_embeddings: dict[str, np.ndarray],
-        threshold: float = 0.85,
-    ) -> list[FaceBox]:
-        """Detect faces in a frame and match to known actors by embedding."""
-        results = self.detect_all(video_frame_rgb)
-        if not results:
-            return []
-
-        if not actor_embeddings:
-            return results
-
-        matched_boxes = []
-        unmatched_boxes = []
-        for box in results:
-            if box.embedding is not None:
-                matched_id = _best_match_actor(box.embedding, actor_embeddings, threshold)
-                matched_boxes.append(replace(box, actor_id=matched_id))
-            else:
-                unmatched_boxes.append(box)
-
-        matched_count = sum(1 for b in matched_boxes if b.actor_id is not None)
-
-        if matched_count == 0:
-            all_boxes = matched_boxes + unmatched_boxes
-            all_boxes.sort(key=lambda f: (f.x2 - f.x1) * (f.y2 - f.y1), reverse=True)
-            actor_ids = list(actor_embeddings.keys())
-            reassigned = []
-            for i, box in enumerate(all_boxes):
-                if i < len(actor_ids):
-                    reassigned.append(replace(box, actor_id=actor_ids[i]))
-                else:
-                    reassigned.append(box)
-            logger.warning(
-                "[DIAG] No embedding matches, fallback: %d face(s) -> %d actor(s) by size",
-                len(all_boxes), len(actor_ids),
-            )
-            return reassigned
-
-        return matched_boxes + unmatched_boxes
-
-
-def _best_match_actor(
-    embedding: np.ndarray,
-    actor_embeddings: dict[str, np.ndarray],
-    threshold: float,
-) -> str | None:
-    if not actor_embeddings:
-        return None
-
-    best_score = 0.0
-    best_id = None
-    for actor_id, ref_emb in actor_embeddings.items():
-        score = cosine_similarity(embedding, ref_emb)
-        if score > best_score:
-            best_score = score
-            best_id = actor_id
-
-        logger.debug(
-            "[DIAG] Cosine vs %s: %.4f (threshold %.2f)",
-            actor_id, score, threshold,
-        )
-
-    if best_score >= threshold:
-        return best_id
-    return None
-
 
 def _crop_square(img: np.ndarray, x1: int, y1: int, x2: int, y2: int, padding: float = 0.25) -> np.ndarray:
     h, w = img.shape[:2]
