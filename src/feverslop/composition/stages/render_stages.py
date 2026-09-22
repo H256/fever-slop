@@ -72,6 +72,7 @@ from ..config_loader import PipelineRunState, count_render_plan_items
 from .plan_stages import (
     _get_resolution,
     _preserve_enriched_reference_paths,
+    _require_video_pipeline,
     _selected_video_workflows,
 )
 from .progress import (
@@ -262,8 +263,7 @@ def _missing_prepare_inputs(state: PipelineRunState, scenes: tuple[RenderScene, 
 
 
 def _run_ltx_prepare_workflows_stage(state: PipelineRunState) -> None:
-    if state.args.video_pipeline not in ("ltx_msr", "ltx_ingredients"):
-        raise ValueError("prepare_workflows requires --video-pipeline ltx_msr or ltx_ingredients")
+    _require_video_pipeline(state, ("ltx_msr", "ltx_ingredients"), "prepare_workflows")
     all_scenes = _all_render_scenes(state) if state.plan_for_next_step.is_file() else []
     preflight = _run_visual_consistency_preflight(state, all_scenes)
     all_scenes = _project_visual_consistency_contracts(
