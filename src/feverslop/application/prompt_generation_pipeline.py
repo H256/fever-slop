@@ -537,7 +537,16 @@ class PromptGenerationPipeline:
             return None, False
 
         llm = self.llm_factory(app_config)
-        service = self.story_plan_service_factory(llm)
+        factory = self.story_plan_service_factory
+        story_planning = getattr(getattr(app_config, "llm", None), "story_planning", None)
+        acting_batch_size = int(getattr(story_planning, "acting_batch_size", 8))
+        # Preserve compatibility with injected one-argument test factories,
+        # while the production factory receives the user-configured bound.
+        parameters = inspect.signature(factory).parameters
+        if "acting_batch_size" in parameters:
+            service = factory(llm, acting_batch_size=acting_batch_size)
+        else:
+            service = factory(llm)
 
         global_context = global_context or {}
         effective_direction = (

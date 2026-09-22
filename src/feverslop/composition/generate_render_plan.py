@@ -70,12 +70,14 @@ def build_story_plan_service(
     llm: Any,
     *,
     dspy_runtime: Any | None = None,
+    acting_batch_size: int = 8,
 ) -> StoryPlanService:
     """Build the production StoryPlan service and its typed DSPy boundary."""
     return StoryPlanService(
         prompt_modules=StoryPlanServiceAdapter(
             StoryPlanPromptModules(llm, dspy_runtime=dspy_runtime)
-        )
+        ),
+        acting_batch_size=acting_batch_size,
     )
 
 
