@@ -851,6 +851,14 @@ class StoryPlanServiceTests(unittest.TestCase):
                         "descent", "encounter_lich", "traverse_dragon",
                         "reach_fountain", "drink_water", "ascend",
                     ],
+                    "milestone_bindings": [
+                        {"milestone_id": "descent", "location_id": "cave", "relative_position": 0.0},
+                        {"milestone_id": "encounter_lich", "location_id": "lich_lair", "relative_position": 0.0},
+                        {"milestone_id": "traverse_dragon", "location_id": "dragon_lair", "relative_position": 0.0},
+                        {"milestone_id": "reach_fountain", "location_id": "fountain", "relative_position": 0.0},
+                        {"milestone_id": "drink_water", "location_id": "fountain", "relative_position": 0.5},
+                        {"milestone_id": "ascend", "location_id": "fountain", "relative_position": 1.0},
+                    ],
                     "actor_allowed_locations": {
                         "lich": ["lich_lair"],
                         "dragon": ["dragon_lair"],

@@ -11,6 +11,7 @@ each entry either an object {"id", "source"} or a plain string; "source" is a
 short quote from the story idea that justifies the visit), "milestone_order"
 (an ordered list of short snake_case narrative milestone ids that must occur in
 this order, each entry either {"id", "source"} or a plain string),
+"milestone_bindings" (one object per milestone: {"milestone_id", "location_id", "relative_position"}; use only canonical location ids and a relative_position from 0.0 to 1.0 within that location's phase),
 "terminal_states" (an object keyed by canonical actor id, each value an object
 {"milestone", "state", "reset_event", "source"} describing the actor's required
 end state; omit actors whose end state does not matter),

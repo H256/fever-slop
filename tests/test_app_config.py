@@ -383,7 +383,7 @@ class AppConfigTests(unittest.TestCase):
 
         self.assertTrue(config.llm.story_planning.require_approval)
         # planner_revision falls back to the default when unset.
-        self.assertEqual("planner/v3", config.llm.story_planning.planner_revision)
+        self.assertEqual("planner/v4", config.llm.story_planning.planner_revision)
 
     def test_loads_story_planning_acting_batch_size(self):
         from feverslop.config.app_config import AppConfig

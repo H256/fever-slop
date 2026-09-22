@@ -769,28 +769,24 @@ class StoryPlanService:
                 "character_ids": [*base_characters, *allowed],
             })
 
-        milestones = [
-            str(item.get("id") if isinstance(item, Mapping) else item).strip()
-            for item in contract.get("milestone_order", [])
-        ]
-        milestones = [item for item in milestones if item]
-        by_location: dict[int, list[str]] = {index: [] for index in range(len(location_ids))}
-        for milestone in milestones:
-            lower = milestone.lower()
-            location_index = next(
-                (index for index, location_id in enumerate(location_ids) if location_id.lower() in lower),
-                None,
-            )
-            if location_index is None:
-                if "lich" in lower:
-                    location_index = next((i for i, item in enumerate(location_ids) if "lich" in item.lower()), 0)
-                elif "dragon" in lower:
-                    location_index = next((i for i, item in enumerate(location_ids) if "dragon" in item.lower()), 0)
-                elif any(token in lower for token in ("fountain", "water", "ascen", "transfig")):
-                    location_index = len(location_ids) - 1
-                else:
-                    location_index = 0
-            by_location[location_index].append(milestone)
+        bindings = contract.get("milestone_bindings", [])
+        if not isinstance(bindings, list):
+            return None
+        by_location: dict[int, list[tuple[str, float]]] = {index: [] for index in range(len(location_ids))}
+        for binding in bindings:
+            if not isinstance(binding, Mapping):
+                return None
+            milestone = str(binding.get("milestone_id", "")).strip()
+            location_id = str(binding.get("location_id", "")).strip()
+            if not milestone or location_id not in location_ids:
+                return None
+            try:
+                relative_position = float(binding.get("relative_position"))
+            except (TypeError, ValueError):
+                return None
+            if not 0.0 <= relative_position <= 1.0:
+                return None
+            by_location[location_ids.index(location_id)].append((milestone, relative_position))
 
         segment_count = len(request.segments)
         assignments: list[int] = [
@@ -800,10 +796,10 @@ class StoryPlanService:
         milestone_by_position: dict[int, str] = {}
         for location_index, items in by_location.items():
             positions = [i for i, value in enumerate(assignments) if value == location_index]
-            for item_index, milestone in enumerate(items):
+            for milestone, relative_position in items:
                 if not positions:
                     continue
-                target = positions[round(item_index * (len(positions) - 1) / max(1, len(items) - 1))]
+                target = positions[round(relative_position * (len(positions) - 1))]
                 milestone_by_position[target] = milestone
 
         briefs: list[dict[str, Any]] = []
