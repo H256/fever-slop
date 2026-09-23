@@ -1593,7 +1593,36 @@ def _dedup_one_shot_milestones(
             kept.append(milestone)
         if changed:
             narrative["milestones"] = kept
+    _log_dedup(configured, concepts, removed)
     return removed
+
+
+def _log_dedup(
+    configured: set[str],
+    concepts: dict[str, Any],
+    removed: list[dict[str, str]],
+) -> None:
+    """Emit a concise one-shot dedup diagnostic for the final gate."""
+    import logging
+    logger = logging.getLogger(__name__)
+    if not logger.isEnabledFor(logging.INFO) or not configured:
+        return
+    for milestone in sorted(configured):
+        present = [
+            segment_id for segment_id in sorted(concepts)
+            if milestone in _normalized_list(
+                _narrative(concepts[segment_id]).get("milestones")
+            )
+        ]
+        removed_here = [
+            item["segment_id"] for item in removed
+            if item["milestone"] == milestone
+        ]
+        if present or removed_here:
+            logger.info(
+                "one-shot %r kept in %s, removed from %s",
+                milestone, present, removed_here,
+            )
 
 
 _ABSENT_STATES = {"absent", "ascended_absent", "disappeared"}
@@ -1736,7 +1765,8 @@ def _reorder_out_of_order_milestones(
     contract's milestone order.  Python owns this mechanical rule: the
     out-of-order milestone is moved to a segment after its immediate
     predecessor (appended to that segment's milestone list) so the chronology
-    gate passes instead of failing the whole stage.
+    gate passes instead of failing the whole stage.  A milestone whose
+    predecessor was never allocated is left for the gate to reject.
     """
     milestone_entries = _ordered_contract_entries(contract, "milestone_order")
     milestone_ids = [item_id for item_id, _source in milestone_entries]
@@ -1750,6 +1780,7 @@ def _reorder_out_of_order_milestones(
         ):
             if milestone in milestone_ids and milestone not in first_allocation:
                 first_allocation[milestone] = segment_id
+    _log_reorder("original first_allocation", first_allocation, milestone_ids)
     moved: list[dict[str, str]] = []
     for rank in range(1, len(milestone_ids)):
         milestone = milestone_ids[rank]
@@ -1776,23 +1807,57 @@ def _reorder_out_of_order_milestones(
                  "to": first_allocation[milestone]}
             )
             continue
-        target_segment = segment_ids[target_idx]
-        source_narrative = _narrative(concepts[first_allocation[milestone]])
-        raw = source_narrative.get("milestones") or []
-        source_narrative["milestones"] = [
-            item for item in raw
-            if str(_normalize_semantic_value(item)) != milestone
+        # Move ALL occurrences at or before the predecessor to the target so
+        # no pre-predecessor copy remains to trip the gate.
+        source_segments = [
+            segment_ids[i] for i in range(p_idx + 1)
+            if milestone in _normalized_list(
+                _narrative(concepts[segment_ids[i]]).get("milestones")
+            )
         ]
+        if not source_segments:
+            continue
+        for source_segment in source_segments:
+            narrative = _narrative(concepts[source_segment])
+            raw = narrative.get("milestones") or []
+            narrative["milestones"] = [
+                item for item in raw
+                if str(_normalize_semantic_value(item)) != milestone
+            ]
+        target_segment = segment_ids[target_idx]
         target_narrative = _narrative(concepts[target_segment])
         target_raw = target_narrative.get("milestones") or []
         if milestone not in _normalized_list(target_raw):
             target_narrative["milestones"] = list(target_raw) + [milestone]
         moved.append(
             {"milestone": milestone,
-             "from": first_allocation[milestone], "to": target_segment}
+             "from": source_segments[0], "to": target_segment}
         )
         first_allocation[milestone] = target_segment
+    _log_reorder("final first_allocation", first_allocation, milestone_ids)
+    if moved:
+        _log_reorder("moves", moved, milestone_ids)
     return moved
+
+
+def _log_reorder(
+    label: str,
+    data: dict[str, str] | list[dict[str, str]],
+    milestone_ids: list[str],
+) -> None:
+    """Emit a concise milestone-ordering diagnostic for the final gate."""
+    import logging
+    logger = logging.getLogger(__name__)
+    if not logger.isEnabledFor(logging.INFO):
+        return
+    if isinstance(data, dict):
+        order = [
+            f"{mid}={data.get(mid, '-')}" for mid in milestone_ids
+        ]
+        logger.info("milestone reorder [%s]: %s", label, " ".join(order))
+    else:
+        logger.info("milestone reorder [%s]: %s", label, data)
+
 
 
 def _narrative_contract(global_context: dict[str, Any]) -> dict[str, Any]:
@@ -1838,6 +1903,22 @@ def _approved_chronology_exception(
     return ""
 
 
+def _reset_authorizes_milestone(
+    narrative: dict[str, Any],
+    contract: dict[str, Any],
+    milestone: str,
+) -> bool:
+    """A one-shot milestone re-emitted where the segment names it in
+    reset_events is an authorized reprise, not a chronology violation."""
+    one_shot = {
+        str(_normalize_semantic_value(item))
+        for item in contract.get("one_shot_milestones") or ()
+    }
+    if milestone not in one_shot:
+        return False
+    return milestone in set(_normalized_list(narrative.get("reset_events")))
+
+
 def _chronology_conflicts(
     narrative: dict[str, Any],
     prior_concepts: dict[str, Any],
@@ -1862,6 +1943,10 @@ def _chronology_conflicts(
         exception = _approved_chronology_exception(
             narrative, contract, "milestone_order",
         )
+        if not exception and _reset_authorizes_milestone(
+            narrative, contract, milestone
+        ):
+            exception = "reset_events"
         if rank < highest_rank and not exception:
             previous_id = milestone_ids[highest_rank]
             source = milestone_entries[rank][1]
