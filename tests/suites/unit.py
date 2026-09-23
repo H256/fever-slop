@@ -144,6 +144,7 @@ UNIT_MODULES = (
     "prepared_workflow_manifest",
     "project_asset_archive",
     "project_config",
+    "project_render_settings",
     "project_visual_consistency",
     "prompt_generation_references",
     "prompt_generation_cast_preservation",
