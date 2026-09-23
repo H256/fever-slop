@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -362,10 +363,32 @@ class ComfyUIClient:
                 "type": file_type,
             },
             timeout=300,
+            stream=True,
         )
         self._raise_for_status(response, "download view file")
 
-        output_path.write_bytes(response.content)
+        # Stream to a temp file in the same directory, then rename into place
+        # only after a complete transfer. On any failure the temp file is
+        # removed, so an interrupted download is retried on the next run
+        # instead of leaving a truncated file that the skip check would
+        # treat as a valid rendered clip.
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{output_path.name}.", suffix=".part", dir=output_path.parent
+        )
+        temp_path = Path(temp_name)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                for chunk in response.iter_content(chunk_size=1 << 20):
+                    if chunk:
+                        f.write(chunk)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_path, output_path)
+        except BaseException:
+            temp_path.unlink(missing_ok=True)
+            raise
+        finally:
+            response.close()
         return output_path
 
     def free_cache_and_vram(self) -> None:
