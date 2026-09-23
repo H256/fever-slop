@@ -242,15 +242,15 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
     def test_extract_last_frame_writes_single_png(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
         frame_count_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="240\n", stderr="")
-
         with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
-            run.side_effect = [frame_count_result, None]
+            # Call order: (0) frame count, (1) fps_mode probe, (2) encode.
+            run.side_effect = [frame_count_result, None, None]
             output = processor.extract_last_frame(
                 source_file=Path("scene_0001.mp4"),
                 output_file=Path("keyframes/scene_0002_start.png"),
             )
 
-        cmd = run.call_args_list[1].args[0]
+        cmd = run.call_args_list[2].args[0]
         self.assertEqual(Path("keyframes/scene_0002_start.png"), output)
         self.assertIn("-vf", cmd)
         self.assertIn("select=eq(n\\,239)", cmd)
@@ -272,14 +272,15 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
         frame_count_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="3\n", stderr="")
         with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
-            run.side_effect = [None, frame_count_result, None]
+            # Call order: (0) fps_mode probe, (1) first encode, (2) frame count, (3) last encode.
+            run.side_effect = [None, None, frame_count_result, None]
             outputs = processor.extract_first_and_last_frames(
                 "scene.mp4", "firstframe.png", "lastframe.png",
             )
 
         self.assertEqual((Path("firstframe.png"), Path("lastframe.png")), outputs)
-        self.assertIn("select=eq(n\\,0)", run.call_args_list[0].args[0])
-        self.assertIn("select=eq(n\\,2)", run.call_args_list[2].args[0])
+        self.assertIn("select=eq(n\\,0)", run.call_args_list[1].args[0])
+        self.assertIn("select=eq(n\\,2)", run.call_args_list[3].args[0])
 
 
 if __name__ == "__main__":
