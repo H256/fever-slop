@@ -6,13 +6,13 @@ import unittest
 class ResourcePhaseTests(unittest.TestCase):
     def test_resource_classification_covers_the_intentional_safe_resume_subset(self):
         from feverslop.composition.arg_parser import PipelineStage
-        from feverslop.domain.resource_phase import (
-            _COMFYUI_STAGES,
-            _LLM_STAGES,
-            _NEUTRAL_STAGES,
+        from feverslop.domain.stages import (
+            COMFYUI_STAGES,
+            LLM_STAGES,
+            NEUTRAL_STAGES,
         )
 
-        classified = _LLM_STAGES | _COMFYUI_STAGES | _NEUTRAL_STAGES
+        classified = LLM_STAGES | COMFYUI_STAGES | NEUTRAL_STAGES
         self.assertEqual(
             {
                 "set_resolution",
@@ -28,7 +28,7 @@ class ResourcePhaseTests(unittest.TestCase):
 
     def test_resume_order_excludes_non_resumable_compatibility_stages(self):
         from feverslop.composition.arg_parser import PipelineStage
-        from feverslop.domain.execution_plan import _RESUME_STAGE_ORDER
+        from feverslop.domain.stages import RESUME_STAGE_ORDER
 
         self.assertEqual(
             {
@@ -42,7 +42,7 @@ class ResourcePhaseTests(unittest.TestCase):
                 "prepare_workflows",
                 "storyboard_page",
             },
-            {stage.value for stage in PipelineStage} - set(_RESUME_STAGE_ORDER),
+            {stage.value for stage in PipelineStage} - set(RESUME_STAGE_ORDER),
         )
 
     def test_selects_comfyui_phase_with_leading_and_trailing_neutral_stages(self):
