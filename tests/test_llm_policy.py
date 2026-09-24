@@ -62,7 +62,7 @@ class LLMPolicyTests(unittest.TestCase):
             msr_segments_max_tokens,
         )
 
-        self.assertEqual(22528, concept_batch_max_tokens(10))
+        self.assertEqual(4096, concept_batch_max_tokens(10))
         self.assertEqual(15360, lyric_alignment_max_tokens(13))
         self.assertEqual(10240, msr_segments_max_tokens(4))
 
