@@ -229,6 +229,67 @@ class ProjectAssetArchiveTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertFalse(output_zip.exists())
 
+    def _symlink_layout(self, temp_dir: str) -> tuple[Path, Path, Path]:
+        """Project with a regular file plus a symlink pointing outside the project."""
+        project = Path(temp_dir) / "demo"
+        (project / "input").mkdir(parents=True)
+        outside = Path(temp_dir) / "outside"
+        outside.mkdir()
+        target = outside / "big_model.bin"
+        target.write_bytes(b"X" * 1000)
+        (project / "input" / "song.mp3").write_bytes(b"audio")
+        link = project / "input" / "linked_model.bin"
+        link.symlink_to(target)
+        return project, link, target
+
+    def test_collect_archive_members_skips_file_symlinks_by_default(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project, link, _ = self._symlink_layout(temp_dir)
+
+            members = collect_archive_members(project)
+
+            self.assertEqual(["input/song.mp3"], [member.arcname for member in members])
+            self.assertFalse(any(member.source == link for member in members))
+
+    def test_collect_archive_members_follows_symlinks_when_requested(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project, link, target = self._symlink_layout(temp_dir)
+
+            members = collect_archive_members(project, follow_symlinks=True)
+
+            arcnames = {member.arcname for member in members}
+            self.assertIn("input/linked_model.bin", arcnames)
+            linked = next(member for member in members if member.source == link)
+            self.assertEqual(target.stat().st_size, linked.size)
+
+    def test_collect_archive_members_skips_broken_symlinks(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir) / "demo"
+            (project / "input").mkdir(parents=True)
+            (project / "input" / "song.mp3").write_bytes(b"audio")
+            (project / "input" / "broken.bin").symlink_to(Path(temp_dir) / "missing.bin")
+
+            members = collect_archive_members(project, follow_symlinks=True)
+
+            self.assertEqual(["input/song.mp3"], [member.arcname for member in members])
+
+    def test_create_project_archive_excludes_symlink_targets_by_default(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project, link, _ = self._symlink_layout(temp_dir)
+            output_zip = Path(temp_dir) / "demo.zip"
+
+            created = create_project_archive(project_dir=project, output_zip=output_zip)
+
+            with ZipFile(created) as archive:
+                names = archive.namelist()
+            self.assertNotIn("input/linked_model.bin", names)
+            self.assertIn("input/song.mp3", names)
+
+    def test_arg_parser_accepts_follow_symlinks(self):
+        args = build_arg_parser().parse_args(["--follow-symlinks"])
+
+        self.assertTrue(args.follow_symlinks)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,8 @@ from typing import Protocol, TextIO, TypeVar
 
 from rich.console import Console
 from rich.markup import escape
+from rich.panel import Panel
+from rich.table import Table
 
 T = TypeVar("T")
 
@@ -106,15 +108,27 @@ class ConsoleReporter:
     def warning(self, text: str, *, title: str | None = None) -> None:
         self.panel(f"[yellow]{escape(text)}[/yellow]", title=f"[bold yellow]{escape(title or 'Warning')}[/bold yellow]")
     def panel(self, text: str, *, title: str | None = None) -> None:
-        heading = f"{title}\n" if title else ""
-        self.message(f"{heading}{text}")
+        self.console.print(
+            Panel(
+                text,
+                title=title or None,
+                border_style="cyan",
+                expand=False,
+            )
+        )
     def table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
-        self.message(title)
-        self.message(" | ".join(columns))
+        table = Table(title=title, header_style="bold cyan", expand=False)
+        for column in columns:
+            table.add_column(column)
         for row in rows:
-            self.message(" | ".join(row))
+            table.add_row(*row)
+        self.console.print(table)
     def run_progress(self, description: str, func: Callable[[], T]) -> T:
-        return func()
+        # The status is animated on an interactive terminal.  The preceding
+        # line keeps the same work visible in redirected logs and CI output.
+        self.message(f"[cyan]{description}[/cyan]")
+        with self.console.status(description, spinner="dots12"):
+            return func()
 
 
 class ReporterConsole:

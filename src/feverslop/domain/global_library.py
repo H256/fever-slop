@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Any
 
 SCHEMA_VERSION = 1
+
+# Asset/look ids become filesystem path components (library/<kind>/<id>,
+# <asset_dir>/looks/<look_id>). Restrict them to a safe character set so a
+# malformed or malicious id cannot traverse the path or inject separators.
+_SAFE_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 class AssetKind(StrEnum):
@@ -34,6 +40,13 @@ def _safe_relative_path(value: str, field_name: str) -> str:
     return result
 
 
+def _safe_id(value: str, field_name: str) -> str:
+    result = _text(value, field_name)
+    if not _SAFE_ID.fullmatch(result):
+        raise ValueError(f"{field_name} must be a safe id (letters, digits, underscore, hyphen)")
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class AssetLook:
     id: str
@@ -49,7 +62,7 @@ class AssetLook:
     contact_sheet_image: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "id", _text(self.id, "look id"))
+        object.__setattr__(self, "id", _safe_id(self.id, "look id"))
         object.__setattr__(self, "name", _text(self.name, "look name"))
         object.__setattr__(self, "description", _text(self.description, "look description", required=False))
         for field_name in ("hero_image", "sheet_image", "contact_sheet_image", "anchor_image", "sequence_video"):
@@ -114,7 +127,7 @@ class GlobalAsset:
     metadata: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "id", _text(self.id, "asset id"))
+        object.__setattr__(self, "id", _safe_id(self.id, "asset id"))
         object.__setattr__(self, "name", _text(self.name, "asset name"))
         object.__setattr__(self, "description", _text(self.description, "asset description", required=False))
         try:
