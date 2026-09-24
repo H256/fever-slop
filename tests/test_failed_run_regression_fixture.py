@@ -213,10 +213,11 @@ class FailedRunRegressionFixtureTests(unittest.TestCase):
                 by_scene[15], story_beat="drink_from_cup", action="drink_from_cup",
             ),
         }
-        modules = _SequenceConceptModules([bad, {
-            "segment_011": bad["segment_011"],
-            "segment_015": bad["segment_015"],
-        }])
+        modules = _SequenceConceptModules([
+            bad,
+            {"segment_011": bad["segment_011"]},
+            {"segment_015": bad["segment_015"]},
+        ])
         h3_service = _RecordingService()
         render_service = _RecordingService()
         validator = _ConceptValidationService(

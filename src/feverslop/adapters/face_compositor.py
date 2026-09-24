@@ -109,6 +109,7 @@ class FaceCompositor:
         for frame_idx in range(n_frames):
             frame_masks = []
             frame_centers = []
+            active_repairs: list[FaceRepairData] = []
 
             for repair in face_repairs:
                 entry = _find_entry_for_frame(repair.track_entries, frame_idx)
@@ -167,28 +168,19 @@ class FaceCompositor:
                 mask_for_partition[box.y1:y_end, box.x1:x_end] = mask_clipped
                 frame_masks.append(mask_for_partition)
                 frame_centers.append((box.y1 + effective_h // 2, box.x1 + effective_w // 2))
+                active_repairs.append(repair)
 
             if len(frame_masks) > 1:
                 partitioned = voronoi_partition(frame_masks, frame_centers, (h, w))
                 result_frame = original_frames[frame_idx].copy()
-                for p_idx, repair in enumerate(face_repairs):
-                    if p_idx >= len(partitioned):
-                        break
+                for p_idx, repair in enumerate(active_repairs):
                     entry = _find_entry_for_frame(repair.track_entries, frame_idx)
                     if entry is None:
                         continue
-                    partition_mask = partitioned[p_idx]
-                    if partition_mask.max() > 0:
-                        box = entry.box
-                    else:
-                        continue
-
-                for p_idx in range(len(frame_masks)):
-                    entry = _find_entry_for_frame(face_repairs[p_idx].track_entries, frame_idx)
-                    if entry is None:
-                        continue
                     box = entry.box
-                    repaired_path = face_repairs[p_idx].repaired_frames_dir / f"repaired_{frame_idx:06d}.png"
+                    repaired_path = repair.repaired_frames_dir / f"repaired_{frame_idx:06d}.png"
+                    if not repaired_path.exists():
+                        repaired_path = repair.repaired_frames_dir / f"repaired_{entry.frame_index:06d}.png"
                     if not repaired_path.exists():
                         continue
                     repaired = cv2.imread(str(repaired_path))
@@ -200,12 +192,14 @@ class FaceCompositor:
                     y_end = min(box.y1 + region_h, h)
                     x_end = min(box.x1 + region_w, w)
                     pm = partitioned[p_idx][box.y1:y_end, box.x1:x_end]
+                    if pm.max() == 0:
+                        continue
                     for c in range(3):
                         result_frame[box.y1:y_end, box.x1:x_end, c] = np.clip(
                             pm * repaired_resized[:, :, c] + (1 - pm) * result_frame[box.y1:y_end, box.x1:x_end, c],
                             0, 255,
                         ).astype(np.uint8)
-                    diagnostic_mask = np.maximum(diagnostic_mask, pm)
+                    diagnostic_mask = np.maximum(diagnostic_mask, partitioned[p_idx])
                 result[frame_idx] = result_frame
             elif frame_masks:
                 diagnostic_mask = np.maximum(diagnostic_mask, frame_masks[0])

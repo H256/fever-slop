@@ -64,6 +64,9 @@ def normalize_render_plan(
     for group in groups:
         merged = _merge_group(group, fps=fps)
 
+        if int(merged["frame_count"]) < min_frames:
+            merged = _pad_scene_to_min(merged, fps=fps, min_frames=min_frames, min_duration=min_duration)
+
         if int(merged["frame_count"]) > max_frames:
             normalized.extend(_split_render_scene_to_max(merged, fps=fps, max_duration=max_duration))
         else:
@@ -133,6 +136,50 @@ def _merge_group(group: list[dict], fps: int) -> dict:
 
     merged["ltx"]["prompt_relay"] = merged_relays
     return merged
+
+
+def _pad_scene_to_min(
+    scene: dict,
+    fps: int,
+    min_frames: int,
+    min_duration: float,
+) -> dict:
+    """Extend a scene so it is at least ``min_duration`` seconds long.
+
+    The safety net can leave a group below the minimum when the whole plan
+    span is shorter than ``min_duration`` (the trailing leftover becomes a
+    standalone group).  Pad the scene by extending its end so the written
+    duration is at least ``min_duration``; the relay is extended to cover the
+    padded timeline.
+    """
+    if int(scene["frame_count"]) >= min_frames:
+        return scene
+
+    padded = deepcopy(scene)
+    start = float(scene["abs_start_seconds"])
+    duration = float(scene["duration_seconds"])
+    if duration < min_duration:
+        duration = min_duration
+    end = start + duration
+    padded["abs_end_seconds"] = end
+    padded["duration_seconds"] = round(duration, 6)
+    padded["frame_count"] = frame_count_from_duration(duration, fps)
+
+    # Extend the relay to cover the padded timeline.
+    relays = padded.get("ltx", {}).get("prompt_relay", [])
+    if relays:
+        last = relays[-1]
+        last["frame_end"] = max(int(last["frame_end"]), int(padded["frame_count"]) - 1)
+    else:
+        padded["ltx"]["prompt_relay"] = [
+            {
+                "frame_start": 0,
+                "frame_end": int(padded["frame_count"]) - 1,
+                "state": scene.get("metadata", {}).get("type", "instrumental"),
+                "prompt": "continue the same motion and emotional direction from the scene",
+            },
+        ]
+    return padded
 
 
 def _split_render_scene_to_max(scene: dict, fps: int, max_duration: float) -> list[dict]:

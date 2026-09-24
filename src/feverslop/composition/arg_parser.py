@@ -1,41 +1,9 @@
 from __future__ import annotations
 
 import argparse
-from enum import Enum
 
 from feverslop.adapters.pipeline_runner_options import add_runner_options
-
-
-class PipelineStage(str, Enum):
-    TESTS = "tests"
-    MAIN_PIPELINE = "main_pipeline"
-    H3_PROMPTS = "h3_prompts"
-    RENDER_PLAN = "render_plan"
-    RELAY_COMPACT = "relay_compact"
-    ANCHOR_FIX = "anchor_fix"
-    SET_RESOLUTION = "set_resolution"
-    SYNC_PROJECT_SETTINGS = "sync_project_settings"
-    STORYBOARD_FRAMES = "storyboard_frames"
-    STORYBOARD_PAGE = "storyboard_page"
-    REFERENCE_RENDER = "reference_render"
-    REFERENCE_SHEETS = "reference_sheets"
-    MSR_REFERENCES = "msr_references"
-    MSR_REFERENCE_SHEETS = "msr_reference_sheets"
-    MSR_PROMPT_ENRICH = "msr_prompt_enrich"
-    INGREDIENTS_SHEETS = "ingredients_sheets"
-    LTX_PREPARE_WORKFLOWS = "ltx_prepare_workflows"
-    LTX_RENDER_SCENES = "ltx_render_scenes"
-    PREPARE_WORKFLOWS = "prepare_workflows"
-    RENDER_SCENES = "render_scenes"
-    UPSCALE = "upscale"
-    CONCAT_VIDEO_ONLY = "concat_video_only"
-    MUX_ORIGINAL_AUDIO = "mux_original_audio"
-    DIAGNOSTIC_SCENE_AUDIO_CONCAT = "diagnostic_scene_audio_concat"
-    FACEFIX = "facefix"
-    FACEFIX_CONCAT = "facefix_concat"
-    EXPORT_TIMELINE = "export_timeline"
-    # Backward-compatible name for the original automatic OpenShot stage.
-    OPENSHOT_EXPORT = "openshot_export"
+from feverslop.domain.stages import PipelineStage
 
 
 PUBLIC_PIPELINE_STAGES = tuple(
