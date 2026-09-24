@@ -16,6 +16,7 @@ from feverslop.domain.execution_plan import ExecutionPlan, ExecutionPlanItem, Pl
 from feverslop.domain.prepared_workflow import SceneWorkflowManifest
 from feverslop.domain.project_render_settings import ProjectRenderSettings
 from feverslop.domain.scene_recovery import RECOVERY_POLICY_VERSION
+from feverslop.domain.stages import PipelineStage
 from feverslop.errors import FeverSlopDataError
 from feverslop.prompting.deterministic_h3_compiler import H3_COMPILER_VERSION
 from feverslop.scene_artifacts import SceneArtifactLayout
@@ -71,7 +72,7 @@ def _build_resume_plan(
     layout = SceneArtifactLayout(root)
     if not layout.base_plan.is_file():
         return ExecutionPlan(root, "resume", (
-            ExecutionPlanItem("canonical plan", PlanAction.RUN, "canonical plan missing", stage="main_pipeline"),
+            ExecutionPlanItem("canonical plan", PlanAction.RUN, "canonical plan missing", stage=PipelineStage.MAIN_PIPELINE),
         ))
 
     migration = analyze_canonical_plan_migration(CanonicalPlanStore(root).load())
@@ -167,7 +168,7 @@ def _build_resume_plan(
             ):
                 h3_action = PlanAction.RUN
                 h3_reason = "reference generator or bindings changed"
-            items.append(ExecutionPlanItem("h3 prompts", h3_action, h3_reason, number, "h3_prompts"))
+            items.append(ExecutionPlanItem("h3 prompts", h3_action, h3_reason, number, PipelineStage.H3_PROMPTS))
 
         projection_stage = _projection_stage(video_pipeline)
         projection_action = PlanAction.REUSE
@@ -195,17 +196,17 @@ def _build_resume_plan(
                     if reference_changed
                     else "reference assets reusable",
                     number,
-                    "msr_references",
+                    PipelineStage.MSR_REFERENCES,
                 ))
             if reference_changed and video_pipeline in _REFERENCE_PIPELINES:
                 items.append(ExecutionPlanItem(
                     "reference bindings", PlanAction.RUN, projection_reason,
-                    number, "msr_reference_sheets",
+                    number, PipelineStage.MSR_REFERENCE_SHEETS,
                 ))
             else:
                 items.append(ExecutionPlanItem(
                     "reference bindings", PlanAction.REUSE, "reference fingerprint matches",
-                    number, "msr_reference_sheets",
+                    number, PipelineStage.MSR_REFERENCE_SHEETS,
                 ))
             if video_pipeline == "ltx_ingredients":
                 items.append(ExecutionPlanItem(
@@ -213,7 +214,7 @@ def _build_resume_plan(
                     PlanAction.REUSE if msr_prompts_fresh else PlanAction.RUN,
                     "MSR prompt input fingerprint matches" if msr_prompts_fresh else "MSR prompt inputs changed or provenance missing",
                     number,
-                    "msr_prompt_enrich",
+                    PipelineStage.MSR_PROMPT_ENRICH,
                 ))
             elif video_pipeline == "ltx_msr":
                 projection_action = PlanAction.REUSE if msr_prompts_fresh else PlanAction.RUN
@@ -265,16 +266,16 @@ def _build_resume_plan(
             )
             any_render = True
         items.append(ExecutionPlanItem(
-            "render", render_action, render_reason, number, "ltx_render_scenes",
+            "render", render_action, render_reason, number, PipelineStage.LTX_RENDER_SCENES,
         ))
 
     assembly_run = any_render or not layout.movie.is_file()
     assembly_action = PlanAction.RUN if assembly_run else PlanAction.REUSE
     assembly_reason = "scene render changed" if any_render else "final movie missing" if assembly_run else "final movie exists"
     for phase, stage in (
-        ("assemble video", "concat_video_only"),
-        ("mux audio", "mux_original_audio"),
-        ("export timeline", "export_timeline"),
+        ("assemble video", PipelineStage.CONCAT_VIDEO_ONLY),
+        ("mux audio", PipelineStage.MUX_ORIGINAL_AUDIO),
+        ("export timeline", PipelineStage.EXPORT_TIMELINE),
     ):
         items.append(ExecutionPlanItem(phase, assembly_action, assembly_reason, stage=stage))
     return ExecutionPlan(root, "resume", tuple(items))
@@ -441,13 +442,13 @@ def _msr_prompts_fresh(
     return provenance.get("input_fingerprint") == msr_prompt_input_fingerprint(dict(current))
 
 
-def _projection_stage(pipeline: str) -> str | None:
+def _projection_stage(pipeline: str) -> PipelineStage | None:
     if pipeline == "ltx_msr":
-        return "msr_prompt_enrich"
+        return PipelineStage.MSR_PROMPT_ENRICH
     if pipeline == "ltx_ingredients":
-        return "ingredients_sheets"
+        return PipelineStage.INGREDIENTS_SHEETS
     if pipeline in _H3_PIPELINES:
-        return "render_plan"
+        return PipelineStage.RENDER_PLAN
     return None
 
 
