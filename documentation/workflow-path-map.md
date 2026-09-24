@@ -27,6 +27,8 @@ Generated from the tracked workflow JSON files on 2026-09-09. The classification
 | `workflows/video_ltxv_ingredients_audio_2stage_gguf_v6.json` | video | ltx_legacy | ingredients | workflows/video/ltx_legacy/ |
 | `workflows/video_ltxv_ingredients_audio_2stage_v6.json` | video | ltx_legacy | ingredients | workflows/video/ltx_legacy/ |
 | `workflows/video_ltxv_msr_1actor_1background_v4.json` | video | ltx_legacy | msr | workflows/video/ltx_legacy/ |
+| `workflows/video/minimax_h3/i2v_two_pass.json` | video | minimax_h3 | i2v | workflows/video/minimax_h3/ |
+| `workflows/video/minimax_h3/i2v_two_pass.profile.json` | video | minimax_h3 | profile | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/r2v_audio_eb57_8s_v1.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/r2v_audio_fullmix_guide_1-pass.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/r2v_audio_fullmix_guide_1-pass_turbo.json` | video | minimax_h3 | r2v | workflows/video/minimax_h3/ |

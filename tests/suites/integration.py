@@ -11,8 +11,9 @@ import unittest
 from tests.suites.common import load_modules
 
 INTEGRATION_MODULES = (
-    "full_auto_pipeline_runner",
+    "continuation_duration_regressions",
     "dspy_runtime",
+    "full_auto_pipeline_runner",
     "global_library_adapter",
     "minimax_h3_integration",
     "movie_planning_refine_actors",
