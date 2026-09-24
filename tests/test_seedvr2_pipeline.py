@@ -10,6 +10,7 @@ from feverslop.composition.seedvr2_pipeline import (
     SeedVR2CompositionOptions,
     _probe_duration,
     _probe_size,
+    _source_clip,
     run_seedvr2,
 )
 from feverslop.domain.seedvr2 import plan_seedvr2_segments
@@ -283,6 +284,23 @@ class SeedVR2PipelineTests(unittest.TestCase):
             ))
 
         self.assertEqual(legacy_source, backend.calls[0]["source_video"])
+
+    def test_source_clip_prefers_facefix_over_pre_refine_final(self):
+        """U4 invariant: upscale consumes final_facefix.mp4 over the
+        pre-refine source render when both exist."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            layout = SceneArtifactLayout(root)
+            final = layout.scene_final_video(1)
+            facefix = layout.scene_final_facefix_video(1)
+            final.parent.mkdir(parents=True, exist_ok=True)
+            facefix.parent.mkdir(parents=True, exist_ok=True)
+            final.write_bytes(b"video")
+            # Only the pre-refine source exists -> upscale uses it.
+            self.assertEqual(final, _source_clip(layout, 1))
+            # FaceFix artifact now exists -> upscale must prefer it.
+            facefix.write_bytes(b"video")
+            self.assertEqual(facefix, _source_clip(layout, 1))
 
 
 class ProbeSizeTests(unittest.TestCase):

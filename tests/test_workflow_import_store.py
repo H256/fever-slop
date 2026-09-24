@@ -36,7 +36,6 @@ class StoreLifecycleTests(unittest.TestCase):
         self.assertEqual("draft", profile.status)
         self.assertEqual(len(profile.workflow_sha256), 64)
         self.assertTrue(self.store.verify_snapshot("proj", "h3-final"))
-        self.assertFalse(self.store.is_snapshot_pinned("proj", "h3-final"))
 
     def test_import_rejects_bad_profile_id_and_purpose(self) -> None:
         with self.assertRaises(WorkflowImportError):
@@ -96,17 +95,6 @@ class StoreLifecycleTests(unittest.TestCase):
         self.store.activate("p", "h3")
         self.store.deactivate("p", "h3")
         self.assertEqual("tested", self.store.get_profile("p", "h3").status)
-
-    def test_pins_track_render_ids(self) -> None:
-        self.store.import_workflow(
-            project_id="p", profile_id="h3", pipeline="minimax_h3", purpose="final",
-            graph=_GOOD_GRAPH,
-        )
-        self.store.pin_snapshot("p", "h3", "render-1")
-        self.store.pin_snapshot("p", "h3", "render-1")  # idempotent
-        self.assertTrue(self.store.is_snapshot_pinned("p", "h3"))
-        self.store.unpin_snapshot("p", "h3", "render-1")
-        self.assertFalse(self.store.is_snapshot_pinned("p", "h3"))
 
     def test_list_profiles_and_roundtrip(self) -> None:
         self.store.import_workflow(

@@ -239,18 +239,53 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         self.assertIn("10.000000000", audio_pad_cmd)
         replace.assert_called_once_with(Path("scene_0001.audiopad.mp4"), Path("scene_0001.mp4"))
 
+    def test_trim_clip_keys_boundary_frames_by_clip_stem(self):
+        # Regression for #1281: in a flat movie layout every clip shares one
+        # directory, so boundary frames must be keyed by the clip stem to
+        # avoid one scene's cached frame clobbering another's.
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+        spec = TrimSpec(
+            source_file=Path("raw.mp4"),
+            output_file=Path("scene_0002.mp4"),
+            fps=24,
+            trim_front_frames=0,
+            keep_frames=10,
+            scene=2,
+            extract_boundary_frames=True,
+        )
+        frame_count_result = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="240\n", stderr="",
+        )
+        with (
+            patch("feverslop.adapters.video_postprocessor.subprocess.run") as run,
+            patch("feverslop.adapters.video_postprocessor.os.replace"),
+            patch.object(VideoPostProcessor, "_validate_video_output"),
+            patch.object(VideoPostProcessor, "_pad_short_clip"),
+        ):
+            # trim, first-frame-count, first-frame, last-frame-count, last-frame
+            run.side_effect = [None, frame_count_result, None, frame_count_result, None]
+            processor.trim_clip(spec)
+
+        first_cmd = run.call_args_list[2].args[0]
+        last_cmd = run.call_args_list[4].args[0]
+        self.assertIn("firstframe_scene_0002.png", first_cmd)
+        self.assertIn("lastframe_scene_0002.png", last_cmd)
+        # The unkeyed shared names must NOT be used.
+        self.assertNotIn("firstframe.png", first_cmd)
+        self.assertNotIn("lastframe.png", last_cmd)
+
     def test_extract_last_frame_writes_single_png(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
         frame_count_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="240\n", stderr="")
-
         with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
-            run.side_effect = [frame_count_result, None]
+            # Call order: (0) frame count, (1) fps_mode probe, (2) encode.
+            run.side_effect = [frame_count_result, None, None]
             output = processor.extract_last_frame(
                 source_file=Path("scene_0001.mp4"),
                 output_file=Path("keyframes/scene_0002_start.png"),
             )
 
-        cmd = run.call_args_list[1].args[0]
+        cmd = run.call_args_list[2].args[0]
         self.assertEqual(Path("keyframes/scene_0002_start.png"), output)
         self.assertIn("-vf", cmd)
         self.assertIn("select=eq(n\\,239)", cmd)
@@ -272,14 +307,15 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
         frame_count_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="3\n", stderr="")
         with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
-            run.side_effect = [None, frame_count_result, None]
+            # Call order: (0) fps_mode probe, (1) first encode, (2) frame count, (3) last encode.
+            run.side_effect = [None, None, frame_count_result, None]
             outputs = processor.extract_first_and_last_frames(
                 "scene.mp4", "firstframe.png", "lastframe.png",
             )
 
         self.assertEqual((Path("firstframe.png"), Path("lastframe.png")), outputs)
-        self.assertIn("select=eq(n\\,0)", run.call_args_list[0].args[0])
-        self.assertIn("select=eq(n\\,2)", run.call_args_list[2].args[0])
+        self.assertIn("select=eq(n\\,0)", run.call_args_list[1].args[0])
+        self.assertIn("select=eq(n\\,2)", run.call_args_list[3].args[0])
 
 
 if __name__ == "__main__":
