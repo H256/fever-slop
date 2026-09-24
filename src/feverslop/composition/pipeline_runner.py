@@ -27,15 +27,7 @@ from .stage_runners import (
     write_step,
 )
 from feverslop.ports.reporting import ConsoleReporter, install_reporter_logging
-
-COMFYUI_RENDERING_STAGES = frozenset({
-    PipelineStage.STORYBOARD_FRAMES,
-    PipelineStage.MSR_REFERENCES,
-    PipelineStage.LTX_RENDER_SCENES,
-    PipelineStage.RENDER_SCENES,
-    PipelineStage.FACEFIX,
-    PipelineStage.UPSCALE,
-})
+from feverslop.domain.stages import COMFYUI_RENDERING_STAGES
 
 
 def build_run_state(args: argparse.Namespace, stages: list[PipelineStage]) -> PipelineRunState:
