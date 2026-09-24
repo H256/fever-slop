@@ -45,6 +45,7 @@ UNIT_MODULES = (
     "comfyui_render_queue",
     "comfyui_seedvr2_backend",
     "comfyui_video_backend_components",
+    "checked_in_workflows_schema",
     "composition_defensive",
     "concept_prompt_batcher",
     "continuity_handoff",
