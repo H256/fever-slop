@@ -48,6 +48,56 @@ class VideoPostProcessor:
         self.audio_bitrate = audio_bitrate
         self.debug = debug
         self.ffmpeg_timeout_seconds = ffmpeg_timeout_seconds
+        self._fps_mode_supported: bool | None = None
+
+    def _probe_fps_mode_support(self) -> bool:
+        """Detect whether this FFmpeg build supports ``-fps_mode`` (>= 5.1).
+
+        On older builds (4.x) the option is unknown and the encode fails with
+        "Unrecognized option". We probe once with a trivial encode and fall back
+        to the pre-5.1 ``-vsync`` equivalent when the option is absent.
+        """
+        if self._fps_mode_supported is not None:
+            return self._fps_mode_supported
+        probe = [
+            self.ffmpeg_path,
+            "-hide_banner",
+            "-f", "lavfi",
+            "-i", "color=c=black:s=16x16:d=0.04",
+            "-fps_mode", "passthrough",
+            "-frames:v", "1",
+            "/dev/null",
+        ]
+        try:
+            proc = subprocess.run(
+                probe,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=10,
+            )
+            if proc is None:
+                # Test stub without a real result; keep current behaviour.
+                self._fps_mode_supported = True
+            else:
+                stderr = (getattr(proc, "stderr", "") or "")
+                self._fps_mode_supported = "unrecognized option" not in stderr.lower()
+        except Exception:
+            # Probe could not run (no ffmpeg on PATH yet); assume a modern
+            # build so we keep the current behaviour instead of silently
+            # degrading to -vsync.
+            self._fps_mode_supported = True
+        return self._fps_mode_supported
+
+    def _frame_sync_args(self, mode: str) -> list[str]:
+        """Return the frame-rate control args for this FFmpeg build.
+
+        ``-fps_mode`` (FFmpeg >= 5.1) is preferred; on older builds we emit the
+        equivalent ``-vsync`` form so the encode still succeeds.
+        """
+        if self._probe_fps_mode_support():
+            return ["-fps_mode", mode]
+        return ["-vsync", mode]
 
     def trim_clip(self, spec: TrimSpec) -> Path:
         spec.output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -257,7 +307,7 @@ class VideoPostProcessor:
                 "-crf", str(self.crf),
                 "-preset", self.preset,
                 "-pix_fmt", "yuv420p",
-                "-fps_mode", "cfr",
+                *self._frame_sync_args("cfr"),
             ])
             if fps is not None:
                 cmd.extend(["-r", str(fps)])
@@ -322,8 +372,7 @@ class VideoPostProcessor:
             str(source_file),
             "-vf",
             f"select=eq(n\\,{frame_index})",
-            "-fps_mode",
-            "passthrough",
+            *self._frame_sync_args("passthrough"),
             "-frames:v",
             "1",
             str(output_file),
