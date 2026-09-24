@@ -255,6 +255,71 @@ class ProjectRenderSettingsTests(unittest.TestCase):
         with self.assertRaises(LTX25AudioContractError):
             validate_ltx25_audio_workflow(payload, replace(policy, audio_policy="weird"))
 
+    def _activate_h3_import(self, root: Path, *, activate: bool = True) -> None:
+        from feverslop.domain.workflow_import import TestRunResult
+        from feverslop.domain.workflow_import_store import WorkflowImportStore
+
+        graph = {
+            "1": {"class_type": "LoadAudio", "inputs": {}},
+            "2": {"class_type": "MiniMaxH3ReferenceToVideo", "inputs": {"audio": [1, 0]}},
+            "3": {"class_type": "VAEDecode", "inputs": {"samples": [2, 0]}},
+        }
+        store = WorkflowImportStore(projects_root=root.parent)
+        store.import_workflow(
+            project_id=root.name,
+            profile_id="h3-final",
+            pipeline="minimax_h3",
+            purpose="final",
+            graph=graph,
+        )
+        store.record_validation(root.name, "h3-final", valid=True)
+        store.record_test_run(root.name, "h3-final", TestRunResult(success=True))
+        if activate:
+            store.activate(root.name, "h3-final")
+
+    def test_h3_r2v_active_import_wins_over_builtin_default(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text('{"input_audio":"song.wav"}', encoding="utf-8")
+            self._activate_h3_import(root)
+
+            resolved = resolve_project_render_settings(root, video_pipeline="minimax-h3-r2v")
+
+        built_in = str(
+            resolve_runner_path("workflows/video/minimax_h3/r2v_audio_two_pass.json").resolve()
+        )
+        self.assertNotEqual(built_in, resolved.runner_overrides["single_prompt_workflow"])
+        self.assertTrue(resolved.runner_overrides["single_prompt_workflow"].endswith(".json"))
+
+    def test_h3_r2v_no_import_keeps_builtin_default(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text('{"input_audio":"song.wav"}', encoding="utf-8")
+            (root / "workflows").mkdir()  # store attaches but no active import
+
+            resolved = resolve_project_render_settings(root, video_pipeline="minimax-h3-r2v")
+
+        self.assertEqual(
+            str(resolve_runner_path("workflows/video/minimax_h3/r2v_audio_two_pass.json").resolve()),
+            resolved.runner_overrides["single_prompt_workflow"],
+        )
+
+    def test_h3_r2v_non_active_import_keeps_builtin_default(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "song.wav").write_bytes(b"")
+            (root / "config.json").write_text('{"input_audio":"song.wav"}', encoding="utf-8")
+            self._activate_h3_import(root, activate=False)  # stays in 'tested' state
+
+            resolved = resolve_project_render_settings(root, video_pipeline="minimax-h3-r2v")
+
+        self.assertEqual(
+            str(resolve_runner_path("workflows/video/minimax_h3/r2v_audio_two_pass.json").resolve()),
+            resolved.runner_overrides["single_prompt_workflow"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

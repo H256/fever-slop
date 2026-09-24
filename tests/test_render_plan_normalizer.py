@@ -87,5 +87,52 @@ class NormalizerRelayClampTests(unittest.TestCase):
         self.assertEqual(20, relays[0]["frame_end"])
 
 
+class NormalizerMinDurationTests(unittest.TestCase):
+    def test_single_scene_below_min_is_padded_to_min(self):
+        # min_duration=0.5 -> min_frames=13. A single 0.3s scene (8 frames)
+        # is below the minimum; the whole plan span is below min, so it is
+        # written as a standalone group and must be padded to >= 0.5s.
+        plan = [_scene(1, 0.0, 0.3, 8, [])]
+        result = normalize_render_plan(plan, 0.5, 10.0, renumber=False)
+        self.assertEqual(1, len(result))
+        self.assertGreaterEqual(result[0]["duration_seconds"], 0.5)
+        self.assertGreaterEqual(result[0]["frame_count"], 13)
+
+    def test_short_total_span_is_padded_to_min(self):
+        # Two 0.2s scenes (0.4s total) below min_duration=0.5. The trailing
+        # leftover becomes a standalone group and must be padded to >= 0.5s.
+        plan = [
+            _scene(1, 0.0, 0.2, 6, []),
+            _scene(2, 0.2, 0.4, 6, []),
+        ]
+        result = normalize_render_plan(plan, 0.5, 10.0, renumber=False)
+        self.assertEqual(1, len(result))
+        self.assertGreaterEqual(result[0]["duration_seconds"], 0.5)
+        self.assertGreaterEqual(result[0]["frame_count"], 13)
+
+    def test_padded_scene_relay_covers_padded_timeline(self):
+        plan = [_scene(1, 0.0, 0.3, 8, [
+            {"frame_start": 1, "frame_end": 7, "prompt": "a"},
+        ])]
+        result = normalize_render_plan(plan, 0.5, 10.0, renumber=False)
+        self.assertEqual(1, len(result))
+        self.assertGreaterEqual(result[0]["duration_seconds"], 0.5)
+        relays = result[0]["ltx"]["prompt_relay"]
+        self.assertEqual(1, len(relays))
+        self.assertEqual(1, relays[0]["frame_start"])
+        self.assertEqual(result[0]["frame_count"] - 1, relays[0]["frame_end"])
+
+    def test_scene_at_or_above_min_is_untouched(self):
+        # A 1.0s scene (25 frames) is well above min_duration=0.5 (13
+        # frames); it must be written as-is, not padded.
+        plan = [_scene(1, 0.0, 1.0, 25, [
+            {"frame_start": 5, "frame_end": 20, "prompt": "a"},
+        ])]
+        result = normalize_render_plan(plan, 0.5, 10.0, renumber=False)
+        self.assertEqual(1, len(result))
+        self.assertEqual(1.0, result[0]["duration_seconds"])
+        self.assertEqual(25, result[0]["frame_count"])
+
+
 if __name__ == "__main__":
     unittest.main()

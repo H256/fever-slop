@@ -64,6 +64,13 @@ def build_workflow_import_parser(subparsers) -> None:
     deactivate_cmd.add_argument("--project-dir", required=True)
     deactivate_cmd.add_argument("--profile-id", required=True)
 
+    repair_cmd = commands.add_parser(
+        "repair",
+        help="Recover a broken profile back to draft (preserves test-run).",
+    )
+    repair_cmd.add_argument("--project-dir", required=True)
+    repair_cmd.add_argument("--profile-id", required=True)
+
     list_cmd = commands.add_parser(
         "list", help="List imported workflow profiles and their state."
     )
@@ -94,6 +101,8 @@ def run_workflow_import_command(args: argparse.Namespace, *, console: Console | 
             return _activate(store, project_id, args, output)
         if command == "deactivate":
             return _deactivate(store, project_id, args, output)
+        if command == "repair":
+            return _repair(store, project_id, args, output)
         if command == "list":
             return _list(store, project_id, output)
         raise ValueError(f"unknown workflow-import command: {command}")
@@ -148,6 +157,17 @@ def _activate(store: WorkflowImportStore, project_id: str, args: argparse.Namesp
 def _deactivate(store: WorkflowImportStore, project_id: str, args: argparse.Namespace, output: ReporterConsole) -> int:
     store.deactivate(project_id, args.profile_id)
     output.print(f"{args.profile_id} deactivated")
+    return 0
+
+
+def _repair(store: WorkflowImportStore, project_id: str, args: argparse.Namespace, output: ReporterConsole) -> int:
+    profile = store.get_profile(project_id, args.profile_id)
+    if profile.status != "broken":
+        raise WorkflowImportError(
+            f"profile is {profile.status}; repair only recovers a broken profile"
+        )
+    store.set_state(project_id, args.profile_id, "draft")
+    output.print(f"{args.profile_id} repaired: broken -> draft (test-run preserved)")
     return 0
 
 

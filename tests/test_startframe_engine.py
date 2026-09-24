@@ -273,6 +273,7 @@ class StartframeEngineTests(unittest.TestCase):
             client = FakeComfyClient()
             validator = FakeGemmaValidator()
             video = FakeVideoUseCase()
+            postprocessor = FakePostProcessor()
 
             final_video = ComfyUIStartframeDirectorVisualAdapter(
                 client=client,
@@ -283,15 +284,28 @@ class StartframeEngineTests(unittest.TestCase):
                 video_use_case=video,
                 validator=validator,
                 debug_workflows_dir=project / "output" / "movie" / "startframes" / "debug_workflows",
+                postprocessor=postprocessor,
             ).render_movie(project_dir=project, render_plan_path=render_plan_path)
 
             self.assertEqual(project / "output" / "movie" / "startframe-director.mp4", final_video)
             self.assertTrue((project / "output" / "movie" / "storyboard" / "final" / "scene_0001.png").exists())
-            self.assertEqual(["director", "mask", "repair", "mask", "repair", "detail"], client.stage_titles)
-            self.assertEqual(["scene_0001.png"], video.startframes)
-            self.assertEqual(1, len(validator.calls))
+            self.assertTrue((project / "output" / "movie" / "storyboard" / "final" / "scene_0002.png").exists())
+            self.assertEqual(
+                ["director", "mask", "repair", "mask", "repair", "detail", "director", "mask", "repair", "detail"],
+                client.stage_titles,
+            )
+            self.assertEqual(["scene_0001.png", "scene_0002.png"], video.startframes)
+            self.assertEqual(2, len(validator.calls))
             validation = json.loads((project / "movie" / "startframe_validation.json").read_text(encoding="utf-8"))
             self.assertTrue(validation["shots"][0]["pass"])
+            self.assertTrue(validation["shots"][1]["pass"])
+            concat_list, output_file = postprocessor.concat_calls[0]
+            self.assertEqual(final_video, output_file)
+            manifest = concat_list.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(2, len(manifest))
+            self.assertIn("clip_0001.mp4", manifest[0])
+            self.assertIn("clip_0002.mp4", manifest[1])
+            self.assertEqual(b"concat", final_video.read_bytes())
 
             director = client.workflows[0]
             positive = _node_by_title(director, "#PROMPT_POSITIVE")
@@ -311,6 +325,45 @@ class StartframeEngineTests(unittest.TestCase):
             self.assertTrue((debug_dir / "scene_0001_detail.json").exists())
             exported_director = json.loads((debug_dir / "scene_0001_director.json").read_text(encoding="utf-8"))
             self.assertIn("Mara and Ivo cross the threshold.", _node_by_title(exported_director, "#PROMPT_POSITIVE")["inputs"]["text"])
+
+    def test_comfyui_startframe_director_empty_plan_raises_value_error(self):
+        from feverslop.adapters.startframe_director_comfyui import (
+            ComfyUIStartframeDirectorVisualAdapter,
+        )
+        from feverslop.application.startframe_i2v_render_plan import (
+            write_startframe_i2v_render_plan,
+        )
+        from feverslop.application.startframe_director_prompts import (
+            build_startframe_director_prompts,
+        )
+        from feverslop.application.startframe_identity import (
+            build_startframe_identity_ledger,
+        )
+        from feverslop.application.startframe_plan import build_startframe_plan
+
+        class EmptyVideoUseCase:
+            def execute(self, request):
+                return []
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_two_actor_startframe_project(Path(temp_dir))
+            build_startframe_identity_ledger(project_dir=project)
+            build_startframe_plan(project_dir=project)
+            build_startframe_director_prompts(project_dir=project, candidate_count=1, director_backend="krea2")
+            render_plan_path = write_startframe_i2v_render_plan(project_dir=project)
+
+            with self.assertRaisesRegex(ValueError, "no scene clips"):
+                ComfyUIStartframeDirectorVisualAdapter(
+                    client=FakeComfyClient(),
+                    director_workflow_path=Path("workflows/image/image-model/image_t2i_startframe_krea_v1.json"),
+                    mask_workflow_path=Path("workflows/image/image-model/image_mask_sam3_actor_regions_v1.json"),
+                    identity_repair_workflow_path=Path("workflows/image/image-model/image_repair_sdxl_ipadapter_identity_v1.json"),
+                    detail_workflow_path=Path("workflows/image/image-model/image_detail_easyuse_startframe_v1.json"),
+                    video_use_case=EmptyVideoUseCase(),
+                    validator=FakeGemmaValidator(),
+                ).render_movie(project_dir=project, render_plan_path=render_plan_path)
+
+            self.assertFalse((project / "output" / "movie" / "startframe-director.mp4").exists())
 
     def test_gemma4_validator_normalizes_non_json_text_fallback(self):
         from feverslop.adapters.gemma4_startframe_validator import (
@@ -457,13 +510,30 @@ def _write_two_actor_startframe_project(root: Path) -> Path:
                         "duration_seconds": 3,
                         "reference_ids": {"actors": ["mara", "ivo"], "location": "archive"},
                     },
+                    {
+                        "scene": 2,
+                        "shot_id": "shot_0002",
+                        "description": "Ivo descends into the signal station.",
+                        "action": "Ivo descends into the signal station.",
+                        "camera": "medium shot",
+                        "location_id": "station",
+                        "duration_seconds": 3,
+                        "reference_ids": {"actors": ["ivo"], "location": "station"},
+                    },
                 ],
             },
         ),
         encoding="utf-8",
     )
     (movie / "continuity_plan.json").write_text(
-        json.dumps({"scene_continuity": {"shot_0001": {"required_carryovers": ["Mara keeps the ledger under one arm"]}}}),
+        json.dumps(
+            {
+                "scene_continuity": {
+                    "shot_0001": {"required_carryovers": ["Mara keeps the ledger under one arm"]},
+                    "shot_0002": {"required_carryovers": ["Ivo carries the signal relay"]},
+                }
+            }
+        ),
         encoding="utf-8",
     )
     (references / "manifest.json").write_text(
@@ -576,7 +646,26 @@ class FakeVideoUseCase:
 
     def execute(self, request):
         self.startframes = sorted(path.name for path in Path(request.storyboard_dir).glob("scene_*.png"))
-        output = Path(request.output_dir) / "clip_0001.mp4"
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(b"clip")
-        return [output]
+        plan = json.loads(Path(request.render_plan_path).read_text(encoding="utf-8"))
+        scenes = plan if isinstance(plan, list) else plan.get("scenes") or []
+        output_dir = Path(request.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        clips = []
+        for index, scene in enumerate(scenes, start=1):
+            scene_number = int(scene.get("scene") or index)
+            output = output_dir / f"clip_{scene_number:04d}.mp4"
+            output.write_bytes(b"clip")
+            clips.append(output)
+        return clips
+
+
+class FakePostProcessor:
+    def __init__(self):
+        self.concat_calls = []
+
+    def concat_clips(self, *, concat_list, output_file, **kwargs):
+        self.concat_calls.append((Path(concat_list), Path(output_file)))
+        output_file = Path(output_file)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_bytes(b"concat")
+        return output_file
