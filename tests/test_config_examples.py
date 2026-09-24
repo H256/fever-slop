@@ -22,7 +22,7 @@ class ConfigExampleTests(unittest.TestCase):
                 "subject", "locations", "actors", "global_assets", "global_cast",
                 "global_locations", "global_styles", "global_props", "steering",
                 "prompt_guidance", "lora_1", "loras", "lora_split_enabled",
-                "minimax_h3_audio_refs",
+                "minimax_h3_audio_refs", "narrative_contract",
             },
             set(raw),
         )
