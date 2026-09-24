@@ -232,6 +232,7 @@ UNIT_MODULES = (
     "vocal_timeline_analyzer",
     "workflow_asset_name_replacement",
     "workflow_benchmark",
+    "workflow_import_cli",
     "workflow_import_families",
     "workflow_import_inspector",
     "workflow_import_store",

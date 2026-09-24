@@ -96,6 +96,20 @@ class StoreLifecycleTests(unittest.TestCase):
         self.store.deactivate("p", "h3")
         self.assertEqual("tested", self.store.get_profile("p", "h3").status)
 
+    def test_repair_from_broken_preserves_test_run(self) -> None:
+        self.store.import_workflow(
+            project_id="p", profile_id="h3", pipeline="minimax_h3", purpose="final",
+            graph=_GOOD_GRAPH,
+        )
+        self.store.record_validation("p", "h3", valid=True)
+        self.store.record_test_run("p", "h3", TestRunResult(success=True, detail="ok"))
+        # A failed test-run marks the profile broken.
+        self.store.record_test_run("p", "h3", TestRunResult(success=False, detail="boom"))
+        self.assertEqual("broken", self.store.get_profile("p", "h3").status)
+        # Repair recovers to draft without resetting the recorded test-run.
+        self.store.set_state("p", "h3", "draft")
+        self.assertEqual("draft", self.store.get_profile("p", "h3").status)
+        self.assertIsNotNone(self.store.get_profile("p", "h3").test_run)
     def test_list_profiles_and_roundtrip(self) -> None:
         self.store.import_workflow(
             project_id="p", profile_id="a", pipeline="minimax_h3", purpose="final",
