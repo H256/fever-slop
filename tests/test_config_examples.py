@@ -21,6 +21,7 @@ class ConfigExampleTests(unittest.TestCase):
                 "scene_generation", "vocal_detection", "story_idea", "style", "environment_style", "music_style",
                 "subject", "locations", "actors", "global_assets", "global_cast",
                 "global_locations", "global_styles", "global_props", "steering",
+                "ensembles",
                 "prompt_guidance", "lora_1", "loras", "lora_split_enabled",
                 "minimax_h3_audio_refs", "narrative_contract",
             },
