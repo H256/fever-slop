@@ -485,6 +485,7 @@ class StoryPlanModuleTests(unittest.TestCase):
             characters=[],
             locations=[],
             props=[],
+            segments=[{"segment_id": "seg-1", "vocal_events": [{"t": 1.0}]}],
         )
         kwargs = _predictor(self.predictors, "BeatAllocation").calls[0]
         self.assertEqual(
@@ -498,6 +499,7 @@ class StoryPlanModuleTests(unittest.TestCase):
                 "guide",
                 "locations",
                 "props",
+                "segments",
             ],
         )
 
@@ -611,6 +613,7 @@ class StoryPlanModuleTests(unittest.TestCase):
             characters=[],
             locations=[],
             props=[],
+            segments=[],
         )
         self.modules.acting(
             creative_direction="cd",
@@ -787,7 +790,7 @@ class StoryPlanServiceTests(unittest.TestCase):
             [("seg-1", "beat-001"), ("seg-2", "beat-003")],
         )
         allocation_call = next(payload for name, payload in modules.calls if name == "beat_allocation")
-        self.assertNotIn("segments", allocation_call)
+        self.assertIn("segments", allocation_call)
         self.assertNotIn("repair", [name for name, _ in modules.calls])
 
     def test_service_reports_visible_progress_for_each_creative_job(self) -> None:
@@ -894,7 +897,7 @@ class StoryPlanServiceTests(unittest.TestCase):
         acting_table = next(table for table in reporter.tables if table[0] == "Acting briefs - batch 1/1")
         self.assertEqual(acting_table[1], ["Scene", "Time", "Objective", "Emotional turn", "Voice"])
         self.assertEqual(acting_table[2][0], [
-            "seg-1", "00:00–00:30", "Objective for brief-1.", "Nervous to determined.", "offscreen",
+            "seg-1", "00:00–00:30", "Objective for brief-seg-1.", "Nervous to determined.", "offscreen",
         ])
 
     def test_service_reports_a_locked_story_plan_summary(self) -> None:
@@ -921,7 +924,7 @@ class StoryPlanServiceTests(unittest.TestCase):
         StoryPlanService(prompt_modules=FakePromptModules(), reporter=reporter).build_plan(make_request())
 
         self.assertIn(
-            ("Story plan locked", ["Scenes", "Beats", "Acting briefs"], [["2", "0", "2"]]),
+            ("Story plan locked", ["Scenes", "Beats", "Acting briefs"], [["2", "3", "2"]]),
             reporter.tables,
         )
         self.assertIn("Story plan - locked windows", [table[0] for table in reporter.tables])
@@ -990,6 +993,12 @@ class StoryPlanServiceTests(unittest.TestCase):
     def test_creative_acting_cannot_mark_a_shared_beat_exclusive(self) -> None:
         """Only service-owned narrative allocation may declare exclusivity."""
         modules = FakePromptModules(
+            arc={
+                "beats": [
+                    {"phase": "opening", "description": "The journey begins."},
+                    {"phase": "resolution", "description": "The journey resolves."},
+                ],
+            },
             allocation={
                 "beats": [
                     {"phase": "opening", "description": "The journey begins."},

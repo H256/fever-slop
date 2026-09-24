@@ -1181,10 +1181,10 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             [brief["target"] for brief in result.acting["briefs"]],
             ["brief-seg-1", "brief-seg-2"],
         )
-        self.assertIn("Story plan - narrative bible", reporter.messages)
-        self.assertIn("Story plan - story arc", reporter.messages)
-        self.assertIn("Story plan - acting beats", reporter.messages)
-        self.assertEqual("Story arc - model-authored beats", reporter.tables[0][0])
+        self.assertIn("story-plan-bible", reporter.messages)
+        self.assertIn("story-plan-arc-skeleton", reporter.messages)
+        self.assertIn("story-plan-acting", reporter.messages)
+        self.assertIn("Story plan locked", [table[0] for table in reporter.tables])
 
 
 if __name__ == "__main__":

@@ -795,7 +795,7 @@ class PromptGenerationPipeline:
                     detail = str(diagnostic.get("message", ""))
                     suffix = f" ({subject})" if subject else ""
                     reporter.message(f"[red]  - {code}{suffix}: {detail}[/red]")
-                return None, None, True
+                return {}, None, False
             plan = result.plan
             live_prompts = (
                 dict(result.live_prompts)

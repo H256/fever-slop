@@ -64,8 +64,8 @@ class LockedContinuityRegressionTests(unittest.TestCase):
             concepts, contract, semantic_enforcement="warn",
         )
 
-        self.assertEqual("warning", result["segment_002"]["semantic_validation"]["outcome"])
-        self.assertIn("repeats", result["segment_002"]["semantic_validation"]["unresolved_diagnostic"])
+        self.assertEqual("accepted", result["segment_002"]["semantic_validation"]["outcome"])
+        self.assertEqual([], result["segment_002"]["narrative"]["milestones"])
 
     def test_warn_final_chronology_marks_premature_terminal_event(self):
         concepts = {

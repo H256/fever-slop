@@ -250,7 +250,7 @@ class StoryPlanService:
         request.validate()
         diagnostics: list[Mapping[str, Any]] = []
 
-        self._reporter.step("Story plan - narrative bible")
+        self._reporter.step("story-plan-bible")
         self._reporter.message("[cyan]Extracting the premise, stakes, and story facts…[/cyan]")
         bible_raw = self._reporter.run_progress(
             "Story plan - reading the story", lambda: self._job("bible", self._bible_input(request))
@@ -261,7 +261,10 @@ class StoryPlanService:
         self._reporter.message("story-plan-bible complete")
 
         self._reporter.step("story-plan-arc-skeleton")
-        arc_raw = self._job("arc_skeleton", self._arc_skeleton_input(request, bible))
+        arc_raw = self._reporter.run_progress(
+            "Story plan - shaping the arc",
+            lambda: self._job("arc_skeleton", self._arc_skeleton_input(request, bible)),
+        )
         arc = self._normalize_job_output(
             "arc_skeleton", arc_raw, diagnostics, _FORBIDDEN_RENDER_KEYS
         )
@@ -313,7 +316,32 @@ class StoryPlanService:
                 f"{decision['decision']} ({decision['name']})"
             )
 
-        self._reporter.step("Story plan - acting beats")
+        window_rows: list[list[str]] = []
+        for index, beat in enumerate(allocation.get("typed_beats", []), start=0):
+            if not isinstance(beat, Mapping):
+                continue
+            bound = [
+                brief for brief in allocation.get("briefs", [])
+                if isinstance(brief, Mapping) and index in brief.get("beat_indices", [])
+            ]
+            if not bound:
+                continue
+            milestones = [
+                str(brief["milestone_id"])
+                for brief in bound if brief.get("milestone_id")
+            ]
+            window_rows.append([
+                str(beat.get("location_id", f"beat-{index + 1}")),
+                f"{bound[0].get('segment_id')} – {bound[-1].get('segment_id')}",
+                ", ".join(milestones) or "—",
+            ])
+        self._reporter.table(
+            "Story plan - locked windows",
+            ["Location", "Scenes", "Milestones"],
+            window_rows,
+        )
+
+        self._reporter.step("story-plan-acting")
         acting = self._build_acting_in_batches(request, allocation, diagnostics)
         self._validate_acting(allocation, acting, diagnostics)
         self._reporter.message(
@@ -823,43 +851,84 @@ class StoryPlanService:
         if "briefs" in allocation:
             return allocation
         raw_beats = allocation.get("beats")
-        raw_allocations = allocation.get("brief_allocations")
-        if not isinstance(raw_beats, list):
+        if not isinstance(raw_beats, list) or not raw_beats:
             return allocation
-        # The model sometimes returns brief_allocations as a dict keyed by
-        # target instead of the signature's list of {target, ...} objects.
-        # Normalize both shapes to (target, item) pairs.
-        if isinstance(raw_allocations, Mapping):
-            entries = [
-                (str(target), item) for target, item in raw_allocations.items()
-            ]
-        elif isinstance(raw_allocations, list):
-            entries = [
-                (str(item.get("target", "")), item)
-                for item in raw_allocations
-                if isinstance(item, Mapping)
-            ]
-        else:
-            entries = []
-        segments = {segment.segment_id: segment for segment in request.segments}
+        contract = request.source_evidence.get("narrative_contract", {})
+        if isinstance(contract, Mapping):
+            contract_allocation = StoryPlanService._allocation_from_narrative_contract(
+                request, raw_beats, contract,
+            )
+            if contract_allocation is not None:
+                return contract_allocation
+        raw_allocations = allocation.get("brief_allocations")
+        if raw_allocations:
+            # The model sometimes returns brief_allocations as a dict keyed by
+            # target instead of the signature's list of {target, ...} objects.
+            # Normalize both shapes to (target, item) pairs.
+            if isinstance(raw_allocations, Mapping):
+                entries = [
+                    (str(target), item) for target, item in raw_allocations.items()
+                ]
+            else:
+                entries = [
+                    (str(item.get("target", "")), item)
+                    for item in raw_allocations
+                    if isinstance(item, Mapping)
+                ]
+            segments = {segment.segment_id: segment for segment in request.segments}
+            allocation_briefs: list[dict[str, Any]] = []
+            for target, item in entries:
+                if not isinstance(item, Mapping):
+                    continue
+                segment = segments.get(target)
+                if segment is None:
+                    continue
+                index = item.get("beat_index")
+                if not isinstance(index, int) or isinstance(index, bool):
+                    continue
+                allocation_briefs.append({
+                    "brief_id": f"brief-{target}", "segment_id": target,
+                    "start_seconds": segment.start_seconds, "end_seconds": segment.end_seconds,
+                    "beat_indices": [index],
+                    "required": [f"beat-{value + 1:03d}" for value in item.get("required_beat_indices", [])],
+                    "forbidden": [f"beat-{value + 1:03d}" for value in item.get("forbidden_beat_indices", [])],
+                })
+            return {"briefs": allocation_briefs, "typed_beats": raw_beats}
+        typed_beats = [dict(item) for item in raw_beats if isinstance(item, Mapping)]
+        if not typed_beats:
+            return allocation
+        for index, beat in enumerate(typed_beats):
+            phase = str(beat.get("phase", "development")).strip().lower()
+            beat["phase"] = "resolution" if index == len(typed_beats) - 1 else (
+                phase if phase in {"opening", "development", "climax"} else "development"
+            )
+        terminal_segments = [
+            segment for segment in request.segments
+            if segment.end_seconds > request.terminal_window_seconds
+        ]
+        terminal_ids = {segment.segment_id for segment in terminal_segments}
+        preterminal_segments = [
+            segment for segment in request.segments if segment.segment_id not in terminal_ids
+        ]
+        nonterminal_beat_count = max(1, len(typed_beats) - 1)
         briefs: list[dict[str, Any]] = []
-        for target, item in entries:
-            if not isinstance(item, Mapping):
-                continue
-            segment = segments.get(target)
-            if segment is None:
-                continue
-            index = item.get("beat_index")
-            if not isinstance(index, int) or isinstance(index, bool):
-                continue
+        for position, segment in enumerate(request.segments):
+            if segment.segment_id in terminal_ids:
+                index = len(typed_beats) - 1
+            else:
+                preterminal_position = preterminal_segments.index(segment)
+                index = min(
+                    nonterminal_beat_count - 1,
+                    (preterminal_position * nonterminal_beat_count) // max(1, len(preterminal_segments)),
+                )
             briefs.append({
-                "brief_id": f"brief-{target}", "segment_id": target,
+                "brief_id": f"brief-{segment.segment_id}", "segment_id": segment.segment_id,
                 "start_seconds": segment.start_seconds, "end_seconds": segment.end_seconds,
                 "beat_indices": [index],
-                "required": [f"beat-{value + 1:03d}" for value in item.get("required_beat_indices", [])],
-                "forbidden": [f"beat-{value + 1:03d}" for value in item.get("forbidden_beat_indices", [])],
+                "required": [f"beat-{index + 1:03d}"],
+                "forbidden": [],
             })
-        return {"briefs": briefs, "typed_beats": raw_beats}
+        return {"briefs": briefs, "typed_beats": typed_beats}
 
     @staticmethod
     def _allocation_from_narrative_contract(
