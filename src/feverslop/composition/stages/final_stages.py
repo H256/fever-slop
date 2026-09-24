@@ -404,6 +404,8 @@ def _run_facefix_stage(state: PipelineRunState) -> None:
         skip_existing=not state.args.no_skip_existing,
         ffmpeg_debug=getattr(state.args, "facefix_debug", False),
         use_crop_pipeline=True,
+        video_pipeline=getattr(state.args, "video_pipeline", "") or "",
+        facefix_backend=getattr(state.args, "facefix_backend", None),
     )
     run_facefix(options, console=console)
 
