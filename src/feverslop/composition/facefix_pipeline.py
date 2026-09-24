@@ -150,6 +150,14 @@ def _run_h3_facefix(
     """
     client, model_resolver, config, app_config = _facefix_runtime(options)
 
+    reporter = ConsoleReporter(console) if console is not None else None
+    # FaceRefine is its own major stage: expose it in progress output and
+    # clear the ComfyUI model/VRAM cache left behind by the original H3 R2V
+    # render before we start the (VRAM-heavy) video-to-video refinement.
+    if reporter:
+        reporter.step("H3 FaceRefine (video-to-video)")
+    client.free_cache_and_vram()
+
     h3_backend = ComfyUIFaceFixH3Backend(
         client=client,
         workflow_path=coerce_local_path(options.workflow_path) or Path(
@@ -308,14 +316,36 @@ def _run_h3_facefix(
                         f"{frame_idx}/{total_frames}"
                     )
 
-        # -- Per-actor video-to-video render + repair --
-        face_repairs_for_composite: list[FaceRepairData] = []
-        for actor_id, frames_list in actor_frames.items():
+        # -- Sequential per-subject video-to-video render + composite --
+        # Each actor is refined in turn (deterministic sorted order); the
+        # composited output of one pass becomes the source for the next, so
+        # later actors see earlier repairs. This implements the issue's
+        # "refine one identified subject at a time and chain the stitched
+        # output" requirement.
+        working_frames = original_frames
+        any_repair_applied = False
+        for actor_id in sorted(actor_frames.keys()):
+            frames_list = actor_frames[actor_id]
+            # For sequential passes the source video for this actor is the
+            # composited output of the previous pass (or the original for the
+            # first actor).
+            if any_repair_applied:
+                pass_source = scene_dir / "facefix" / f"sequential_{actor_id}.mp4"
+                _save_video_frames(
+                    working_frames,
+                    pass_source,
+                    source,
+                    options.ffmpeg_path,
+                    options.ffmpeg_timeout_seconds,
+                )
+            else:
+                pass_source = source
+
             repair = _process_actor_h3(
                 scene_number=scene_number,
                 actor_id=actor_id,
                 frames_list=frames_list,
-                source=source,
+                source=pass_source,
                 scene_dir=scene_dir,
                 layout=layout,
                 h3_backend=h3_backend,
@@ -324,15 +354,13 @@ def _run_h3_facefix(
                 skip_reasons=skip_reasons,
                 reporter=reporter,
             )
-            if repair is not None:
-                face_repairs_for_composite.append(repair)
+            if repair is None:
+                continue
 
-        # -- Composite the refined face region back onto the source frames --
-        if face_repairs_for_composite:
             if reporter:
                 reporter.message(
                     f"FaceFix scene {scene_number}: compositing "
-                    f"{len(face_repairs_for_composite)} actor(s)..."
+                    f"actor {actor_id}..."
                 )
             compositor = FaceCompositor(
                 feather_pixels=options.feather_pixels,
@@ -340,12 +368,17 @@ def _run_h3_facefix(
                 diagnostic=True,
             )
             composite_result = compositor.composite(
-                face_repairs=face_repairs_for_composite,
-                original_frames=original_frames,
+                face_repairs=[repair],
+                original_frames=working_frames,
                 output_dir=scene_dir / "facefix",
             )
+            working_frames = composite_result.composited_frames
+            any_repair_applied = True
+
+        # -- Save the final result --
+        if any_repair_applied:
             _save_video_frames(
-                composite_result.composited_frames,
+                working_frames,
                 final_facefix,
                 source,
                 options.ffmpeg_path,
@@ -388,6 +421,11 @@ def _run_h3_facefix(
             f"{skip_rate:.1%} exceeds configured limit "
             f"{options.max_skip_rate:.1%} (reasons={skip_reasons})"
         )
+    # VRAM boundary cleanup: clear the FaceRefine model cache before the
+    # downstream upscale stage so the two VRAM-heavy passes don't overlap.
+    client.free_cache_and_vram()
+    if reporter:
+        reporter.message("[green]OK[/green] H3 FaceRefine complete")
     return results
 
 

@@ -237,5 +237,178 @@ class TestRunH3FaceFixWiring(unittest.TestCase):
             self.assertEqual(result, [])
 
 
+class TestRunH3FaceFixSequentialChaining(unittest.TestCase):
+    """U3: multi-actor scenes refine one subject at a time, chaining the
+    composited output of one pass into the next actor's source."""
+
+    def _patch_runtime(self):
+        from feverslop.composition import facefix_pipeline as fp
+        app_config = MagicMock()
+        app_config.comfyui.ffmpeg_timeout_seconds = 120.0
+        return [
+            patch.object(fp, "_facefix_runtime", return_value=(MagicMock(), MagicMock(), MagicMock(), app_config)),
+            patch.object(fp, "ComfyUIFaceFixH3Backend"),
+            patch.object(fp, "InsightFaceDetectorAdapter"),
+            patch.object(fp, "FaceIdentityAdapter"),
+            patch.object(fp, "FaceMaskAdapter"),
+            patch.object(fp, "coerce_local_path", side_effect=lambda p: Path(p) if p else Path(WORKFLOW)),
+        ]
+
+    def test_multi_actor_chains_composited_output(self):
+        from types import SimpleNamespace
+        from feverslop.composition.facefix_pipeline import (
+            FaceFixCompositionOptions,
+            _run_h3_facefix,
+        )
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            scene_dir = Path(tmp) / "scene_0001"
+            scene_dir.mkdir()
+            (scene_dir / "final.mp4").write_bytes(b"valid")
+            options = FaceFixCompositionOptions(
+                scenes_dir=tmp,
+                video_pipeline="minimax-h3-r2v",
+                scene_numbers=[1],
+                skip_existing=False,
+                max_skip_rate=1.0,
+                reference_images=[
+                    Path(tmp) / "actors" / "actor_a" / "ref" / "sheet.png",
+                    Path(tmp) / "actors" / "actor_b" / "ref" / "sheet.png",
+                ],
+            )
+            patches = self._patch_runtime()
+            # Two registered actor identities.
+            extractor = MagicMock()
+            extractor.extract_face_from_image.return_value = object()
+            extractor.extract_embedding.return_value = object()
+            # Two frames, one per actor (deterministic identity routing).
+            fr_a = SimpleNamespace(processed=True, identity_actor_id="actor_a")
+            fr_b = SimpleNamespace(processed=True, identity_actor_id="actor_b")
+            pipeline_mock = MagicMock()
+            pipeline_mock.process_frame.side_effect = [fr_a, fr_b]
+            # _process_actor_h3 records the source it is called with and
+            # returns a usable repair for every actor.
+            process_mock = MagicMock(return_value=MagicMock())
+            save_mock = MagicMock()
+            compositor_cls = MagicMock()
+            compositor_cls.return_value.composite.return_value = SimpleNamespace(
+                composited_frames=[0, 1], diagnostic_mask_path=None
+            )
+            patches += [
+                patch("feverslop.adapters.insightface_extractor.InsightFaceExtractor", return_value=extractor),
+                patch.object(__import__("feverslop.composition.facefix_pipeline", fromlist=["x"]), "FacePipeline", return_value=pipeline_mock),
+                patch.object(__import__("feverslop.composition.facefix_pipeline", fromlist=["x"]), "_process_actor_h3", process_mock),
+                patch.object(__import__("feverslop.composition.facefix_pipeline", fromlist=["x"]), "_save_video_frames", save_mock),
+                patch.object(__import__("feverslop.composition.facefix_pipeline", fromlist=["x"]), "_load_video_frames", return_value=[0, 1]),
+                patch.object(__import__("feverslop.composition.facefix_pipeline", fromlist=["x"]), "FaceCompositor", compositor_cls),
+            ]
+            for p in patches:
+                p.start()
+            try:
+                result = _run_h3_facefix(options, console=None)
+            finally:
+                for p in patches:
+                    p.stop()
+
+            # Two actors -> two sequential passes.
+            self.assertEqual(process_mock.call_count, 2)
+            # Deterministic sorted order: actor_a first, then actor_b.
+            first_source = process_mock.call_args_list[0].kwargs["source"]
+            second_source = process_mock.call_args_list[1].kwargs["source"]
+            # First pass uses the original source render.
+            self.assertEqual(first_source.name, "final.mp4")
+            # Second pass chains the composited output of the first pass.
+            self.assertEqual(second_source.name, "sequential_actor_b.mp4")
+            # The composited chain is written back to the final artifact.
+            self.assertEqual(len(result), 1)
+            self.assertEqual(result[0].name, "final_facefix.mp4")
+
+    def test_no_first_actor_fallback_for_multi_actor(self):
+        from types import SimpleNamespace
+        from feverslop.composition.facefix_pipeline import (
+            FaceFixCompositionOptions,
+            _run_h3_facefix,
+        )
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            scene_dir = Path(tmp) / "scene_0001"
+            scene_dir.mkdir()
+            (scene_dir / "final.mp4").write_bytes(b"valid")
+            options = FaceFixCompositionOptions(
+                scenes_dir=tmp,
+                video_pipeline="minimax-h3-r2v",
+                scene_numbers=[1],
+                skip_existing=False,
+                max_skip_rate=1.0,
+                reference_images=[
+                    Path(tmp) / "actors" / "actor_a" / "ref" / "sheet.png",
+                    Path(tmp) / "actors" / "actor_b" / "ref" / "sheet.png",
+                ],
+            )
+            patches = self._patch_runtime()
+            extractor = MagicMock()
+            extractor.extract_face_from_image.return_value = object()
+            extractor.extract_embedding.return_value = object()
+            # One frame whose identity does not match any registered actor ->
+            # must NOT be silently assigned to the first actor.
+            fr_unknown = SimpleNamespace(processed=True, identity_actor_id="actor_z")
+            pipeline_mock = MagicMock()
+            pipeline_mock.process_frame.return_value = fr_unknown
+            process_mock = MagicMock(return_value=MagicMock())
+            patches += [
+                patch("feverslop.adapters.insightface_extractor.InsightFaceExtractor", return_value=extractor),
+                patch.object(__import__("feverslop.composition.facefix_pipeline", fromlist=["x"]), "FacePipeline", return_value=pipeline_mock),
+                patch.object(__import__("feverslop.composition.facefix_pipeline", fromlist=["x"]), "_process_actor_h3", process_mock),
+                patch.object(__import__("feverslop.composition.facefix_pipeline", fromlist=["x"]), "_save_video_frames", MagicMock()),
+                patch.object(__import__("feverslop.composition.facefix_pipeline", fromlist=["x"]), "_load_video_frames", return_value=[0, 1]),
+                patch.object(__import__("feverslop.composition.facefix_pipeline", fromlist=["x"]), "FaceCompositor", MagicMock()),
+            ]
+            for p in patches:
+                p.start()
+            try:
+                _run_h3_facefix(options, console=None)
+            finally:
+                for p in patches:
+                    p.stop()
+
+            # The unmatched frame is routed to "unknown", not the first actor.
+            self.assertEqual(process_mock.call_count, 1)
+            self.assertEqual(process_mock.call_args_list[0].kwargs["actor_id"], "unknown")
+
+    def test_vram_boundary_cleanup_and_stage_marker(self):
+        from feverslop.composition.facefix_pipeline import (
+            FaceFixCompositionOptions,
+            _run_h3_facefix,
+        )
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            scene_dir = Path(tmp) / "scene_0001"
+            scene_dir.mkdir()
+            (scene_dir / "final.mp4").write_bytes(b"valid")
+            options = FaceFixCompositionOptions(
+                scenes_dir=tmp,
+                video_pipeline="minimax-h3-r2v",
+                scene_numbers=[1],
+                skip_existing=False,
+                max_skip_rate=1.0,
+            )
+            patches = self._patch_runtime()
+            runtime_patch = patches[0]
+            for p in patches:
+                p.start()
+            client = runtime_patch.__enter__().return_value[0]
+            try:
+                _run_h3_facefix(options, console=None)
+            finally:
+                for p in patches:
+                    p.stop()
+            # The ComfyUI client's cache/VRAM is cleared at BOTH boundaries:
+            # before the FaceRefine pass and before the downstream upscale.
+            self.assertGreaterEqual(client.free_cache_and_vram.call_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
