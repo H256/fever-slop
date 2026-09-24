@@ -36,6 +36,10 @@ def build_workflow_import_parser(subparsers) -> None:
     import_cmd.add_argument("--pipeline", required=True, help="Pipeline family.")
     import_cmd.add_argument("--purpose", required=True, choices=("preview", "final"))
     import_cmd.add_argument("--workflow", required=True, help="Path to the workflow JSON.")
+    import_cmd.add_argument(
+        "--reset", action="store_true",
+        help="Force a full reset on re-import (default: preserve recorded state).",
+    )
 
     validate_cmd = commands.add_parser(
         "validate", help="Run the deterministic inspector and record the result."
@@ -119,8 +123,9 @@ def _import(store: WorkflowImportStore, project_id: str, args: argparse.Namespac
         pipeline=args.pipeline,
         purpose=args.purpose,
         graph=graph,
+        reset=args.reset,
     )
-    output.print(f"Imported {profile.profile_id} ({profile.workflow_sha256[:16]}) as draft")
+    output.print(f"Imported {profile.profile_id} ({profile.workflow_sha256[:16]}) as {profile.status}")
     return 0
 
 

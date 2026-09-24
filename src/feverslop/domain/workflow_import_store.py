@@ -110,6 +110,7 @@ class WorkflowImportStore:
         pipeline: str,
         purpose: str,
         graph: object,
+        reset: bool = False,
     ) -> ImportedProfile:
         if not _PROFILE_ID.match(profile_id):
             raise WorkflowImportError("profile_id must be lowercase [a-z0-9._-]")
@@ -124,7 +125,32 @@ class WorkflowImportStore:
         else:
             raise WorkflowImportError("graph must be JSON bytes, text, or a mapping")
         sha = self._write_snapshot(project_id, profile_id, payload)
-        record = {
+        record = self._next_record(
+            project_id=project_id, profile_id=profile_id, pipeline=pipeline, purpose=purpose,
+            sha=sha, reset=reset,
+        )
+        self._write_profile(project_id, profile_id, record)
+        return self.get_profile(project_id, profile_id)
+
+    def _next_record(
+        self,
+        *,
+        project_id: str,
+        profile_id: str,
+        pipeline: str,
+        purpose: str,
+        sha: str,
+        reset: bool,
+    ) -> dict[str, Any]:
+        """Build the profile record for an import.
+
+        A fresh import (or ``reset=True``) yields a blank draft. A same-sha
+        re-import (a no-op or a snapshot self-heal) preserves the full
+        lifecycle record so re-importing does not silently wipe recorded
+        validation/test-run state. A changed-sha re-import resets the
+        validation-dependent fields to draft: they are stale for the new graph.
+        """
+        fresh = {
             "profile_id": profile_id,
             "pipeline": pipeline,
             "purpose": purpose,
@@ -135,8 +161,15 @@ class WorkflowImportStore:
             "analysis": None,
             "validation_valid": None,
         }
-        self._write_profile(project_id, profile_id, record)
-        return self.get_profile(project_id, profile_id)
+        if reset:
+            return fresh
+        try:
+            existing = self._read_profile(project_id, profile_id)
+        except WorkflowImportError:
+            return fresh
+        if existing["workflow_sha256"] == sha:
+            return existing
+        return fresh
 
     def get_profile(self, project_id: str, profile_id: str) -> ImportedProfile:
         record = self._read_profile(project_id, profile_id)
