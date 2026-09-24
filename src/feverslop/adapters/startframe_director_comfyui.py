@@ -12,6 +12,7 @@ from feverslop.adapters.workflow_patcher import WorkflowPatcher
 from feverslop.adapters.workflow_debug import write_debug_workflow
 from feverslop.ports.rendering import WorkflowAnchorConfig
 from feverslop.utils.io import read_json
+from feverslop.utils.media_paths import write_concat_list as write_media_concat_list
 
 
 class ComfyUIStartframeDirectorVisualAdapter:
@@ -28,6 +29,7 @@ class ComfyUIStartframeDirectorVisualAdapter:
         i2v_workflow_path: str | Path = "workflows/video_ltxv_i2v_native_audio_v2.json",
         model_resolver=None,
         debug_workflows_dir: str | Path | None = None,
+        postprocessor=None,
     ):
         self.client = client
         self.director_workflow_path = Path(director_workflow_path)
@@ -39,6 +41,7 @@ class ComfyUIStartframeDirectorVisualAdapter:
         self.validator = validator
         self.model_resolver = model_resolver
         self.debug_workflows_dir = Path(debug_workflows_dir) if debug_workflows_dir else None
+        self.postprocessor = postprocessor
 
     def render_movie(
         self,
@@ -77,12 +80,21 @@ class ComfyUIStartframeDirectorVisualAdapter:
                 on_scene_complete=on_clip_rendered,
             ),
         )
+        if not rendered:
+            raise ValueError(
+                "startframe-director render produced no scene clips; refusing to write an empty movie"
+            )
         final = project_dir / "output" / "movie" / "startframe-director.mp4"
         final.parent.mkdir(parents=True, exist_ok=True)
-        if rendered:
+        if len(rendered) == 1:
             shutil.copyfile(Path(rendered[0]), final)
         else:
-            final.write_bytes(b"")
+            concat_list = project_dir / "output" / "movie" / "startframe-director.concat.txt"
+            write_media_concat_list([Path(path) for path in rendered], concat_list)
+            if self.postprocessor is not None:
+                self.postprocessor.concat_clips(concat_list=concat_list, output_file=final)
+            else:
+                shutil.copyfile(Path(rendered[0]), final)
         return final
 
     def _render_startframes(

@@ -14,6 +14,7 @@ Start here:
 - [Studio ownership](studio-ownership.md) — target package ownership and the
   compatibility policy for the deprecated Studio namespace.
 - [Workflow model requirements](workflow-models.md) — model filenames, loader roles, and workflow coverage.
+- [Workflow import, ensembles, and environment style](workflow-import.md) — per-project workflow import, ensemble (group-cast) constraints, and the `environment_style` config key.
 - [Subject directive planning](subject-directive-planning.md) — model-neutral subject action planning.
 - [CLI and H3 compatibility](cli-and-h3-compatibility.md) — canonical CLI modules, compatibility facades, and location-only H3 scenes.
 - [Release gates](release-gates.md) — CPU, GPU smoke, quality, performance, and ordered migration checks for profile changes.

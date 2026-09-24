@@ -148,7 +148,6 @@ class SceneWorkflowManifest:
     boundary_frame_manifest: BoundaryFrameManifest | None = None
     continuity_plan: dict[str, Any] | None = None
     narrative_boundary_manifest: dict[str, Any] | None = None
-    render_promotion: dict[str, Any] | None = None
 
     @classmethod
     def create(
@@ -294,7 +293,6 @@ class SceneWorkflowManifest:
             ),
             "continuity_plan": self.continuity_plan,
             "narrative_boundary_manifest": self.narrative_boundary_manifest,
-            "render_promotion": self.render_promotion,
         }
 
     def write(self, path: str | Path) -> Path:
@@ -426,11 +424,6 @@ class SceneWorkflowManifest:
                 None
                 if payload.get("narrative_boundary_manifest") is None
                 else dict(payload["narrative_boundary_manifest"])
-            ),
-            render_promotion=(
-                None
-                if payload.get("render_promotion") is None
-                else dict(payload["render_promotion"])
             ),
         )
 
