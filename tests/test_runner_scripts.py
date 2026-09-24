@@ -108,7 +108,7 @@ class RunnerScriptTests(unittest.TestCase):
         self.assertIsNone(args.project_root)
         self.assertIsNone(args.project_config)
         self.assertEqual("app_config.json", args.app_config)
-        self.assertEqual(10, args.concept_batch_size)
+        self.assertEqual(4, args.concept_batch_size)
         self.assertEqual(os.fspath(Path("workflows/image/image-model") / "image_t2i_startframe_v1.json"), args.storyboard_workflow)
         self.assertEqual(os.fspath(Path("workflows/image/image-model") / "image_t2i_startframe_krea_v1.json"), args.reference_hero_workflow)
         self.assertEqual(os.fspath(Path("workflows/image/image-model") / "image_edit_flux2_klein_1ref_v1.json"), args.reference_edit_workflow)
