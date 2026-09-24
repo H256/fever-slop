@@ -4,8 +4,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from feverslop.adapters.video_postprocessor import VideoPostProcessor
+from feverslop.adapters.video_postprocessor import FFPROBE_TIMEOUT_SECONDS, VideoPostProcessor
 from feverslop.domain.postprocessing import FFMPEG_TIMEOUT_SECONDS, TrimSpec
+from feverslop.errors import FeverSlopAdaptationError
 
 
 class VideoPostProcessorConcatTests(unittest.TestCase):
@@ -316,6 +317,26 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         self.assertEqual((Path("firstframe.png"), Path("lastframe.png")), outputs)
         self.assertIn("select=eq(n\\,0)", run.call_args_list[1].args[0])
         self.assertIn("select=eq(n\\,2)", run.call_args_list[3].args[0])
+
+
+class VideoPostProcessorFrameCountTests(unittest.TestCase):
+    def test_frame_count_passes_probe_timeout(self):
+        with patch("feverslop.adapters.video_postprocessor.subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="42\n", stderr="",
+            )
+            count = VideoPostProcessor._frame_count(Path("scene.mp4"))
+
+        self.assertEqual(42, count)
+        self.assertEqual(FFPROBE_TIMEOUT_SECONDS, run.call_args.kwargs["timeout"])
+
+    def test_frame_count_timeout_is_adaptation_error_not_hang(self):
+        with patch(
+            "feverslop.adapters.video_postprocessor.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd=["ffprobe"], timeout=FFPROBE_TIMEOUT_SECONDS),
+        ):
+            with self.assertRaises(FeverSlopAdaptationError):
+                VideoPostProcessor._frame_count(Path("scene.mp4"))
 
 
 if __name__ == "__main__":

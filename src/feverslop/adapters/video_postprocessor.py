@@ -210,21 +210,27 @@ class VideoPostProcessor:
 
     @staticmethod
     def _frame_count(video_file: Path) -> int:
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v", "error",
-                "-select_streams", "v:0",
-                "-count_frames",
-                "-show_entries", "stream=nb_read_frames",
-                "-of", "default=nokey=1:noprint_wrappers=1",
-                str(video_file),
-            ],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v", "error",
+                    "-select_streams", "v:0",
+                    "-count_frames",
+                    "-show_entries", "stream=nb_read_frames",
+                    "-of", "default=nokey=1:noprint_wrappers=1",
+                    str(video_file),
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=FFPROBE_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise FeverSlopAdaptationError(
+                f"Timed out while counting frames: {video_file}",
+            ) from exc
         return int(result.stdout.strip())
 
     def frame_count(self, video_file: Path) -> int:
