@@ -1,4 +1,5 @@
 import os
+import socket
 import unittest
 from unittest.mock import patch
 
@@ -7,8 +8,14 @@ from feverslop.security.url_validation import APIURLValidationError, validate_ap
 
 class APIURLValidationTests(unittest.TestCase):
     def test_allows_local_default_services(self):
-        self.assertEqual("http://127.0.0.1:8188", validate_api_url("http://127.0.0.1:8188"))
-        self.assertEqual("http://localhost:8080/v1", validate_api_url("http://localhost:8080/v1"))
+        self.assertEqual(
+            ("http://127.0.0.1:8188", None),
+            validate_api_url("http://127.0.0.1:8188"),
+        )
+        self.assertEqual(
+            ("http://localhost:8080/v1", None),
+            validate_api_url("http://localhost:8080/v1"),
+        )
 
     def test_rejects_unsafe_scheme_and_credentials(self):
         for url in ("file:///etc/passwd", "ftp://example.test", "http://user:secret@example.test"):
@@ -22,20 +29,23 @@ class APIURLValidationTests(unittest.TestCase):
 
     def test_allows_private_addresses_for_local_default(self):
         self.assertEqual(
-            "http://192.168.178.45:8188",
+            ("http://192.168.178.45:8188", None),
             validate_api_url("http://192.168.178.45:8188"),
         )
 
     def test_allowlist_can_restrict_hostname(self):
         with patch.dict(os.environ, {"FEVERSLOP_ALLOWED_API_HOSTS": "llm.example, comfy.example"}):
-            self.assertEqual("https://llm.example/v1", validate_api_url("https://llm.example/v1"))
+            self.assertEqual(
+                ("https://llm.example/v1", None),
+                validate_api_url("https://llm.example/v1"),
+            )
             with self.assertRaisesRegex(APIURLValidationError, "allowlist"):
                 validate_api_url("https://other.example/v1")
 
     def test_allowlist_can_explicitly_trust_private_local_service(self):
         with patch.dict(os.environ, {"FEVERSLOP_ALLOWED_API_HOSTS": "192.168.1.10"}):
             self.assertEqual(
-                "http://192.168.1.10:8188",
+                ("http://192.168.1.10:8188", None),
                 validate_api_url("http://192.168.1.10:8188", allow_private_addresses=False),
             )
         with patch.dict(os.environ, {"FEVERSLOP_ALLOWED_API_HOSTS": ""}):
@@ -63,6 +73,37 @@ class APIURLValidationTests(unittest.TestCase):
         ]
 
         self.assertEqual(
-            "https://service.example",
+            ("https://service.example", "93.184.216.34"),
             validate_api_url("https://service.example", allow_private_addresses=False),
+        )
+
+    @patch("feverslop.security.url_validation.socket.getaddrinfo")
+    def test_pinned_ip_is_none_for_literal_ip_in_strict_mode(self, getaddrinfo):
+        getaddrinfo.return_value = [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+        ]
+        # A literal public IP needs no pinning: the client connects directly.
+        self.assertEqual(
+            ("https://93.184.216.34", None),
+            validate_api_url("https://93.184.216.34", allow_private_addresses=False),
+        )
+
+    @patch("feverslop.security.url_validation.socket.getaddrinfo")
+    def test_pinned_ip_is_none_for_loopback(self, getaddrinfo):
+        getaddrinfo.return_value = [
+            (2, 1, 6, "", ("127.0.0.1", 443)),
+        ]
+        # Loopback resolves to a loopback address; no pinning needed.
+        self.assertEqual(
+            ("https://localhost", None),
+            validate_api_url("https://localhost", allow_private_addresses=False),
+        )
+
+    @patch("feverslop.security.url_validation.socket.getaddrinfo")
+    def test_pinned_ip_defers_to_client_when_unresolvable(self, getaddrinfo):
+        getaddrinfo.side_effect = socket.gaierror("no such host")
+        # Unresolvable hostnames are left to the HTTP client; no pinning.
+        self.assertEqual(
+            ("https://unresolvable.example", None),
+            validate_api_url("https://unresolvable.example", allow_private_addresses=False),
         )
