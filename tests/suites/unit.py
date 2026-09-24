@@ -116,6 +116,7 @@ UNIT_MODULES = (
     "ltx_rendering_domain",
     "ltx_video_renderer",
     "lyric_alignment",
+    "media_paths",
     "minimax_h3_frames",
     "minimax_h3_prompt_builder",
     "movie_continuity",
