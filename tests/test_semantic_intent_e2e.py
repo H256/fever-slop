@@ -23,7 +23,6 @@ from __future__ import annotations
 import unittest
 from typing import Any
 
-from feverslop.domain.semantic_intent import IntentLedger
 from feverslop.domain.semantic_intent_validation import (
     blocking_findings,
     migrate_ledger_payload,
