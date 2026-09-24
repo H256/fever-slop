@@ -326,6 +326,45 @@ class StartframeEngineTests(unittest.TestCase):
             exported_director = json.loads((debug_dir / "scene_0001_director.json").read_text(encoding="utf-8"))
             self.assertIn("Mara and Ivo cross the threshold.", _node_by_title(exported_director, "#PROMPT_POSITIVE")["inputs"]["text"])
 
+    def test_comfyui_startframe_director_empty_plan_raises_value_error(self):
+        from feverslop.adapters.startframe_director_comfyui import (
+            ComfyUIStartframeDirectorVisualAdapter,
+        )
+        from feverslop.application.startframe_i2v_render_plan import (
+            write_startframe_i2v_render_plan,
+        )
+        from feverslop.application.startframe_director_prompts import (
+            build_startframe_director_prompts,
+        )
+        from feverslop.application.startframe_identity import (
+            build_startframe_identity_ledger,
+        )
+        from feverslop.application.startframe_plan import build_startframe_plan
+
+        class EmptyVideoUseCase:
+            def execute(self, request):
+                return []
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = _write_two_actor_startframe_project(Path(temp_dir))
+            build_startframe_identity_ledger(project_dir=project)
+            build_startframe_plan(project_dir=project)
+            build_startframe_director_prompts(project_dir=project, candidate_count=1, director_backend="krea2")
+            render_plan_path = write_startframe_i2v_render_plan(project_dir=project)
+
+            with self.assertRaisesRegex(ValueError, "no scene clips"):
+                ComfyUIStartframeDirectorVisualAdapter(
+                    client=FakeComfyClient(),
+                    director_workflow_path=Path("workflows/image/image-model/image_t2i_startframe_krea_v1.json"),
+                    mask_workflow_path=Path("workflows/image/image-model/image_mask_sam3_actor_regions_v1.json"),
+                    identity_repair_workflow_path=Path("workflows/image/image-model/image_repair_sdxl_ipadapter_identity_v1.json"),
+                    detail_workflow_path=Path("workflows/image/image-model/image_detail_easyuse_startframe_v1.json"),
+                    video_use_case=EmptyVideoUseCase(),
+                    validator=FakeGemmaValidator(),
+                ).render_movie(project_dir=project, render_plan_path=render_plan_path)
+
+            self.assertFalse((project / "output" / "movie" / "startframe-director.mp4").exists())
+
     def test_gemma4_validator_normalizes_non_json_text_fallback(self):
         from feverslop.adapters.gemma4_startframe_validator import (
             normalize_validation_response,

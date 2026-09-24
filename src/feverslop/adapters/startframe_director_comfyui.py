@@ -80,20 +80,21 @@ class ComfyUIStartframeDirectorVisualAdapter:
                 on_scene_complete=on_clip_rendered,
             ),
         )
+        if not rendered:
+            raise ValueError(
+                "startframe-director render produced no scene clips; refusing to write an empty movie"
+            )
         final = project_dir / "output" / "movie" / "startframe-director.mp4"
         final.parent.mkdir(parents=True, exist_ok=True)
-        if rendered:
-            if len(rendered) == 1:
-                shutil.copyfile(Path(rendered[0]), final)
-            else:
-                concat_list = project_dir / "output" / "movie" / "startframe-director.concat.txt"
-                write_media_concat_list([Path(path) for path in rendered], concat_list)
-                if self.postprocessor is not None:
-                    self.postprocessor.concat_clips(concat_list=concat_list, output_file=final)
-                else:
-                    shutil.copyfile(Path(rendered[0]), final)
+        if len(rendered) == 1:
+            shutil.copyfile(Path(rendered[0]), final)
         else:
-            final.write_bytes(b"")
+            concat_list = project_dir / "output" / "movie" / "startframe-director.concat.txt"
+            write_media_concat_list([Path(path) for path in rendered], concat_list)
+            if self.postprocessor is not None:
+                self.postprocessor.concat_clips(concat_list=concat_list, output_file=final)
+            else:
+                shutil.copyfile(Path(rendered[0]), final)
         return final
 
     def _render_startframes(
