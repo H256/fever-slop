@@ -203,6 +203,7 @@ UNIT_MODULES = (
     "sequence_to_sheet_workflow",
     "sequence_to_sheet",
     "sqlite_revision_store",
+    "stage_vocabulary",
     "startframe_engine",
     "story_plan",
     "story_plan_artifacts",
