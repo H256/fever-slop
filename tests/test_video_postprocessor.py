@@ -239,6 +239,41 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
         self.assertIn("10.000000000", audio_pad_cmd)
         replace.assert_called_once_with(Path("scene_0001.audiopad.mp4"), Path("scene_0001.mp4"))
 
+    def test_trim_clip_keys_boundary_frames_by_clip_stem(self):
+        # Regression for #1281: in a flat movie layout every clip shares one
+        # directory, so boundary frames must be keyed by the clip stem to
+        # avoid one scene's cached frame clobbering another's.
+        processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
+        spec = TrimSpec(
+            source_file=Path("raw.mp4"),
+            output_file=Path("scene_0002.mp4"),
+            fps=24,
+            trim_front_frames=0,
+            keep_frames=10,
+            scene=2,
+            extract_boundary_frames=True,
+        )
+        frame_count_result = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="240\n", stderr="",
+        )
+        with (
+            patch("feverslop.adapters.video_postprocessor.subprocess.run") as run,
+            patch("feverslop.adapters.video_postprocessor.os.replace"),
+            patch.object(VideoPostProcessor, "_validate_video_output"),
+            patch.object(VideoPostProcessor, "_pad_short_clip"),
+        ):
+            # trim, first-frame-count, first-frame, last-frame-count, last-frame
+            run.side_effect = [None, frame_count_result, None, frame_count_result, None]
+            processor.trim_clip(spec)
+
+        first_cmd = run.call_args_list[2].args[0]
+        last_cmd = run.call_args_list[4].args[0]
+        self.assertIn("firstframe_scene_0002.png", first_cmd)
+        self.assertIn("lastframe_scene_0002.png", last_cmd)
+        # The unkeyed shared names must NOT be used.
+        self.assertNotIn("firstframe.png", first_cmd)
+        self.assertNotIn("lastframe.png", last_cmd)
+
     def test_extract_last_frame_writes_single_png(self):
         processor = VideoPostProcessor(ffmpeg_path="ffmpeg")
         frame_count_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="240\n", stderr="")

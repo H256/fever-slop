@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.llm_policy import (
     CONCEPT_MAP,
+    CONCEPT_BATCH_MAX_TOKENS,
     DETAIL,
     I2V,
     NARRATIVE_CONTRACT,
+    NARRATIVE_MILESTONE_BINDINGS,
     REPAIR_CONCEPTS,
     STORY_IDEA,
     STYLE_BLOCK,
@@ -48,6 +51,19 @@ class MusicVideoPromptModules:
 
                 runtime = DspyRuntime.create(dspy)
             self._lm = runtime.make_lm(llm)
+            # Predictor-level config is not honored consistently by all
+            # OpenAI-compatible DSPy backends. Concepts and repairs therefore
+            # need their own bounded LM instead of inheriting a 65k default.
+            lm_parameters = inspect.signature(runtime.make_lm).parameters
+            self._concept_lm = (
+                runtime.make_lm(
+                    llm,
+                    max_tokens=CONCEPT_BATCH_MAX_TOKENS,
+                    task="planner",
+                )
+                if "max_tokens" in lm_parameters
+                else self._lm
+            )
             self._context = runtime.context
             for name, signature in signatures.items():
                 self._predictors[name] = runtime.predict(signature)
@@ -68,7 +84,12 @@ class MusicVideoPromptModules:
         if timeout is not None:
             config["timeout"] = timeout
         predictor_kwargs["config"] = config
-        with self._context(lm=self._lm):
+        lm = (
+            getattr(self, "_concept_lm", self._lm)
+            if name in {CONCEPT_MAP, REPAIR_CONCEPTS}
+            else self._lm
+        )
+        with self._context(lm=lm):
             return _value(self._predictors[name](**predictor_kwargs), output)
 
     def story_idea(self, lyrics: str, notes: str = "") -> str:
@@ -97,6 +118,25 @@ class MusicVideoPromptModules:
                 "notes": notes,
             },
             "contract",
+        )
+
+    def narrative_milestone_bindings(
+        self,
+        story_idea: str,
+        location_order: list[Any],
+        milestone_order: list[Any],
+        missing_milestone_ids: list[str],
+    ) -> Any:
+        return self._call(
+            NARRATIVE_MILESTONE_BINDINGS,
+            load_markdown_guide("narrative-milestone-bindings"),
+            {
+                "story_idea": story_idea,
+                "location_order": location_order,
+                "milestone_order": milestone_order,
+                "missing_milestone_ids": missing_milestone_ids,
+            },
+            "result",
         )
 
     def concepts(self, payload: dict[str, Any], *, batch: bool = False, silent_mode: bool = False, timeout=None) -> Any:

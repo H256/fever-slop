@@ -133,10 +133,14 @@ class VideoPostProcessor:
         if self.reencode:
             self._pad_short_audio(spec.output_file, spec.duration_seconds)
         if spec.extract_boundary_frames:
+            # Key the boundary frames by the clip's stem so that clips sharing
+            # one directory (flat movie layout) do not clobber each other's
+            # cached frames. In per-scene directories the stem is unique per
+            # scene, so this is a no-op collision-wise there.
             self.extract_first_and_last_frames(
                 spec.output_file,
-                spec.output_file.with_name("firstframe.png"),
-                spec.output_file.with_name("lastframe.png"),
+                spec.output_file.with_name(f"firstframe_{spec.output_file.stem}.png"),
+                spec.output_file.with_name(f"lastframe_{spec.output_file.stem}.png"),
             )
         return spec.output_file
 
