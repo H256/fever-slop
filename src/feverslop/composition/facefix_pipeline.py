@@ -1152,33 +1152,37 @@ def _save_video_frames(
     ffmpeg_path: str = "ffmpeg",
     timeout_seconds: float = 120.0,
 ) -> None:
-    import subprocess
-    temp_dir = output_path.parent / "temp_frames_export"
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    for i, frame in enumerate(frames):
-        bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(str(temp_dir / f"frame_{i:06d}.png"), bgr)
-
-    cap = cv2.VideoCapture(str(reference_video))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
-    cap.release()
-
-    subprocess.run(
-        [
-            ffmpeg_path,
-            "-r", str(fps),
-            "-i", str(temp_dir / "frame_%06d.png"),
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-preset", "fast",
-            "-crf", "18",
-            "-y",
-            str(output_path),
-        ],
-        check=True,
-        capture_output=True,
-        timeout=timeout_seconds,
-    )
-
     import shutil
-    shutil.rmtree(temp_dir, ignore_errors=True)
+    import subprocess
+    import tempfile
+
+    # Unique per-call directory so concurrent or repeated runs writing to the
+    # same scene output parent never share (and clobber) one temp_frames_export.
+    temp_dir = Path(tempfile.mkdtemp(prefix="facefix_frames_", dir=output_path.parent))
+    try:
+        for i, frame in enumerate(frames):
+            bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(str(temp_dir / f"frame_{i:06d}.png"), bgr)
+
+        cap = cv2.VideoCapture(str(reference_video))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
+        cap.release()
+
+        subprocess.run(
+            [
+                ffmpeg_path,
+                "-r", str(fps),
+                "-i", str(temp_dir / "frame_%06d.png"),
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-preset", "fast",
+                "-crf", "18",
+                "-y",
+                str(output_path),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=timeout_seconds,
+        )
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
