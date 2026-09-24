@@ -317,6 +317,60 @@ class ComfyUIClientTests(unittest.TestCase):
         self.assertEqual(1, session.get.call_count)
         self.assertIn("system_stats", session.get.call_args.args[0])
 
+    @patch("requests.Session")
+    def test_download_view_file_streams_to_temp_and_renames(self, session_class):
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+
+        session = MagicMock()
+        response = MagicMock()
+        response.ok = True
+        response.is_redirect = False
+        response.iter_content.return_value = iter([b"chunk1", b"chunk2"])
+        session.get.return_value = response
+        session_class.return_value = session
+
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = os.path.join(tmpdir, "scene.mp4")
+            result = ComfyUIClient(base_url="http://comfy.example").download_view_file(
+                "scene.mp4", out
+            )
+            self.assertEqual(out, str(result))
+            self.assertTrue(os.path.exists(out))
+            self.assertEqual(b"chunk1chunk2", open(out, "rb").read())
+
+    @patch("requests.Session")
+    def test_download_view_file_failure_leaves_no_final_file(self, session_class):
+        from feverslop.adapters.comfyui_client import ComfyUIClient
+
+        session = MagicMock()
+        response = MagicMock()
+        response.ok = True
+        response.is_redirect = False
+
+        def _raise_mid_stream(chunk_size):
+            yield b"partial"
+            raise OSError("connection reset")
+
+        response.iter_content.side_effect = _raise_mid_stream
+        session.get.return_value = response
+        session_class.return_value = session
+
+        import tempfile
+        import os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = os.path.join(tmpdir, "scene.mp4")
+            with self.assertRaises(OSError):
+                ComfyUIClient(base_url="http://comfy.example").download_view_file(
+                    "scene.mp4", out
+                )
+            self.assertFalse(os.path.exists(out))
+            remaining = [f for f in os.listdir(tmpdir)]
+            self.assertEqual([], remaining)
+
 
 if __name__ == "__main__":
     unittest.main()

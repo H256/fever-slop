@@ -1,10 +1,96 @@
 import json
 import unittest
+from pathlib import Path
 
 from feverslop.prompting.concept_prompt_batcher import (
     ConceptPromptBatcher,
+    _adjacent_continuity_plan,
+    _apply_locked_segment_bindings,
     validate_and_annotate_concept_chronology,
 )
+
+
+class LockedContinuityRegressionTests(unittest.TestCase):
+    def test_removed_actor_does_not_persist_into_next_locked_cast(self):
+        previous = {
+            "segment_001": {
+                "references": {"actor_ids": ["lead", "visitor"]},
+                "narrative": {"location": "old_room", "cast_states": {"lead": "ready", "visitor": "watching"}},
+            },
+        }
+        current = {
+            "references": {"actor_ids": ["lead"], "actor_ids_authoritative": True},
+            "narrative": {"location": "new_room", "cast_states": {"lead": "walking"}},
+        }
+
+        result = _adjacent_continuity_plan(
+            "segment_002", current["narrative"], previous, {}, selected_actor_ids=["lead"],
+        )
+
+        self.assertEqual({"lead": "ready"}, result["incoming"]["cast_states"])
+        self.assertEqual({"lead": "walking"}, result["outgoing"]["cast_states"])
+
+    def test_locked_binding_controls_explicit_outgoing_location_and_cast(self):
+        concepts = {"segment_002": {
+            "narrative": {
+                "location": "wrong_room", "cast_states": {"visitor": "watching"},
+                "incoming": {"cast_states": {"visitor": "watching"}},
+                "outgoing": {"location": "wrong_room", "cast_states": {"visitor": "watching"}},
+            },
+        }}
+
+        _apply_locked_segment_bindings(concepts, {"segment_002": {
+            "location_id": "new_room", "character_ids": ["lead"],
+            "actor_states": [{"character_id": "lead", "state": "walking"}],
+        }})
+
+        narrative = concepts["segment_002"]["narrative"]
+        self.assertEqual("new_room", narrative["outgoing"]["location"])
+        self.assertEqual({"lead": "walking"}, narrative["outgoing"]["cast_states"])
+        self.assertEqual({}, narrative["incoming"]["cast_states"])
+
+    def test_warn_final_chronology_keeps_diagnostics_instead_of_crashing(self):
+        concepts = {
+            "segment_001": {"narrative": {"location": "old_room", "milestones": ["arrival"]}},
+            "segment_002": {"narrative": {"location": "old_room", "milestones": ["arrival"]}},
+        }
+        contract = {"milestone_order": ["arrival"], "one_shot_milestones": ["arrival"]}
+
+        result = validate_and_annotate_concept_chronology(
+            concepts, contract, semantic_enforcement="warn",
+        )
+
+        self.assertEqual("warning", result["segment_002"]["semantic_validation"]["outcome"])
+        self.assertIn("repeats", result["segment_002"]["semantic_validation"]["unresolved_diagnostic"])
+
+    def test_warn_final_chronology_marks_premature_terminal_event(self):
+        concepts = {
+            "segment_001": {"narrative": {"milestones": ["story_complete"]}},
+            "segment_002": {"narrative": {"milestones": []}},
+        }
+
+        result = validate_and_annotate_concept_chronology(
+            concepts, {}, semantic_enforcement="warn",
+        )
+
+        self.assertEqual("warning", result["segment_001"]["semantic_validation"]["outcome"])
+        self.assertIn("terminal milestone", result["segment_001"]["semantic_validation"]["unresolved_diagnostic"])
+
+    def test_final_gate_preserves_batch_warning_diagnostic(self):
+        concepts = {"segment_001": {
+            "concept": "An incomplete scene.",
+            "narrative": {"story_beat": "arrival", "milestones": []},
+            "semantic_validation": {
+                "outcome": "warning", "unresolved_diagnostic": "selected actor missing from prose",
+            },
+        }}
+
+        result = validate_and_annotate_concept_chronology(
+            concepts, {}, semantic_enforcement="warn",
+        )
+
+        self.assertEqual("warning", result["segment_001"]["semantic_validation"]["outcome"])
+        self.assertIn("selected actor missing", result["segment_001"]["semantic_validation"]["unresolved_diagnostic"])
 
 
 class FakeConceptModules:
@@ -14,7 +100,10 @@ class FakeConceptModules:
 
     def concepts(self, payload, *, batch=False, silent_mode=False, timeout=None):
         self.calls.append(("concepts", payload, timeout))
-        return next(self.responses)
+        response = next(self.responses)
+        if isinstance(response, BaseException):
+            raise response
+        return response
 
     def repair_concepts(self, payload, *, timeout=None):
         self.calls.append(("repair_concepts", payload, timeout))
@@ -57,6 +146,86 @@ def semantic_concept(
 
 
 class ConceptPromptBatcherTests(unittest.TestCase):
+    def test_timeout_splits_a_batch_into_targeted_smaller_requests(self):
+        modules = FakeConceptModules([
+            TimeoutError("model request exceeded its budget"),
+            {"s1": "first concept"},
+            {"s2": "second concept"}, "summary",
+        ])
+        progress = []
+        batcher = ConceptPromptBatcher(
+            object(), prompt_modules=modules, batch_size=2,
+            progress_callback=progress.append,
+        )
+
+        result = batcher.create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": "s1"}, {"segment_id": "s2"}],
+            story_idea="story", global_context={},
+        )
+
+        self.assertEqual({"s1": "first concept", "s2": "second concept"}, result)
+        self.assertEqual([2, 1, 1], [
+            len(call[1]["CURRENT_BATCH_SEGMENTS"])
+            for call in modules.calls if call[0] == "concepts"
+        ])
+        self.assertTrue(any("timed out" in message for message in progress))
+
+    def test_locked_story_brief_projects_acting_into_concept_narrative(self):
+        concepts = {"segment_001": {"concept": "Ravena gathers her resolve."}}
+
+        _apply_locked_segment_bindings(
+            concepts,
+            {
+                "segment_001": {
+                    "objective": "Choose the dangerous descent.",
+                    "emotional_turn": "fear to resolve",
+                    "actor_states": [
+                        {"character_id": "ravena", "state": "resolute"},
+                    ],
+                    "vocal_presentation": "on_screen",
+                    "visual_direction": "She steps into the candlelit tunnel.",
+                }
+            },
+        )
+
+        narrative = concepts["segment_001"]["narrative"]
+        self.assertEqual("Choose the dangerous descent.", narrative["acting"]["objective"])
+        self.assertEqual("fear to resolve", narrative["acting"]["emotional_turn"])
+        self.assertEqual(
+            [{"character_id": "ravena", "state": "resolute"}],
+            narrative["acting"]["actor_states"],
+        )
+        self.assertEqual("on_screen", narrative["vocal_presentation"])
+        self.assertEqual(
+            "She steps into the candlelit tunnel.",
+            narrative["visual_direction"],
+        )
+
+    def test_locked_story_brief_clears_unassigned_milestones_and_cast_states(self):
+        concepts = {
+            "segment_001": {
+                "concept": "The dragon waits in the cave.",
+                "narrative": {
+                    "milestones": ["drink_silver_water"],
+                    "cast_states": {"dragon": "watching"},
+                },
+            }
+        }
+
+        _apply_locked_segment_bindings(
+            concepts,
+            {
+                "segment_001": {
+                    "character_ids": ["ravena", "lich"],
+                    "actor_states": [{"character_id": "ravena", "state": "resolute"}],
+                }
+            },
+        )
+
+        narrative = concepts["segment_001"]["narrative"]
+        self.assertEqual([], narrative["milestones"])
+        self.assertEqual({"ravena": "resolute"}, narrative["cast_states"])
+
     def test_story_complete_is_only_valid_on_final_segment_without_contract(self):
         concepts = {
             "segment_001": {
@@ -190,7 +359,8 @@ class ConceptPromptBatcherTests(unittest.TestCase):
     def test_reports_ids_of_missing_scene_keys_before_repair(self):
         modules = FakeConceptModules([
             json.dumps({"seg_1": "concept 1"}),
-            json.dumps({"seg_2": "repaired concept 2", "seg_3": "repaired concept 3"}),
+            json.dumps({"seg_2": "repaired concept 2"}),
+            json.dumps({"seg_3": "repaired concept 3"}),
             "summary",
         ])
         progress = []
@@ -1569,7 +1739,8 @@ class RepairContextCompletenessTests(unittest.TestCase):
         c2 = self._concept("cross_chamber", cast="advancing")
         modules = FakeConceptModules([
             {"s1": c1, "s2": c2},
-            {"s3": self._concept("observe_throne"), "s4": self._concept("approach_throne")},
+            {"s3": self._concept("observe_throne")},
+            {"s4": self._concept("approach_throne")},
             {"s5": self._concept("face_guardian")},
             "summary",
         ])
@@ -1582,9 +1753,9 @@ class RepairContextCompletenessTests(unittest.TestCase):
         )
 
         repairs = [call[1] for call in modules.calls if call[0] == "repair_concepts"]
-        self.assertEqual(2, len(repairs))
-        first = repairs[0]
-        self.assertEqual(["s3", "s4"], first["EXPECTED_KEYS"])
+        self.assertEqual(3, len(repairs))
+        first, second, _third = repairs
+        self.assertEqual(["s3"], first["EXPECTED_KEYS"])
         # s3 has an adjacent accepted predecessor: unchanged shape, no distance key.
         s3_boundary = first["BOUNDARY_CONTEXT"]["s3"]["predecessor"]
         self.assertEqual("s2", s3_boundary["scene_id"])
@@ -1592,11 +1763,11 @@ class RepairContextCompletenessTests(unittest.TestCase):
         self.assertNotIn("successor", first["BOUNDARY_CONTEXT"]["s3"])
         # s4's immediate predecessor is itself being repaired: the boundary
         # entry must fall back to the nearest accepted scene across the gap.
-        s4_boundary = first["BOUNDARY_CONTEXT"]["s4"]["predecessor"]
+        s4_boundary = second["BOUNDARY_CONTEXT"]["s4"]["predecessor"]
         self.assertEqual("s2", s4_boundary["scene_id"])
         self.assertEqual(2, s4_boundary["neighbor_distance"])
         self.assertEqual("cross_chamber", s4_boundary["outgoing"]["action"])
-        self.assertNotIn("successor", first["BOUNDARY_CONTEXT"]["s4"])
+        self.assertNotIn("successor", second["BOUNDARY_CONTEXT"]["s4"])
 
     def test_gap_fallback_repair_that_duplicates_boundary_neighbor_still_fails(self):
         # Negative guard: enriching the gap context must not soften the gate.
@@ -1741,8 +1912,9 @@ class RepairContextCompletenessTests(unittest.TestCase):
     def test_incomplete_repair_response_is_reported(self):
         modules = FakeConceptModules([
             {},  # generation lost every key
-            {"s1": "concept one"},  # chunk (s1, s2) answered only s1
-            {"s3": "concept three"},  # chunk (s3) answered
+            {"s1": "concept one"},
+            {},  # targeted repair for s2 is incomplete
+            {"s3": "concept three"},
             "summary",
         ])
         progress = []
@@ -1800,7 +1972,7 @@ class ConceptCheckpointTests(unittest.TestCase):
         )
         return batcher
 
-    def test_checkpoint_skips_completed_batches_and_is_cleared_on_success(self):
+    def test_checkpoint_skips_completed_batches_and_remains_until_final_validation(self):
         import tempfile
         from pathlib import Path
 
@@ -1836,7 +2008,7 @@ class ConceptCheckpointTests(unittest.TestCase):
                 any("Resuming concept generation from checkpoint" in message for message in progress),
                 progress,
             )
-            self.assertFalse(checkpoint.exists(), "checkpoint must be cleared after success")
+            self.assertTrue(checkpoint.exists(), "checkpoint must remain until final validation succeeds")
 
     def test_stale_checkpoint_is_ignored_and_inputs_regenerated(self):
         import tempfile
@@ -1868,6 +2040,58 @@ class ConceptCheckpointTests(unittest.TestCase):
             )
 
             self.assertEqual({"s1", "s2"}, set(result))
+            self.assertEqual(
+                [1, 2],
+                [call[1]["BATCH_INDEX"] for call in modules.calls if call[0] == "concepts"],
+            )
+            self.assertTrue(
+                any("Ignoring stale concept checkpoint" in message for message in progress),
+                progress,
+            )
+
+    def test_checkpoint_is_stale_when_story_bindings_change(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp:
+            crashing = self.CrashingModules([{"s1": "concept one"}, "summary"])
+            with self.assertRaises(RuntimeError):
+                self._batcher(crashing, temp).create_concept_prompts_batched(
+                    stage1_segments=self._segments(),
+                    story_idea="idea",
+                    global_context={},
+                    segment_briefs={},
+                )
+
+            class RecordingModules:
+                def __init__(self) -> None:
+                    self.calls = []
+
+                def concepts(self, payload, **_kwargs):
+                    self.calls.append(("concepts", payload))
+                    segment_id = payload["CURRENT_BATCH_SEGMENTS"][0]["segment_id"]
+                    return {segment_id: f"concept {segment_id}"}
+
+                def summary(self, payload, **_kwargs):
+                    self.calls.append(("summary", payload))
+                    return "summary"
+
+            modules = RecordingModules()
+            progress = []
+            batcher = ConceptPromptBatcher(
+                object(), prompt_modules=modules, batch_size=1, progress_callback=progress.append,
+            )
+            batcher.enable_checkpoint(
+                path=Path(temp) / "concept_checkpoint.json",
+                artifact_store=self._store(),
+            )
+
+            batcher.create_concept_prompts_batched(
+                stage1_segments=self._segments(),
+                story_idea="idea",
+                global_context={},
+                segment_briefs={"s1": {"objective": "Reveal the secret."}},
+            )
+
             self.assertEqual(
                 [1, 2],
                 [call[1]["BATCH_INDEX"] for call in modules.calls if call[0] == "concepts"],
@@ -2105,6 +2329,7 @@ class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
         )
         modules = FakeConceptModules([
             {"seg_1": first, "seg_2": duplicate},
+            {"seg_1": first},
             {"seg_2": duplicate},  # repair returns the same invalid concept
             "summary",
         ])
@@ -2403,6 +2628,35 @@ class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
         # The duplicate is in the aftermath.
         self.assertIn("segment_015", allocation.get("aftermath", []))
         self.assertEqual(["drink"], allocation["one_shot_milestones"])
+
+
+class TargetedRepairTests(unittest.TestCase):
+    def test_each_missing_locked_scene_is_repaired_in_its_own_request(self):
+        modules = FakeConceptModules([
+            {"s1": "first scene"},
+            {"s2": "second scene"},
+            {"s3": "third scene"},
+            "summary",
+        ])
+        batcher = ConceptPromptBatcher(object(), prompt_modules=modules, batch_size=3)
+
+        batcher.create_concept_prompts_batched(
+            stage1_segments=[{"segment_id": f"s{index}"} for index in range(1, 4)],
+            story_idea="A journey with three ordered moments.",
+            global_context={},
+            segment_briefs={
+                "s1": {"location_id": "place-a"},
+                "s2": {"location_id": "place-b"},
+                "s3": {"location_id": "place-c"},
+            },
+        )
+
+        repairs = [payload for name, payload, _ in modules.calls if name == "repair_concepts"]
+        self.assertEqual([["s2"], ["s3"]], [payload["EXPECTED_KEYS"] for payload in repairs])
+        self.assertEqual(
+            [{"s2": {"location_id": "place-b"}}, {"s3": {"location_id": "place-c"}}],
+            [payload["LOCKED_SEGMENT_BINDINGS"] for payload in repairs],
+        )
 
 
 if __name__ == "__main__":
