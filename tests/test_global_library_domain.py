@@ -38,6 +38,24 @@ class GlobalLibraryDomainTests(unittest.TestCase):
         self.assertEqual(first.id, renamed.id)
         self.assertNotEqual(first.name, renamed.name)
 
+    def test_asset_and_look_ids_reject_path_separators_and_traversal(self):
+        # A look id containing a path separator must be rejected at the domain
+        # contract so it cannot escape the asset directory on materialize or
+        # artifact staging.
+        with self.assertRaises(ValueError):
+            AssetLook(id="../../etc", name="Escaping")
+        with self.assertRaises(ValueError):
+            AssetLook(id="nested/look", name="Nested")
+        with self.assertRaises(ValueError):
+            AssetLook(id="a\\b", name="Backslash")
+        with self.assertRaises(ValueError):
+            GlobalAsset(id="a/b", kind=AssetKind.PROP, name="Slash")
+        with self.assertRaises(ValueError):
+            GlobalAsset(id="..", kind=AssetKind.PROP, name="Dotdot")
+        # Safe ids (alphanumerics, underscore, hyphen) still pass.
+        self.assertEqual(AssetLook(id="hero-look_1", name="X").id, "hero-look_1")
+        self.assertEqual(GlobalAsset(id="hero-look_1", kind=AssetKind.PROP, name="X").id, "hero-look_1")
+
     def test_multiview_artifacts_round_trip_without_using_sheet_as_anchor(self):
         look = AssetLook(
             id="default",

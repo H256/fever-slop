@@ -48,7 +48,11 @@ class PostprocessorFrameExtractor:
             # The project tree is trusted against concurrent hostile mutation.
             # These checks protect accidental/static escapes; path-based APIs
             # cannot eliminate replacement by a privileged concurrent process.
-            cached = video_path.with_name("lastframe.png")
+            # The cached frame is keyed by the source clip's stem so that
+            # clips sharing one directory (flat movie layout) do not read
+            # each other's last frame. This mirrors the write side in
+            # VideoPostProcessor.trim_clip.
+            cached = video_path.with_name(f"lastframe_{video_path.stem}.png")
             if self._regular_file(cached):
                 shutil.copyfile(cached, temporary)
                 extracted = temporary
