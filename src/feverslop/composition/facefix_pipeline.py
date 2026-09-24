@@ -29,7 +29,11 @@ from feverslop.domain.face_detection import (
     FaceTrackEntry,
     FrameResult,
 )
-from feverslop.domain.facefix_rendering import FaceFixConfig
+from feverslop.domain.facefix_rendering import (
+    FaceFixConfig,
+    FaceFixBackendKind,
+    select_facefix_backend,
+)
 from feverslop.path_utils import coerce_local_path
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.utils.io import file_is_valid
@@ -65,6 +69,8 @@ class FaceFixCompositionOptions:
     use_crop_pipeline: bool = True
     max_skip_rate: float = 0.5
     ffmpeg_timeout_seconds: float = 120.0
+    video_pipeline: str = ""
+    facefix_backend: str | None = None
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.ffmpeg_timeout_seconds) or self.ffmpeg_timeout_seconds <= 0:
@@ -112,12 +118,44 @@ def run_facefix(
 ) -> list[Path]:
     """Build and execute the FaceFix pipeline.
 
-    When use_crop_pipeline is True, uses the new crop-and-composite approach.
-    Otherwise falls back to the legacy full-res approach.
+    Routes by the scene video backend (issue 519): H3 R2V scenes use the
+    H3-native FaceRefine pass, everything else keeps the LTXV crop path.
+    An explicit ``facefix_backend`` override wins over the video-pipeline
+    heuristic.
     """
+    backend = select_facefix_backend(options.video_pipeline, options.facefix_backend)
+    if backend is FaceFixBackendKind.H3_FACEFIX:
+        return _run_h3_facefix(options, console=console)
     if options.use_crop_pipeline:
         return _run_crop_facefix(options, console=console)
     return _run_legacy_facefix(options, console=console)
+
+
+def _run_h3_facefix(
+    options: FaceFixCompositionOptions,
+    *,
+    console: Console | None = None,
+) -> list[Path]:
+    """H3-native FaceRefine pass (issue 519).
+
+    The H3 FaceRefine backend adapter is not implemented yet (units 2-4 of
+    the WORKSTATE plan). Rather than silently refining H3 scenes with the
+    LTXV crop path, report an actionable skip so the operator knows the
+    H3-native pass is pending and the scene keeps its original render.
+    """
+    reporter = ConsoleReporter(console) if console is not None else None
+    scene_count = len(options.scene_numbers) if options.scene_numbers else None
+    detail = f" ({scene_count} scenes)" if scene_count is not None else ""
+    message = (
+        f"H3 FaceRefine backend selected for video pipeline "
+        f"'{options.video_pipeline}' but is not implemented yet{detail}; "
+        f"skipping FaceFix so scenes keep their original H3 render. "
+        f"Set --facefix-backend ltxv_crop to use the LTXV crop path instead."
+    )
+    if reporter is not None:
+        reporter.warning(message, title="FaceFix skipped")
+    logger.warning(message)
+    return []
 
 
 def _run_legacy_facefix(

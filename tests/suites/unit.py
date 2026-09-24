@@ -58,6 +58,7 @@ UNIT_MODULES = (
     "face_detection_domain",
     "face_pipeline_application",
     "face_pipeline_domain",
+    "facefix_backend_selection",
     "facefix_crop_pipeline",
     "facefix_pipeline",
     "facefix_rendering",
