@@ -88,6 +88,7 @@ RUNNER_ARGUMENTS = (
     ("skip_openshot_export", ("--skip-openshot-export",), {"action": "store_true"}),
     ("skip_facefix", ("--skip-facefix",), {"action": "store_true", "default": True}),
     ("facefix_debug", ("--facefix-debug",), {"action": "store_true", "default": False}),
+    ("facefix_backend", ("--facefix-backend",), {"choices": ["ltxv_crop", "h3_facefix"], "default": None, "help": "Override the FaceFix backend for this run (default: select by --video-pipeline; H3 R2V -> h3_facefix, else ltxv_crop)."}),
     ("facefix_workflow", ("--facefix-workflow",), {"default": str(Path("workflows") / "video_ltxv_facefix_v1.json")}),
     ("diagnostic_original_audio_mux", ("--diagnostic-original-audio-mux",), {"action": "store_true"}),
     ("no_original_audio_mux", ("--no-original-audio-mux",), {"action": "store_true"}),
