@@ -49,6 +49,19 @@ class ReportingAndStemDiscoveryTests(unittest.TestCase):
             r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] second\n$",
         )
 
+    def test_console_reporter_renders_story_content_as_rich_panel_table_and_spinner(self):
+        output = io.StringIO()
+        reporter = ConsoleReporter(Console(file=output, force_terminal=True))
+
+        reporter.panel("The descent begins.", title="Story plan - narrative bible")
+        reporter.table("Story arc", ["Phase", "Event"], [["opening", "Descend"]])
+        self.assertEqual("done", reporter.run_progress("Story plan - shaping the arc", lambda: "done"))
+
+        rendered = output.getvalue()
+        self.assertIn("Story plan - narrative bible", rendered)
+        self.assertIn("Story arc", rendered)
+        self.assertIn("Story plan - shaping the arc", rendered)
+
     def test_cli_data_channel_preserves_machine_readable_payload(self):
         output = io.StringIO()
 
