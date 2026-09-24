@@ -95,6 +95,27 @@ class MusicVideoPromptPipeline:
             return extract_json_object(response)
         return {}
 
+    def create_narrative_milestone_bindings(
+        self,
+        story_idea: str,
+        location_order: list,
+        milestone_order: list,
+        missing_milestone_ids: list[str],
+    ) -> list[dict]:
+        response = self.prompt_modules.narrative_milestone_bindings(
+            story_idea=story_idea,
+            location_order=location_order,
+            milestone_order=milestone_order,
+            missing_milestone_ids=missing_milestone_ids,
+        )
+        if hasattr(response, "model_dump"):
+            response = response.model_dump(mode="json")
+        elif isinstance(response, str):
+            response = extract_json_object(response)
+        if not isinstance(response, dict) or not isinstance(response.get("bindings"), list):
+            raise ValueError("milestone binding repair returned no bindings list")
+        return response["bindings"]
+
     def create_concept_prompts(
         self,
         stage1_segments: list[dict],

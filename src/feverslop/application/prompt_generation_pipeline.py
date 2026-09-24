@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import inspect
+import hashlib
 import json
 import re
 from collections.abc import Callable, Mapping
@@ -66,6 +67,46 @@ def get_steering_value(config: Any, name: str, default: str = "") -> str:
 
 def get_config_value(config: Any, name: str, default: Any = None) -> Any:
     return getattr(config, name, default)
+
+
+def _concept_bindings_manifest_path(concept_path: Path) -> Path:
+    return concept_path.with_name(f"{concept_path.stem}.bindings.manifest{concept_path.suffix}")
+
+
+def _concept_bindings_fingerprint(segment_briefs: dict[str, Any] | None) -> str:
+    material = json.dumps(
+        compact_planning_payload(segment_briefs or {}),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _concept_bindings_match(
+    *, concept_path: Path, segment_briefs: dict[str, Any] | None, artifact_store: Any,
+) -> bool:
+    """Allow resume only when persisted concepts were made with these bindings."""
+    if not segment_briefs:
+        return True
+    try:
+        manifest = artifact_store.read_json(_concept_bindings_manifest_path(concept_path))
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+    return (
+        isinstance(manifest, dict)
+        and manifest.get("bindings_fingerprint") == _concept_bindings_fingerprint(segment_briefs)
+    )
+
+
+def _write_concept_bindings_manifest(
+    *, concept_path: Path, segment_briefs: dict[str, Any] | None, artifact_store: Any,
+) -> None:
+    artifact_store.write_json(
+        _concept_bindings_manifest_path(concept_path),
+        {"bindings_fingerprint": _concept_bindings_fingerprint(segment_briefs)},
+    )
 
 
 def _report_subject_staging_retry(
@@ -362,6 +403,21 @@ class PromptGenerationPipeline:
         if resume and resolved_context_json.is_file():
             reporter.message("[yellow]Resuming resolved context; using existing resolved context.[/yellow]")
             global_context = artifact_store.read_json(resolved_context_json)
+            if global_context.get("narrative_contract_source") != "config":
+                contract = global_context.get("narrative_contract") or {}
+                completed = self._complete_narrative_contract_bindings(
+                    contract=contract,
+                    prompt_pipeline=prompt_pipeline,
+                    story_idea=str(global_context.get("story_idea") or ""),
+                    actors=global_context.get("actors") or [],
+                    structured_locations=global_context.get("structured_locations") or [],
+                    run_spinner=run_spinner,
+                    reporter=reporter,
+                )
+                if completed != contract:
+                    global_context["narrative_contract"] = completed
+                    artifact_store.write_json(resolved_context_json, global_context)
+                    reporter.message("[green]Resolved context updated with repaired milestone bindings.[/green]")
             log_file("Resolved Context JSON", resolved_context_json)
             self._report_global_context(reporter, global_context)
         else:
@@ -414,10 +470,22 @@ class PromptGenerationPipeline:
             "STEERING:",
             get_steering_value(config, "concepts"),
         )
-        if resume and concept_prompts_json.is_file():
+        if (
+            resume
+            and concept_prompts_json.is_file()
+            and _concept_bindings_match(
+                concept_path=concept_prompts_json,
+                segment_briefs=segment_briefs,
+                artifact_store=artifact_store,
+            )
+        ):
             reporter.message("[yellow]Resuming concept prompts; using existing concept prompts.[/yellow]")
             concept_prompts = artifact_store.read_json(concept_prompts_json)
         else:
+            if resume and concept_prompts_json.is_file() and segment_briefs:
+                reporter.message(
+                    "[yellow]Story bindings changed; regenerating concept prompts instead of reusing stale output.[/yellow]"
+                )
             concept_prompts = self._generate_concept_prompts(
                 config=config,
                 llm=llm,
@@ -442,6 +510,11 @@ class PromptGenerationPipeline:
             concept_prompts_json=concept_prompts_json,
             artifact_store=artifact_store,
             log_file=log_file,
+            segment_briefs=segment_briefs,
+            semantic_enforcement=(
+                getattr(config, "narrative_contract_enforcement", None)
+                or getattr(app_config.llm, "narrative_contract_enforcement", "warn")
+            ),
         )
         if resume and scene_details_json.is_file():
             reporter.message("[yellow]Resuming scene details; using existing scene details.[/yellow]")
@@ -546,9 +619,9 @@ class PromptGenerationPipeline:
         llm = self.llm_factory(app_config)
         factory = self.story_plan_service_factory
         story_planning = getattr(getattr(app_config, "llm", None), "story_planning", None)
-        acting_batch_size = int(getattr(story_planning, "acting_batch_size", 8))
-        # Preserve compatibility with injected one-argument test factories,
-        # while the production factory receives the user-configured bound.
+        acting_batch_size = int(getattr(story_planning, "acting_batch_size", 4))
+        # Preserve compatibility with injected one-argument factories, while
+        # giving the production service its configured bound and live reporter.
         parameters = inspect.signature(factory).parameters
         factory_kwargs: dict[str, Any] = {}
         if "acting_batch_size" in parameters:
@@ -637,6 +710,7 @@ class PromptGenerationPipeline:
             story_idea=story_idea,
             locations=locations,
             props=props,
+            narrative_contract=global_context.get("narrative_contract") or {},
         )
 
         plan_path = paths.prompts_dir / f"story_plan_{song_id}.json"
@@ -689,6 +763,19 @@ class PromptGenerationPipeline:
             try:
                 result = service.build_plan(plan_request)
             except StoryPlanError as exc:
+                if exc.diagnostics:
+                    reporter.table(
+                        "Story plan diagnostics",
+                        ["Code", "Boundary", "What needs attention"],
+                        [
+                            [
+                                str(diagnostic.get("code", "unknown")),
+                                str(diagnostic.get("subject_id", "")),
+                                str(diagnostic.get("message", "")),
+                            ]
+                            for diagnostic in exc.diagnostics
+                        ],
+                    )
                 story_planning_config = getattr(
                     getattr(app_config, "llm", None), "story_planning", None
                 )
@@ -696,8 +783,7 @@ class PromptGenerationPipeline:
                     getattr(story_planning_config, "failure_policy", "warn")
                 ).strip().lower()
                 message = (
-                    "Story plan unavailable; stopping before concept generation "
-                    "so no unbound or stale story can be produced: "
+                    "Story plan unavailable; continuing without optional story bindings: "
                     f"{exc}"
                 )
                 if failure_policy == "block":
@@ -870,17 +956,20 @@ class PromptGenerationPipeline:
             f"{len(stage1_segments)} scenes, batches of "
             f"{request.concept_batch_size}[/cyan]",
         )
-        concept_prompts = call_with_supported_kwargs(
-            concept_batcher.create_concept_prompts_batched,
-            stage1_segments=stage1_segments,
-            story_idea=concept_story_input,
-            global_context=global_context,
-            notes=get_steering_value(config, "concepts"),
-            progress_callback=lambda message: reporter.message(
-                f"[cyan]{message}[/cyan]",
+        concept_prompts = reporter.run_progress(
+            "Concept generation - model batches",
+            lambda: call_with_supported_kwargs(
+                concept_batcher.create_concept_prompts_batched,
+                stage1_segments=stage1_segments,
+                story_idea=concept_story_input,
+                global_context=global_context,
+                notes=get_steering_value(config, "concepts"),
+                progress_callback=lambda message: reporter.message(
+                    f"[cyan]{message}[/cyan]",
+                ),
+                segment_briefs=segment_briefs or {},
+                live_prompts=live_prompts or {},
             ),
-            segment_briefs=segment_briefs or {},
-            live_prompts=live_prompts or {},
         )
         reporter.message("[green]Concept generation finished.[/green]")
         return concept_prompts
@@ -1014,6 +1103,8 @@ class PromptGenerationPipeline:
         concept_prompts_json: Path,
         artifact_store: Any,
         log_file: Callable[[str, Path], None],
+        segment_briefs: dict[str, Any] | None = None,
+        semantic_enforcement: str = "block",
     ) -> dict[str, Any]:
         concept_prompts, extra_concepts = validate_and_order_concept_prompts(stage1_segments, concept_prompts)
         if extra_concepts:
@@ -1021,10 +1112,28 @@ class PromptGenerationPipeline:
         concept_prompts = validate_and_annotate_concept_chronology(
             concept_prompts,
             global_context.get("narrative_contract") or {},
+            semantic_enforcement=semantic_enforcement,
         )
+        warnings = [
+            (segment_id, value["semantic_validation"]["unresolved_diagnostic"])
+            for segment_id, value in concept_prompts.items()
+            if isinstance(value, dict)
+            and isinstance(value.get("semantic_validation"), dict)
+            and value["semantic_validation"].get("outcome") == "warning"
+        ]
+        if warnings:
+            reporter.message(
+                f"[yellow]Concept chronology: {len(warnings)} unresolved scene(s) "
+                "recorded as warnings; inspect concept diagnostics before rendering.[/yellow]"
+            )
         prompt_pipeline.save_json(
             concept_prompts_json,
             concept_prompts,
+            artifact_store=artifact_store,
+        )
+        _write_concept_bindings_manifest(
+            concept_path=concept_prompts_json,
+            segment_briefs=segment_briefs,
             artifact_store=artifact_store,
         )
         log_file("Concept Prompts JSON", concept_prompts_json)
@@ -1548,6 +1657,15 @@ class PromptGenerationPipeline:
             if reporter is not None:
                 reporter.message("[yellow]Narrative contract: LLM returned empty; using empty contract.[/yellow]")
             return {}, "empty"
+        derived = self._complete_narrative_contract_bindings(
+            contract=derived,
+            prompt_pipeline=prompt_pipeline,
+            story_idea=story_idea,
+            actors=actors,
+            structured_locations=structured_locations,
+            run_spinner=run_spinner,
+            reporter=reporter,
+        )
         warnings = self._validate_narrative_contract(derived, actors, structured_locations)
         if warnings:
             if reporter is not None:
@@ -1564,6 +1682,81 @@ class PromptGenerationPipeline:
             )
         return derived, "llm"
 
+    def _complete_narrative_contract_bindings(
+        self,
+        *,
+        contract: dict[str, Any],
+        prompt_pipeline: Any,
+        story_idea: str,
+        actors: list[dict],
+        structured_locations: list[dict],
+        run_spinner: Callable[[str, Callable[[], Any]], Any],
+        reporter: Any,
+    ) -> dict[str, Any]:
+        """Fill only missing inferred placements using a bounded DSPy job."""
+        if not isinstance(contract, dict):
+            return {}
+        milestone_order = contract.get("milestone_order") or []
+        location_order = contract.get("location_order") or []
+        milestone_ids = [_contract_entry_id(item) for item in milestone_order]
+        location_ids = {_contract_entry_id(item) for item in location_order}
+        existing = contract.get("milestone_bindings") or []
+        if not milestone_ids or not location_ids or not isinstance(existing, list):
+            return contract
+        valid_existing = [
+            binding for binding in existing
+            if isinstance(binding, dict)
+            and str(binding.get("milestone_id") or "") in milestone_ids
+            and str(binding.get("location_id") or "") in location_ids
+            and self._valid_relative_position(binding.get("relative_position"))
+        ]
+        bound_ids = {str(binding["milestone_id"]) for binding in valid_existing}
+        missing = [milestone for milestone in milestone_ids if milestone not in bound_ids]
+        if not missing:
+            return contract
+        method = getattr(prompt_pipeline, "create_narrative_milestone_bindings", None)
+        if not callable(method):
+            return contract
+        if reporter is not None:
+            reporter.message(
+                f"[cyan]Story contract: placing {len(missing)} missing milestones in canonical locations…[/cyan]"
+            )
+        try:
+            additions = run_spinner(
+                "Story contract - repairing milestone placements",
+                lambda: method(
+                    story_idea=story_idea,
+                    location_order=location_order,
+                    milestone_order=milestone_order,
+                    missing_milestone_ids=missing,
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - validated below, visible at boundary
+            if reporter is not None:
+                reporter.message(f"[yellow]Milestone placement repair failed: {exc}[/yellow]")
+            return contract
+        if not isinstance(additions, list):
+            return contract
+        candidate = {**contract, "milestone_bindings": [*valid_existing, *additions]}
+        if self._validate_narrative_contract(candidate, actors, structured_locations):
+            if reporter is not None:
+                reporter.message("[yellow]Milestone placement repair returned invalid bindings.[/yellow]")
+            return contract
+        if reporter is not None:
+            reporter.message(
+                f"[green]Story contract: all {len(milestone_ids)} milestones have canonical placements.[/green]"
+            )
+        return candidate
+
+    @staticmethod
+    def _valid_relative_position(value: Any) -> bool:
+        if isinstance(value, bool):
+            return False
+        try:
+            return 0.0 <= float(value) <= 1.0
+        except (TypeError, ValueError):
+            return False
+
     def _validate_narrative_contract(
         self,
         contract: dict,
@@ -1572,9 +1765,9 @@ class PromptGenerationPipeline:
     ) -> list[str]:
         """Return warnings for canonical ids the contract invents.
 
-        Only location and actor ids can be checked against the resolved cast
-        and locations; milestone and chronology-exception names are narrative
-        and are not validated.
+        Milestone ids are narrative data, but their bindings are mechanical:
+        a non-empty ordered milestone list must bind each id exactly once to a
+        canonical location and a finite position in that location's window.
         """
         if not isinstance(contract, dict) or not contract:
             return []
@@ -1593,6 +1786,49 @@ class PromptGenerationPipeline:
             item_id = _contract_entry_id(raw)
             if item_id and item_id not in location_ids:
                 warnings.append(f"location_order references unknown location {item_id!r}")
+        milestone_ids = [
+            _contract_entry_id(raw)
+            for raw in contract.get("milestone_order") or ()
+        ]
+        milestone_ids = [item_id for item_id in milestone_ids if item_id]
+        bindings = contract.get("milestone_bindings")
+        if milestone_ids:
+            if not isinstance(bindings, list):
+                warnings.append("milestone_bindings must be a list when milestone_order is non-empty")
+            else:
+                bound_ids: list[str] = []
+                for index, binding in enumerate(bindings):
+                    if not isinstance(binding, dict):
+                        warnings.append(f"milestone_bindings[{index}] must be an object")
+                        continue
+                    milestone_id = str(binding.get("milestone_id") or "").strip()
+                    location_id = str(binding.get("location_id") or "").strip()
+                    bound_ids.append(milestone_id)
+                    if milestone_id not in milestone_ids:
+                        warnings.append(
+                            f"milestone_bindings[{index}] references unknown milestone {milestone_id!r}"
+                        )
+                    if location_id not in location_ids:
+                        warnings.append(
+                            f"milestone_bindings[{index}] references unknown location {location_id!r}"
+                        )
+                    try:
+                        relative_position = float(binding.get("relative_position"))
+                    except (TypeError, ValueError):
+                        warnings.append(
+                            f"milestone_bindings[{index}].relative_position must be between 0.0 and 1.0"
+                        )
+                    else:
+                        if not 0.0 <= relative_position <= 1.0:
+                            warnings.append(
+                                f"milestone_bindings[{index}].relative_position must be between 0.0 and 1.0"
+                            )
+                if len(bound_ids) != len(set(bound_ids)):
+                    warnings.append("milestone_bindings must not bind a milestone more than once")
+                if set(bound_ids) != set(milestone_ids):
+                    warnings.append(
+                        "milestone_bindings must contain every milestone in milestone_order exactly once"
+                    )
         allowed = contract.get("actor_allowed_locations") or {}
         if isinstance(allowed, dict):
             for actor_id, allowed_locations in allowed.items():

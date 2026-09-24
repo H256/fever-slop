@@ -60,12 +60,26 @@ class StoryPlanServiceAdapter:
         guide: str,
         **_extra: Any,
     ) -> Any:
-        self._creative_direction = str(
-            source_evidence.get("creative_direction", "")
-        ) if isinstance(source_evidence, Mapping) else ""
-        story_idea = str(source_evidence.get("story_idea", "")) if isinstance(source_evidence, Mapping) else ""
-        locations = list(source_evidence.get("locations", ())) if isinstance(source_evidence, Mapping) else []
-        props = list(source_evidence.get("props", ())) if isinstance(source_evidence, Mapping) else []
+        self._creative_direction = (
+            str(source_evidence.get("creative_direction", ""))
+            if isinstance(source_evidence, Mapping)
+            else ""
+        )
+        story_idea = (
+            str(source_evidence.get("story_idea", ""))
+            if isinstance(source_evidence, Mapping)
+            else ""
+        )
+        locations = (
+            list(source_evidence.get("locations", ()))
+            if isinstance(source_evidence, Mapping)
+            else []
+        )
+        props = (
+            list(source_evidence.get("props", ()))
+            if isinstance(source_evidence, Mapping)
+            else []
+        )
         result = self._modules.bible(
             story_text=_build_story_text(
                 song_title=song_title,
@@ -77,7 +91,11 @@ class StoryPlanServiceAdapter:
             ),
             creative_direction=self._creative_direction,
             characters=[dict(character) for character in characters],
-            locations=[dict(location) for location in locations if isinstance(location, Mapping)],
+            locations=[
+                dict(location)
+                for location in locations
+                if isinstance(location, Mapping)
+            ],
             props=[dict(prop) for prop in props if isinstance(prop, Mapping)],
         )
         self._last_bible = result if isinstance(result, Mapping) else {}

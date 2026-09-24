@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from feverslop.application.story_plan_service import (
     STORY_PLAN_PRODUCER,
+    compute_source_fingerprint,
     SegmentDescriptor,
     StoryPlanError,
     StoryPlanRequest,
@@ -44,6 +45,86 @@ def _sha(label: str) -> str:
 
 
 _FP = _sha("source-1385")
+
+
+class StoryPlanFingerprintTests(unittest.TestCase):
+    def test_milestone_binding_change_invalidates_plan(self) -> None:
+        inputs = dict(
+            song_title="song", song_language="en", song_style="dark",
+            lyrics="", sections=(), segments=(), characters=(),
+        )
+        initial = compute_source_fingerprint(
+            **inputs,
+            narrative_contract={"milestone_bindings": []},
+        )
+        repaired = compute_source_fingerprint(
+            **inputs,
+            narrative_contract={"milestone_bindings": [
+                {"milestone_id": "arrival", "location_id": "well", "relative_position": 0.8},
+            ]},
+        )
+        self.assertNotEqual(initial, repaired)
+
+
+class StoryPlanActingBindingTests(unittest.TestCase):
+    def test_explicit_empty_cast_discards_acting_state(self) -> None:
+        request = make_request(source_evidence={"narrative_contract": {
+            "location_order": ["cave"],
+        }})
+        allocation = {
+            "typed_beats": [{"phase": "opening", "location_id": "cave", "character_ids": []}],
+            "briefs": [{"brief_id": "brief-1", "segment_id": "seg-1", "beat_indices": [0],
+                        "character_ids": [], "location_id": "cave"}],
+        }
+        acting = {"briefs": [{"brief_id": "brief-1", "actor_states": [
+            {"character_id": "char-1", "state": "watching"},
+        ]}]}
+
+        candidate = StoryPlanService._assemble_candidate(request, allocation, acting)
+
+        self.assertEqual([], candidate["segments"][0]["actor_states"])
+
+    def test_assembly_keeps_only_cast_and_preserves_terminal_state(self) -> None:
+        request = make_request(
+            characters=(
+                {"id": "lead", "name": "Lead"},
+                {"id": "visitor", "name": "Visitor"},
+            ),
+            segments=tuple(
+                SegmentDescriptor(segment_id=f"seg-{i}", start_seconds=float(i - 1), end_seconds=float(i))
+                for i in range(1, 4)
+            ),
+            source_evidence={"narrative_contract": {
+                "terminal_states": {"lead": {"milestone": "ascent", "state": "transformed"}},
+            }},
+        )
+        allocation = {
+            "typed_beats": [{"phase": "resolution", "location_id": "well", "character_ids": ["lead"]}],
+            "briefs": [
+                {"brief_id": f"brief-{i}", "segment_id": f"seg-{i}", "beat_indices": [0],
+                 "character_ids": ["lead"], "location_id": "well",
+                 **({"milestone_id": "ascent"} if i == 2 else {})}
+                for i in range(1, 4)
+            ],
+        }
+        acting = {"briefs": [
+            {"brief_id": f"brief-{i}", "actor_states": [
+                {"character_id": "lead", "state": "ordinary"},
+                {"character_id": "visitor", "state": "watching"},
+            ]}
+            for i in range(1, 4)
+        ]}
+
+        candidate = StoryPlanService._assemble_candidate(request, allocation, acting)
+
+        states = [
+            {item["character_id"]: item["state"] for item in segment["actor_states"]}
+            for segment in candidate["segments"]
+        ]
+        self.assertEqual(
+            [{"lead": "ordinary"}, {"lead": "transformed"}, {"lead": "transformed"}],
+            states,
+        )
 
 
 # -- fixtures ---------------------------------------------------------------
@@ -404,7 +485,6 @@ class StoryPlanModuleTests(unittest.TestCase):
             characters=[],
             locations=[],
             props=[],
-            segments=[{"segment_id": "seg-1", "vocal_events": [{"t": 1.0}]}],
         )
         kwargs = _predictor(self.predictors, "BeatAllocation").calls[0]
         self.assertEqual(
@@ -418,7 +498,6 @@ class StoryPlanModuleTests(unittest.TestCase):
                 "guide",
                 "locations",
                 "props",
-                "segments",
             ],
         )
 
@@ -505,7 +584,7 @@ class StoryPlanModuleTests(unittest.TestCase):
             ],
         )
         allocation_payload = json.dumps(
-            _predictor(self.predictors, "BeatAllocation").calls[0]
+            _predictor(self.predictors, "BeatAllocation").calls
         )
         self.assertNotIn("vocal_events", allocation_payload)
         self.assertNotIn("word_timestamps", allocation_payload)
@@ -532,7 +611,6 @@ class StoryPlanModuleTests(unittest.TestCase):
             characters=[],
             locations=[],
             props=[],
-            segments=[],
         )
         self.modules.acting(
             creative_direction="cd",
@@ -543,7 +621,6 @@ class StoryPlanModuleTests(unittest.TestCase):
             locations=[],
             props=[],
         )
-        self.modules.repair(prior_plan={}, diagnostics=[])
         self.assertEqual(
             _predictor(self.predictors, "StoryPlanBible").calls[0]["config"],
             {"max_tokens": 4096},
@@ -558,11 +635,7 @@ class StoryPlanModuleTests(unittest.TestCase):
         )
         self.assertEqual(
             _predictor(self.predictors, "Acting").calls[0]["config"],
-            {"max_tokens": 4096},
-        )
-        self.assertEqual(
-            _predictor(self.predictors, "StoryPlanRepair").calls[0]["config"],
-            {"max_tokens": 8192},
+            {"max_tokens": 1536},
         )
 
     def test_module_resolves_per_task_temperature(self) -> None:
@@ -582,6 +655,18 @@ class StoryPlanModuleTests(unittest.TestCase):
             ],
         )
         self.assertNotIn(0.4, [t for _, t, _ in self.lm_calls])
+
+    def test_module_bounds_the_dspy_lm_not_just_predictor_config(self) -> None:
+        """DSPy must receive the bounded budget as its LM default.
+
+        Some providers ignore a nested predictor ``config`` when creating a
+        completion.  Leaving the LM at the application's 65k default turns a
+        malformed small-model acting response into a multi-minute request.
+        """
+        self.assertEqual(
+            [max_tokens for _, _, max_tokens in self.lm_calls],
+            [1536, 4096, 4096, 4096, 16384, 8192],
+        )
 
     def test_module_requires_configured_dspy_llm(self) -> None:
         with self.assertRaises(RuntimeError):
@@ -631,7 +716,6 @@ class StoryPlanSignatureBundleTests(unittest.TestCase):
         self.assertIn("beats", bundle["beat_allocation"].input_fields)
         self.assertIn("allocation", bundle["beat_allocation"].output_fields)
         self.assertIn("result", bundle["acting"].output_fields)
-        self.assertIn("plan", bundle["repair"].output_fields)
 
 
 class StoryPlanGuideTests(unittest.TestCase):
@@ -640,7 +724,6 @@ class StoryPlanGuideTests(unittest.TestCase):
             "story-plan-bible",
             "story-plan-beat-allocation",
             "story-plan-acting",
-            "story-plan-repair",
         ):
             guide = load_markdown_guide(name)
             self.assertIsInstance(guide, str)
@@ -684,6 +767,165 @@ class StoryPlanTypedContractTests(unittest.TestCase):
 
 
 class StoryPlanServiceTests(unittest.TestCase):
+    def test_service_deterministically_binds_every_segment_to_a_small_beat_sheet(self) -> None:
+        """The LLM writes the arc; Python owns the complete scene binding."""
+        modules = FakePromptModules(
+            allocation={
+                "beats": [
+                    {"phase": "opening", "description": "The journey begins."},
+                    {"phase": "development", "description": "The danger closes in."},
+                    {"phase": "resolution", "description": "Renewal in the well."},
+                ]
+            },
+            acting=acting_for_brief_ids("brief-seg-1", "brief-seg-2"),
+        )
+
+        result = StoryPlanService(prompt_modules=modules).build_plan(make_request())
+
+        self.assertEqual(
+            [(brief.target, brief.beat_id) for brief in result.plan.segments],
+            [("seg-1", "beat-001"), ("seg-2", "beat-003")],
+        )
+        allocation_call = next(payload for name, payload in modules.calls if name == "beat_allocation")
+        self.assertNotIn("segments", allocation_call)
+        self.assertNotIn("repair", [name for name, _ in modules.calls])
+
+    def test_service_reports_visible_progress_for_each_creative_job(self) -> None:
+        class RecordingReporter:
+            def __init__(self) -> None:
+                self.progress: list[str] = []
+
+            def step(self, _title: str) -> None:
+                pass
+
+            def message(self, _text: str) -> None:
+                pass
+
+            def warning(self, _text: str, *, title: str | None = None) -> None:
+                pass
+
+            def table(self, _title: str, _columns: list[str], _rows: list[list[str]]) -> None:
+                pass
+
+            def run_progress(self, description: str, func: Any) -> Any:
+                self.progress.append(description)
+                return func()
+
+        reporter = RecordingReporter()
+        StoryPlanService(prompt_modules=FakePromptModules(), reporter=reporter).build_plan(make_request())
+
+        self.assertEqual(
+            reporter.progress,
+            [
+                "Story plan - reading the story",
+                "Story plan - shaping the arc",
+                "Story plan - writing acting",
+            ],
+        )
+
+    def test_service_reports_acting_batch_and_total_scene_progress(self) -> None:
+        class RecordingReporter:
+            def __init__(self) -> None:
+                self.messages: list[str] = []
+
+            def step(self, _title: str) -> None:
+                pass
+
+            def message(self, text: str) -> None:
+                self.messages.append(text)
+
+            def warning(self, _text: str, *, title: str | None = None) -> None:
+                pass
+
+            def table(self, _title: str, _columns: list[str], _rows: list[list[str]]) -> None:
+                pass
+
+            def run_progress(self, _description: str, func: Any) -> Any:
+                return func()
+
+        class PerBatchPromptModules(FakePromptModules):
+            def acting(self, **kwargs: Any) -> dict:
+                return acting_for_brief_ids(*kwargs["expected_brief_ids"])
+
+        reporter = RecordingReporter()
+        StoryPlanService(
+            prompt_modules=PerBatchPromptModules(),
+            reporter=reporter,
+            acting_batch_size=1,
+        ).build_plan(make_request())
+
+        self.assertTrue(
+            any("Story plan - acting: 0/2" in message for message in reporter.messages)
+        )
+        self.assertTrue(
+            any("Story plan - acting: 1/2" in message and "batch 1/2" in message
+                for message in reporter.messages)
+        )
+        self.assertTrue(
+            any("Story plan - acting: 2/2" in message and "batch 2/2" in message
+                for message in reporter.messages)
+        )
+
+    def test_service_shows_a_compact_acting_brief_card_for_each_batch(self) -> None:
+        class RecordingReporter:
+            def __init__(self) -> None:
+                self.tables: list[tuple[str, list[str], list[list[str]]]] = []
+
+            def step(self, _title: str) -> None:
+                pass
+
+            def message(self, _text: str) -> None:
+                pass
+
+            def warning(self, _text: str, *, title: str | None = None) -> None:
+                pass
+
+            def table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
+                self.tables.append((title, columns, rows))
+
+            def run_progress(self, _description: str, func: Any) -> Any:
+                return func()
+
+        reporter = RecordingReporter()
+        StoryPlanService(
+            prompt_modules=FakePromptModules(), reporter=reporter
+        ).build_plan(make_request())
+
+        acting_table = next(table for table in reporter.tables if table[0] == "Acting briefs - batch 1/1")
+        self.assertEqual(acting_table[1], ["Scene", "Time", "Objective", "Emotional turn", "Voice"])
+        self.assertEqual(acting_table[2][0], [
+            "seg-1", "00:00–00:30", "Objective for brief-1.", "Nervous to determined.", "offscreen",
+        ])
+
+    def test_service_reports_a_locked_story_plan_summary(self) -> None:
+        class RecordingReporter:
+            def __init__(self) -> None:
+                self.tables: list[tuple[str, list[str], list[list[str]]]] = []
+
+            def step(self, _title: str) -> None:
+                pass
+
+            def message(self, _text: str) -> None:
+                pass
+
+            def warning(self, _text: str, *, title: str | None = None) -> None:
+                pass
+
+            def table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
+                self.tables.append((title, columns, rows))
+
+            def run_progress(self, _description: str, func: Any) -> Any:
+                return func()
+
+        reporter = RecordingReporter()
+        StoryPlanService(prompt_modules=FakePromptModules(), reporter=reporter).build_plan(make_request())
+
+        self.assertIn(
+            ("Story plan locked", ["Scenes", "Beats", "Acting briefs"], [["2", "0", "2"]]),
+            reporter.tables,
+        )
+        self.assertIn("Story plan - locked windows", [table[0] for table in reporter.tables])
+
     def test_pydantic_bible_output_is_accepted_from_typed_dspy(self) -> None:
         """DSPy may deserialize an annotated output before the service sees it."""
         modules = FakePromptModules(
@@ -738,6 +980,197 @@ class StoryPlanServiceTests(unittest.TestCase):
         self.assertEqual([beat.id for beat in result.plan.beats], ["beat-001", "beat-002"])
         self.assertEqual([brief.target for brief in result.plan.segments], ["seg-1", "seg-2"])
         self.assertEqual(result.plan.segments[0].audio_ref.segment_id, "seg-1")
+        self.assertEqual(
+            "Invite the audience into the journey.",
+            result.plan.segments[0].objective,
+        )
+        self.assertEqual("Guarded to hopeful.", result.plan.segments[0].emotional_turn)
+        self.assertEqual("guarded", result.plan.segments[0].actor_states[0].state)
+
+    def test_creative_acting_cannot_mark_a_shared_beat_exclusive(self) -> None:
+        """Only service-owned narrative allocation may declare exclusivity."""
+        modules = FakePromptModules(
+            allocation={
+                "beats": [
+                    {"phase": "opening", "description": "The journey begins."},
+                    {"phase": "resolution", "description": "The journey resolves."},
+                ],
+            },
+            acting={
+                "briefs": [
+                    {
+                        "target": target,
+                        "vocal_presentation": "offscreen",
+                        "exclusive": True,
+                        "objective": "Continue the journey.",
+                        "emotional_turn": "Steady to resolved.",
+                        "actor_states": [{"character_id": "char-1", "state": "steady"}],
+                    }
+                    for target in ("seg-1", "seg-2", "seg-3")
+                ],
+            },
+        )
+
+        result = StoryPlanService(prompt_modules=modules).build_plan(make_request_3seg())
+
+        self.assertEqual(["beat-001", "beat-001", "beat-002"], [
+            brief.beat_id for brief in result.plan.segments
+        ])
+        self.assertFalse(any(brief.exclusive for brief in result.plan.segments))
+
+    def test_contract_deterministically_separates_locations_and_milestones(self) -> None:
+        request = make_request(
+            segments=tuple(
+                SegmentDescriptor(
+                    segment_id=f"seg-{index}",
+                    start_seconds=float((index - 1) * 10),
+                    end_seconds=float(index * 10),
+                )
+                for index in range(1, 13)
+            ),
+            source_evidence={
+                "narrative_contract": {
+                    "location_order": ["cave", "lich_lair", "dragon_lair", "fountain"],
+                    "milestone_order": [
+                        "descent", "encounter_lich", "traverse_dragon",
+                        "reach_fountain", "drink_water", "ascend",
+                    ],
+                    "milestone_bindings": [
+                        {"milestone_id": "descent", "location_id": "cave", "relative_position": 0.0},
+                        {"milestone_id": "encounter_lich", "location_id": "lich_lair", "relative_position": 0.0},
+                        {"milestone_id": "traverse_dragon", "location_id": "dragon_lair", "relative_position": 0.0},
+                        {"milestone_id": "reach_fountain", "location_id": "fountain", "relative_position": 0.0},
+                        {"milestone_id": "drink_water", "location_id": "fountain", "relative_position": 0.5},
+                        {"milestone_id": "ascend", "location_id": "fountain", "relative_position": 1.0},
+                    ],
+                    "actor_allowed_locations": {
+                        "lich": ["lich_lair"],
+                        "dragon": ["dragon_lair"],
+                        "guardian": ["fountain"],
+                    },
+                    "terminal_states": {
+                        "ravena": {
+                            "milestone": "ascend",
+                            "state": "radiant",
+                        }
+                    },
+                },
+            },
+            characters=(
+                {"id": "ravena", "name": "Ravena"},
+                {"id": "lich", "name": "Lich"},
+                {"id": "dragon", "name": "Dragon"},
+                {"id": "guardian", "name": "Guardian"},
+            ),
+            locations=(
+                {"id": "cave", "name": "Cave"},
+                {"id": "lich_lair", "name": "Lich Lair"},
+                {"id": "dragon_lair", "name": "Dragon Lair"},
+                {"id": "fountain", "name": "Fountain"},
+            ),
+        )
+
+        allocation = StoryPlanService._coerce_typed_allocation(
+            request,
+            {"beats": [{"phase": "development", "description": "journey"}]},
+        )
+
+        self.assertEqual(
+            ["cave", "lich_lair", "dragon_lair", "fountain"],
+            [beat["location_id"] for beat in allocation["typed_beats"]],
+        )
+        by_segment = {brief["segment_id"]: brief for brief in allocation["briefs"]}
+        self.assertEqual(["ravena", "lich"], by_segment["seg-4"]["character_ids"])
+        self.assertEqual(["ravena", "dragon"], by_segment["seg-7"]["character_ids"])
+        self.assertEqual("reach_fountain", by_segment["seg-10"]["milestone_id"])
+        self.assertEqual("ascend", by_segment["seg-12"]["milestone_id"])
+        self.assertEqual(
+            [{"character_id": "ravena", "state": "radiant"}],
+            by_segment["seg-12"]["required_actor_states"],
+        )
+
+    def test_contract_with_missing_milestone_binding_is_rejected(self) -> None:
+        request = make_request(
+            source_evidence={
+                "narrative_contract": {
+                    "location_order": ["cave", "well"],
+                    "milestone_order": ["departure", "arrival"],
+                    "milestone_bindings": [
+                        {
+                            "milestone_id": "departure",
+                            "location_id": "cave",
+                            "relative_position": 0.0,
+                        }
+                    ],
+                },
+            },
+        )
+
+        with self.assertRaisesRegex(StoryPlanError, "milestone bindings"):
+            StoryPlanService._coerce_typed_allocation(
+                request,
+                {"beats": [{"phase": "development", "description": "journey"}]},
+            )
+
+    def test_contract_binds_a_single_location_story_without_llm_allocation(self) -> None:
+        request = make_request(
+            source_evidence={
+                "narrative_contract": {
+                    "location_order": ["cave"],
+                    "milestone_order": ["arrival", "decision"],
+                    "milestone_bindings": [
+                        {
+                            "milestone_id": "arrival",
+                            "location_id": "cave",
+                            "relative_position": 0.0,
+                        },
+                        {
+                            "milestone_id": "decision",
+                            "location_id": "cave",
+                            "relative_position": 1.0,
+                        },
+                    ],
+                },
+            },
+        )
+
+        allocation = StoryPlanService._coerce_typed_allocation(
+            request,
+            {"beats": [{"phase": "development", "description": "journey"}]},
+        )
+
+        self.assertEqual("arrival", allocation["briefs"][0]["milestone_id"])
+        self.assertEqual("decision", allocation["briefs"][1]["milestone_id"])
+
+    def test_close_milestone_positions_keep_all_events_in_order(self) -> None:
+        request = make_request(
+            source_evidence={"narrative_contract": {
+                "location_order": ["cave"],
+                "milestone_order": ["arrival", "choice", "departure"],
+                "milestone_bindings": [
+                    {"milestone_id": milestone, "location_id": "cave", "relative_position": 0.5}
+                    for milestone in ("arrival", "choice", "departure")
+                ],
+            }},
+            segments=tuple(
+                SegmentDescriptor(
+                    segment_id=f"seg-{index}",
+                    start_seconds=float(index - 1),
+                    end_seconds=float(index),
+                )
+                for index in range(1, 6)
+            ),
+        )
+
+        allocation = StoryPlanService._coerce_typed_allocation(
+            request,
+            {"beats": [{"description": "one place"}]},
+        )
+
+        self.assertEqual(
+            ["arrival", "choice", "departure"],
+            [brief["milestone_id"] for brief in allocation["briefs"] if brief["milestone_id"]],
+        )
 
     def test_story_plan_bindings_override_creative_location_choices(self) -> None:
         modules = FakePromptModules(
@@ -995,7 +1428,7 @@ class StoryPlanServiceTests(unittest.TestCase):
         service = StoryPlanService(prompt_modules=modules)
         with self.assertRaises(StoryPlanError) as ctx:
             service.build_plan(make_request_3seg())
-        self.assertIn("after repair", str(ctx.exception))
+        self.assertIn("deterministic assembly", str(ctx.exception))
         self.assertIn(
             "plan_validation_failed",
             [diagnostic["code"] for diagnostic in ctx.exception.diagnostics],
@@ -1008,6 +1441,14 @@ class StoryPlanServiceTests(unittest.TestCase):
         )
         service = StoryPlanService(prompt_modules=modules)
         result = service.build_plan(make_request_3seg())
+        self.assertEqual(result.plan.provenance.producer, STORY_PLAN_PRODUCER)
+        self.assertEqual(result.plan.provenance.source_refs, ["Demo Song"])
+        self.assertEqual(result.plan.provenance.notes, "Keep it intimate.")
+
+    def test_assembled_plan_derives_provenance_from_user_direction(self) -> None:
+        modules = FakePromptModules()
+        service = StoryPlanService(prompt_modules=modules)
+        result = service.build_plan(make_request())
         self.assertEqual(result.plan.provenance.producer, STORY_PLAN_PRODUCER)
         self.assertEqual(result.plan.provenance.source_refs, ["Demo Song"])
         self.assertEqual(result.plan.provenance.notes, "Keep it intimate.")
@@ -1133,6 +1574,9 @@ class _RecordingReporter:
 
     def table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
         pass
+
+    def run_progress(self, description: str, func: Any) -> Any:
+        return func()
 
 
 class StoryPlanRequestValidationTests(unittest.TestCase):

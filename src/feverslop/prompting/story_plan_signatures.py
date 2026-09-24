@@ -1,11 +1,12 @@
-"""Typed DSPy signatures for the four story-plan jobs (issue #1385).
+"""Typed DSPy signatures for the story-plan jobs (issue #1385).
 
-The story plan is produced by divide-and-conquer: four narrow jobs (bible,
-beat allocation, acting, repair) instead of one model writing the full
-screenplay plus concepts. Every output model uses ``extra="forbid"`` so the
-LLM cannot smuggle in timestamps, lyrics, render settings, frame counts, or
-audio bindings as extra fields; the service's deterministic validator is the
-backstop for what slips past the typed contract.
+The story plan is produced by divide-and-conquer: five narrow jobs (bible,
+arc skeleton, beat allocation, acting, live prompts) instead of one model
+writing the full screenplay plus concepts. Every output model uses
+``extra="forbid"`` so the LLM cannot smuggle in timestamps, lyrics, render
+settings, frame counts, or audio bindings as extra fields; the service's
+deterministic validator is the backstop for what slips past the typed
+contract.
 """
 
 from __future__ import annotations

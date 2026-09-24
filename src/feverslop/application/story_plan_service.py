@@ -1,11 +1,10 @@
 """Typed DSPy planning service for the story-plan contract (issue #1385).
 
-``StoryPlanService`` drives four narrow DSPy jobs -- narrative bible,
-beat allocation, per-brief acting, and one bounded repair -- with
-deterministic validation between stages.  The final candidate is
-validated with ``validate_story_plan_payload`` and then converted with
-``StoryPlan.model_validate(..., strict=False)``; on validation failure the
-service performs exactly one repair pass before raising ``StoryPlanError``.
+``StoryPlanService`` drives three narrow DSPy jobs -- narrative bible, a
+small beat sheet, and per-brief acting -- with deterministic validation and
+scene binding between stages.  The LLM never allocates every scene and never
+receives a complete generated plan for a retry: Python owns that large,
+mechanical mapping.
 
 The service is pure application code: it imports no DSPy, no
 ``feverslop.render.*``, no ``feverslop.audio.*``, and no
@@ -37,6 +36,7 @@ from feverslop.domain.story_plan_artifacts import (
 from feverslop.errors import FeverSlopError
 from feverslop.ports.reporting import NullReporter, Reporter
 from feverslop.utils.io import atomic_write_text
+from feverslop.utils.sub_step_progress import SubStepProgress
 
 __all__ = [
     "STORY_PLAN_PRODUCER",
@@ -53,6 +53,7 @@ __all__ = [
 ]
 
 STORY_PLAN_PRODUCER = "story-plan-service/v1"
+
 
 _FORBIDDEN_RENDER_KEYS = frozenset(
     {
@@ -230,21 +231,17 @@ class StoryPlanResult:
 
 
 class StoryPlanService:
-    """Builds a validated ``StoryPlan`` through four narrow DSPy jobs."""
+    """Build a validated ``StoryPlan`` from small creative DSPy jobs."""
 
     def __init__(
         self,
         *,
         prompt_modules: Any,
         reporter: Reporter | None = None,
-        max_repair_attempts: int = 1,
-        acting_batch_size: int = 8,
+        acting_batch_size: int = 4,
     ) -> None:
         self._prompt_modules = prompt_modules
         self._reporter: Reporter = reporter if reporter is not None else NullReporter()
-        if max_repair_attempts < 1:
-            raise StoryPlanError("max_repair_attempts must be at least 1")
-        self._max_repair_attempts = max_repair_attempts
         if acting_batch_size < 1:
             raise StoryPlanError("acting_batch_size must be at least 1")
         self._acting_batch_size = acting_batch_size
@@ -253,8 +250,11 @@ class StoryPlanService:
         request.validate()
         diagnostics: list[Mapping[str, Any]] = []
 
-        self._reporter.step("story-plan-bible")
-        bible_raw = self._job("bible", self._bible_input(request))
+        self._reporter.step("Story plan - narrative bible")
+        self._reporter.message("[cyan]Extracting the premise, stakes, and story facts…[/cyan]")
+        bible_raw = self._reporter.run_progress(
+            "Story plan - reading the story", lambda: self._job("bible", self._bible_input(request))
+        )
         bible = self._normalize_job_output(
             "bible", bible_raw, diagnostics, _FORBIDDEN_RENDER_KEYS
         )
@@ -313,7 +313,7 @@ class StoryPlanService:
                 f"{decision['decision']} ({decision['name']})"
             )
 
-        self._reporter.step("story-plan-acting")
+        self._reporter.step("Story plan - acting beats")
         acting = self._build_acting_in_batches(request, allocation, diagnostics)
         self._validate_acting(allocation, acting, diagnostics)
         self._reporter.message(
@@ -362,6 +362,11 @@ class StoryPlanService:
                 )
 
         plan = StoryPlan.model_validate(candidate, strict=False)
+        self._reporter.table(
+            "Story plan locked",
+            ["Scenes", "Beats", "Acting briefs"],
+            [[str(len(plan.segments)), str(len(plan.beats)), str(len(acting.get("briefs", [])))]],
+        )
         live_prompts = self._build_live_prompts(request, plan, bible, diagnostics)
         return StoryPlanResult(
             plan=plan,
@@ -382,12 +387,23 @@ class StoryPlanService:
             raw_briefs = []
         merged: dict[str, Any] = {"briefs": [], "character_arcs": []}
         ordered_briefs = [brief for brief in raw_briefs if isinstance(brief, Mapping)]
+        total_briefs = len(ordered_briefs)
+        total_batches = (total_briefs + self._acting_batch_size - 1) // self._acting_batch_size
+        progress = SubStepProgress(
+            self._reporter,
+            "Story plan - acting",
+            total_briefs,
+            interval=1,
+        )
+        progress.update(0, detail=f"batch 1/{total_batches}", force=True)
         for start in range(0, len(ordered_briefs), self._acting_batch_size):
             batch = ordered_briefs[start:start + self._acting_batch_size]
             expected = [str(brief.get("brief_id", "")) for brief in batch]
+            batch_number = start // self._acting_batch_size + 1
+            batch_end = start + len(batch)
             self._reporter.message(
-                f"story-plan-acting batch {start // self._acting_batch_size + 1}: "
-                f"requested {len(expected)} briefs"
+                f"story-plan-acting batch {batch_number}/{total_batches}: "
+                f"requested {len(expected)} briefs (scenes {start + 1}-{batch_end}/{total_briefs})"
             )
             response = self._acting_batch(
                 request, allocation, batch, diagnostics, expected
@@ -423,6 +439,26 @@ class StoryPlanService:
                 arc for arc in response.get("character_arcs", [])
                 if isinstance(arc, Mapping)
             )
+            acting_by_id = {
+                str(brief.get("brief_id", "")): brief
+                for brief in response.get("briefs", [])
+                if isinstance(brief, Mapping)
+            }
+            self._reporter.table(
+                f"Acting briefs - batch {batch_number}/{total_batches}",
+                ["Scene", "Time", "Objective", "Emotional turn", "Voice"],
+                [
+                    [
+                        str(brief.get("segment_id", "")),
+                        self._brief_time_range(brief),
+                        self._brief_excerpt(acting_by_id.get(str(brief.get("brief_id", "")), {}).get("objective", "")),
+                        self._brief_excerpt(acting_by_id.get(str(brief.get("brief_id", "")), {}).get("emotional_turn", "")),
+                        self._brief_excerpt(acting_by_id.get(str(brief.get("brief_id", "")), {}).get("vocal_presentation", "offscreen")),
+                    ]
+                    for brief in batch
+                ],
+            )
+            progress.update(batch_end, detail=f"batch {batch_number}/{total_batches}")
         # Model order is not authoritative.  The allocation order is the
         # canonical narrative order and must survive every batch/retry.
         by_id = {str(brief.get("brief_id")): brief for brief in merged["briefs"]}
@@ -460,6 +496,19 @@ class StoryPlanService:
             if isinstance(brief, Mapping) and str(brief.get("brief_id", ""))
         }
 
+    @staticmethod
+    def _brief_time_range(brief: Mapping[str, Any]) -> str:
+        def timestamp(value: Any) -> str:
+            seconds = max(0, round(float(value)))
+            return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+        return f"{timestamp(brief.get('start_seconds', 0))}–{timestamp(brief.get('end_seconds', 0))}"
+
+    @staticmethod
+    def _brief_excerpt(value: Any, *, limit: int = 72) -> str:
+        text = " ".join(str(value).split())
+        return text if len(text) <= limit else f"{text[:limit - 1].rstrip()}…"
+
     def _acting_batch(
         self,
         request: StoryPlanRequest,
@@ -473,7 +522,10 @@ class StoryPlanService:
             "briefs": [dict(brief) for brief in batch],
             "expected_brief_ids": list(expected),
         }
-        raw = self._job("acting", self._acting_input(request, batch_allocation))
+        raw = self._reporter.run_progress(
+            "Story plan - writing acting",
+            lambda: self._job("acting", self._acting_input(request, batch_allocation)),
+        )
         acting = self._normalize_job_output(
             "acting", raw, diagnostics, _FORBIDDEN_AUDIO_DATA_KEYS
         )
@@ -767,7 +819,7 @@ class StoryPlanService:
     def _coerce_typed_allocation(
         request: StoryPlanRequest, allocation: Mapping[str, Any]
     ) -> Mapping[str, Any]:
-        """Map the public typed allocation DTO to service-owned bindings."""
+        """Map a small model-authored beat sheet to service-owned bindings."""
         if "briefs" in allocation:
             return allocation
         raw_beats = allocation.get("beats")
@@ -808,6 +860,145 @@ class StoryPlanService:
                 "forbidden": [f"beat-{value + 1:03d}" for value in item.get("forbidden_beat_indices", [])],
             })
         return {"briefs": briefs, "typed_beats": raw_beats}
+
+    @staticmethod
+    def _allocation_from_narrative_contract(
+        request: StoryPlanRequest,
+        raw_beats: list[Any],
+        contract: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        location_ids = [
+            str(item.get("id") if isinstance(item, Mapping) else item).strip()
+            for item in contract.get("location_order", [])
+        ]
+        canonical_locations = {str(item.get("id", "")) for item in request.locations}
+        location_ids = [item for item in location_ids if item in canonical_locations]
+        if not location_ids:
+            return None
+
+        restricted = contract.get("actor_allowed_locations", {})
+        restricted = restricted if isinstance(restricted, Mapping) else {}
+        canonical_characters = [str(item.get("id", "")) for item in request.characters]
+        restricted_ids = {str(actor_id) for actor_id in restricted}
+        base_characters = [item for item in canonical_characters if item and item not in restricted_ids]
+        terminal = contract.get("terminal_states", {})
+        terminal = terminal if isinstance(terminal, Mapping) else {}
+
+        typed_beats: list[dict[str, Any]] = []
+        for index, location_id in enumerate(location_ids):
+            source = raw_beats[min(index, len(raw_beats) - 1)]
+            source = source if isinstance(source, Mapping) else {}
+            allowed = [
+                str(actor_id)
+                for actor_id, locations in restricted.items()
+                if location_id in {
+                    str(entry.get("id") if isinstance(entry, Mapping) else entry)
+                    for entry in (locations or [])
+                }
+            ]
+            typed_beats.append({
+                "phase": ("opening", "development", "climax", "resolution")[
+                    min(index, 3)
+                ],
+                "description": str(source.get("description", f"Journey through {location_id}.")),
+                "location_id": location_id,
+                "character_ids": [*base_characters, *allowed],
+            })
+
+        bindings = contract.get("milestone_bindings", [])
+        if not isinstance(bindings, list):
+            raise StoryPlanError("narrative contract milestone bindings must be a list")
+        milestone_ids = [
+            str(item.get("id") if isinstance(item, Mapping) else item).strip()
+            for item in contract.get("milestone_order", [])
+        ]
+        milestone_ids = [milestone for milestone in milestone_ids if milestone]
+        binding_ids = [
+            str(binding.get("milestone_id", "")).strip()
+            for binding in bindings
+            if isinstance(binding, Mapping)
+        ]
+        if milestone_ids and (
+            len(binding_ids) != len(bindings)
+            or len(binding_ids) != len(set(binding_ids))
+            or set(binding_ids) != set(milestone_ids)
+        ):
+            raise StoryPlanError(
+                "narrative contract milestone bindings must contain every milestone exactly once"
+            )
+        by_location: dict[int, list[tuple[str, float]]] = {index: [] for index in range(len(location_ids))}
+        for binding in bindings:
+            if not isinstance(binding, Mapping):
+                return None
+            milestone = str(binding.get("milestone_id", "")).strip()
+            location_id = str(binding.get("location_id", "")).strip()
+            if not milestone or location_id not in location_ids:
+                return None
+            try:
+                relative_position = float(binding.get("relative_position"))
+            except (TypeError, ValueError):
+                return None
+            if not 0.0 <= relative_position <= 1.0:
+                return None
+            by_location[location_ids.index(location_id)].append((milestone, relative_position))
+
+        segment_count = len(request.segments)
+        assignments: list[int] = [
+            min(len(location_ids) - 1, position * len(location_ids) // max(1, segment_count))
+            for position in range(segment_count)
+        ]
+        milestone_by_position: dict[int, str] = {}
+        for location_index, items in by_location.items():
+            positions = [i for i, value in enumerate(assignments) if value == location_index]
+            items.sort(key=lambda item: milestone_ids.index(item[0]))
+            if len(items) > len(positions):
+                raise StoryPlanError(
+                    f"narrative contract has {len(items)} milestones but only "
+                    f"{len(positions)} scenes at location {location_ids[location_index]}"
+                )
+            next_available = 0
+            for item_index, (milestone, relative_position) in enumerate(items):
+                desired = round(relative_position * (len(positions) - 1))
+                latest = len(positions) - (len(items) - item_index)
+                chosen = min(max(desired, next_available), latest)
+                milestone_by_position[positions[chosen]] = milestone
+                next_available = chosen + 1
+
+        briefs: list[dict[str, Any]] = []
+        for position, segment in enumerate(request.segments):
+            beat_index = assignments[position]
+            milestone_id = milestone_by_position.get(position)
+            characters = list(typed_beats[beat_index]["character_ids"])
+            if milestone_id:
+                for actor_id, rule in terminal.items():
+                    if isinstance(rule, Mapping) and str(rule.get("milestone", "")) == milestone_id:
+                        actor = str(actor_id)
+                        if actor in canonical_characters and actor not in characters:
+                            characters.append(actor)
+            required_actor_states = [
+                {"character_id": str(actor_id), "state": str(rule.get("state", "")).strip()}
+                for actor_id, rule in terminal.items()
+                if (
+                    isinstance(rule, Mapping)
+                    and str(rule.get("milestone", "")) == milestone_id
+                    and str(actor_id) in canonical_characters
+                    and str(rule.get("state", "")).strip()
+                )
+            ]
+            briefs.append({
+                "brief_id": f"brief-{segment.segment_id}",
+                "segment_id": segment.segment_id,
+                "start_seconds": segment.start_seconds,
+                "end_seconds": segment.end_seconds,
+                "beat_indices": [beat_index],
+                "required": [milestone_id] if milestone_id else [],
+                "forbidden": [],
+                "character_ids": characters,
+                "location_id": typed_beats[beat_index]["location_id"],
+                "milestone_id": milestone_id,
+                "required_actor_states": required_actor_states,
+            })
+        return {"briefs": briefs, "typed_beats": typed_beats}
 
     @staticmethod
     def _lead_character_id(request: StoryPlanRequest) -> str:
@@ -884,7 +1075,7 @@ class StoryPlanService:
                 "prop_ids": list(item.get("prop_ids", [])),
                 "vocal_presentation": item.get("vocal_presentation", "offscreen"),
                 "visual_direction": item.get("visual_direction", ""),
-                "exclusive": bool(item.get("exclusive", False)),
+                "exclusive": False,
                 "beat_id": item.get("beat_id"),
                 "objective": item.get("objective", ""),
                 "emotional_turn": item.get("emotional_turn", ""),
@@ -1420,7 +1611,7 @@ class StoryPlanService:
         exc: StoryPlanValidationError, diagnostics: list[Mapping[str, Any]]
     ) -> None:
         raise StoryPlanError(
-            "story plan validation failed after repair",
+            "story plan validation failed after deterministic assembly",
             diagnostics=[
                 {
                     "code": str(error.get("code", "validation_error")),
@@ -1558,6 +1749,12 @@ class StoryPlanService:
         raw_briefs = allocation.get("briefs")
         if not isinstance(raw_briefs, list):
             raw_briefs = []
+        canonical_character_ids = {character["id"] for character in characters}
+        contract = request.source_evidence.get("narrative_contract") or {}
+        if not isinstance(contract, Mapping):
+            contract = {}
+        terminal_rules = contract.get("terminal_states") or {}
+        active_terminal_states: dict[str, str] = {}
         for raw in raw_briefs:
             if not isinstance(raw, Mapping):
                 continue
@@ -1578,10 +1775,59 @@ class StoryPlanService:
             binding = beat_by_index.get(beat_index, {}) if isinstance(beat_index, int) else {}
             # Narrative bindings come from allocation, never from the creative
             # acting response. Acting may only fill creative fields.
-            bound_character_ids = list(binding.get("character_ids", []))
+            bound_character_ids = list(raw.get("character_ids", binding.get("character_ids", [])))
+            bound_character_set = set(bound_character_ids)
+            cast_is_locked = bool(bound_character_set) or (
+                bool(contract.get("location_order")) and "character_ids" in raw
+            )
             bound_prop_ids = list(binding.get("prop_ids", []))
-            bound_location_id = binding.get("location_id")
-            bound_milestone_id = binding.get("milestone_id")
+            bound_location_id = raw.get("location_id", binding.get("location_id"))
+            bound_milestone_id = raw.get("milestone_id") or binding.get("milestone_id")
+            actor_states_by_id = {
+                str(state.get("character_id", "")): {
+                    "character_id": str(state.get("character_id", "")),
+                    "state": str(
+                        state.get("state")
+                        or state.get("inner_state")
+                        or "present"
+                    ),
+                    "physical_state": str(state.get("physical_state", "")),
+                }
+                for state in acting_brief.get("actor_states", [])
+                if (
+                    isinstance(state, Mapping)
+                    and str(state.get("character_id", "")) in canonical_character_ids
+                    and (not cast_is_locked or str(state.get("character_id", "")) in bound_character_set)
+                )
+            }
+            if isinstance(terminal_rules, Mapping):
+                for actor_id, rule in terminal_rules.items():
+                    if not isinstance(rule, Mapping):
+                        continue
+                    if rule.get("reset_event") and bound_milestone_id == rule["reset_event"]:
+                        active_terminal_states.pop(str(actor_id), None)
+                    if bound_milestone_id == rule.get("milestone"):
+                        required_state = str(rule.get("state") or "").strip()
+                        if required_state:
+                            active_terminal_states[str(actor_id)] = required_state
+            for actor_id, state in active_terminal_states.items():
+                if not cast_is_locked or actor_id in bound_character_set:
+                    actor_states_by_id[actor_id] = {
+                        "character_id": actor_id,
+                        "state": state,
+                        "physical_state": "",
+                    }
+            for state in raw.get("required_actor_states", []):
+                if not isinstance(state, Mapping):
+                    continue
+                actor_id = str(state.get("character_id", ""))
+                required_state = str(state.get("state", "")).strip()
+                if required_state and (not cast_is_locked or actor_id in bound_character_set):
+                    actor_states_by_id[actor_id] = {
+                        "character_id": actor_id,
+                        "state": required_state,
+                        "physical_state": "",
+                    }
             segment = {
                     "id": brief_id,
                     "target": target,
@@ -1607,7 +1853,10 @@ class StoryPlanService:
                     ),
                     "vocal_presentation": str(acting_brief.get("vocal_presentation", "offscreen")),
                     "visual_direction": str(acting_brief.get("visual_direction", "")),
-                    "exclusive": bool(acting_brief.get("exclusive", False)),
+                    "objective": str(acting_brief.get("objective", "")),
+                    "emotional_turn": str(acting_brief.get("emotional_turn", "")),
+                    "actor_states": list(actor_states_by_id.values()),
+                    "exclusive": False,
                     "audio_ref": {"segment_id": target, "fingerprint": fingerprint},
                 }
             if bound_milestone_id:
@@ -1822,6 +2071,7 @@ def compute_source_fingerprint(
     story_idea: str = "",
     locations: Sequence[Mapping[str, Any]] = (),
     props: Sequence[Mapping[str, Any]] = (),
+    narrative_contract: Mapping[str, Any] | None = None,
 ) -> str:
     """Deterministic sha256 fingerprint of the planning inputs."""
     canonical = {
@@ -1836,6 +2086,7 @@ def compute_source_fingerprint(
         "story_idea": story_idea,
         "locations": [dict(location) for location in locations],
         "props": [dict(prop) for prop in props],
+        "narrative_contract": dict(narrative_contract or {}),
     }
     encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()

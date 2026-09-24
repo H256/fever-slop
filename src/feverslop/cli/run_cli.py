@@ -109,6 +109,7 @@ def run_project_command(args: argparse.Namespace, *, console: Console | None = N
             explicit_runner_options=explicit_runner_options,
             reference_generation=args.reference_generation,
             sequence_to_sheet_workflow=args.sequence_to_sheet_workflow,
+            app_config=app_config,
         )
         render_settings = resolved.settings if not compatibility else None
         args.project_render_settings = render_settings

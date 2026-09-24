@@ -9,17 +9,17 @@ import unittest
 REPO_ROOT = Path(__file__).parents[1]
 
 MOVED_WORKFLOWS = {
-    "workflows/audio/audio-model/audio_song_v2.json": "2e896ff41503cf52f9188a1f7937a1e17e6312137aa0e24befe8dfa628d73e0c",
-    "workflows/image/image-model/image_detail_easyuse_startframe_v1.json": "ad6bbe40a2596734397bf7f6a71766403df346e7ceb23da383c4106b3c75d99d",
-    "workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json": "351f565cda405ce0095440d13984fa9eeea12f679f11c1d9f4f42d78207d0b91",
-    "workflows/image/image-model/image_edit_flux2_klein_2ref_v1.json": "2604b7dc57997da034b42944700d647a88f3d83fbac7d32e205b6aa8df322c6a",
-    "workflows/image/image-model/image_mask_sam3_actor_regions_v1.json": "907c6eab5dbffae4b0ea511422beb4fa3ed4f4dbef9bd19a7d17bfb0f982e8b7",
-    "workflows/image/image-model/image_repair_sdxl_ipadapter_identity_v1.json": "6b2cda1e37614825249590a2c5904efa4cb372ea4b58a1b89427e6f3451cf2d7",
-    "workflows/image/image-model/image_t2i_startframe_ideogram_director_v1.json": "02920c9db946b8b93549e4b3ae3d9b5cb4655bb1baaf66c74bc12c5106b98a7e",
-    "workflows/image/image-model/image_t2i_startframe_ideogram_v1.json": "02920c9db946b8b93549e4b3ae3d9b5cb4655bb1baaf66c74bc12c5106b98a7e",
-    "workflows/image/image-model/image_t2i_startframe_krea_v1.json": "734e2e2f36e32c44d20fcbab873d392de2c6a29c96cb8ffbba0c5e15f3ddbad3",
-    "workflows/image/image-model/image_t2i_startframe_v1.json": "cefe75fe11a88a1390a26d0c6e0817ddf02ecda577b10f36efbb60ed15aa60f3",
-    "workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json": "f743b95b71414c488d72ecc54a95820cdf1df9e00057e85982c7787760c361ee",
+    "workflows/audio/audio-model/audio_song_v2.json": "e3f0a7b858b08ac34ddd94fbe71f27273832409140e1ad95d2357b33c5e8afe2",
+    "workflows/image/image-model/image_detail_easyuse_startframe_v1.json": "82bcae0aea4deaa1d44012e257c04b1e3e1def8d4ce998cf0371a82c86cbe0cb",
+    "workflows/image/image-model/image_edit_flux2_klein_1ref_v1.json": "b563053349eceac1e188c6d972f45e22b7128862e27f0adf1b8eb5a99c3e0259",
+    "workflows/image/image-model/image_edit_flux2_klein_2ref_v1.json": "fa9513a20b012485fccaad7d90fb82b18bcfbc0ab8d86d970844b8953f6a8ede",
+    "workflows/image/image-model/image_mask_sam3_actor_regions_v1.json": "c812418e296e6a38554929aea1f781a47af1e0b55c75243b3d67df8d5b38d328",
+    "workflows/image/image-model/image_repair_sdxl_ipadapter_identity_v1.json": "2dc7662494e1b2a3a0208266de64be683b712c3c2cbfff8fec04733c73d6b690",
+    "workflows/image/image-model/image_t2i_startframe_ideogram_director_v1.json": "cca87adb15f1e5c30eda924faaddab892f070fb0712b4d60045d27ddd87bb5cd",
+    "workflows/image/image-model/image_t2i_startframe_ideogram_v1.json": "cca87adb15f1e5c30eda924faaddab892f070fb0712b4d60045d27ddd87bb5cd",
+    "workflows/image/image-model/image_t2i_startframe_krea_v1.json": "eee4df82ed8e6ae96c2fc8138976839d7a179033b63b42cb3ea3c9469ddd5d7c",
+    "workflows/image/image-model/image_t2i_startframe_v1.json": "87d68b51b5a8ef67ae0682c6c200754ac29bcfa05330c0fb9a098feb5ccd79ed",
+    "workflows/sequence/minimax_h3/sequence_to_sheet_minimax_h3_i2va_v1.json": "6bed4b802b8f1b116b397e87f17abbf04ccc6525a2378ac5e0767a6dd523bf40",
 }
 
 

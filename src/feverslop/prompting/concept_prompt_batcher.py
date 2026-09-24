@@ -20,11 +20,10 @@ def chunked(items: list[Any], size: int):
         yield start, items[start:start + size]
 
 
-# One repair call carries at most this many scene keys so its structured
-# output stays inside the per-scene token budget (see llm_policy
-# concept_batch_max_tokens) and a truncated response can never strand a whole
-# batch repair.
-_KEYS_PER_REPAIR_CALL = 2
+# A repair owns exactly one locked scene.  This keeps the request bounded for
+# small models and prevents one malformed response from moving an unrelated
+# scene across its deterministic narrative window.
+_KEYS_PER_REPAIR_CALL = 1
 
 # Concept-batch request budget. Front-loading BOUNDARY_CONTEXT and a
 # closed-vocabulary block onto every initial batch (issue #1247) adds tokens on
@@ -32,6 +31,11 @@ _KEYS_PER_REPAIR_CALL = 2
 # ceiling is deliberately well below the ~100k-token model limit so a regression
 # that grows the request unbounded fails fast instead of silently truncating.
 _REQUEST_TOKEN_CEILING = 80_000
+
+
+def _is_timeout_error(error: BaseException) -> bool:
+    """Recognize built-in, httpx, OpenAI, and DSPy timeout wrappers."""
+    return isinstance(error, TimeoutError) or "timeout" in type(error).__name__.lower()
 
 # The closed-vocabulary block must stay bounded so it cannot grow the request
 # unbounded as a project accumulates more cast/locations/props.
@@ -539,8 +543,8 @@ class ConceptPromptBatcher:
         """Persist accepted concepts after every batch so a crash can resume.
 
         The checkpoint is keyed by a fingerprint of every creative input; a
-        fingerprint mismatch invalidates it instead of reusing stale scenes,
-        and it is deleted once a complete run succeeded.
+        fingerprint mismatch invalidates it instead of reusing stale scenes.
+        Keep it after generation for downstream-failure resume and diagnostics.
         """
         self._checkpoint_path = Path(path)
         self._checkpoint_store = artifact_store
@@ -568,6 +572,7 @@ class ConceptPromptBatcher:
                 notes=notes,
                 global_context=global_context,
                 stage1_segments=stage1_segments,
+                segment_briefs=segment_briefs,
             )
             restored, stale = self._load_checkpoint(checkpoint_identity)
             if stale:
@@ -604,20 +609,60 @@ class ConceptPromptBatcher:
                 f"{batch_start + 1}-{batch_start + len(batch)}",
                 report,
             )
-            batch_result = self._generate_batch(
-                batch_index=batch_start // self.batch_size + 1,
-                batch=batch,
-                story_idea=story_idea,
-                global_context=global_context,
-                notes=notes,
-                previous_concepts=self._last_concepts(all_results),
-                previous_summary=previous_summary,
-                accepted_ledger=_accepted_state_ledger(all_results),
-                accepted=all_results,
-                order_ids=[seg["segment_id"] for seg in stage1_segments],
-                segment_briefs=segment_briefs,
-                live_prompts=live_prompts,
-            )
+            def generate_with_timeout_split(
+                candidate_batch: list[dict],
+                collected: dict[str, Any],
+            ) -> dict[str, Any]:
+                known = {**all_results, **collected}
+                try:
+                    return self._generate_batch(
+                        batch_index=batch_start // self.batch_size + 1,
+                        batch=candidate_batch,
+                        story_idea=story_idea,
+                        global_context=global_context,
+                        notes=notes,
+                        previous_concepts=self._last_concepts(known),
+                        previous_summary=previous_summary,
+                        accepted_ledger=_accepted_state_ledger(known),
+                        accepted=known,
+                        order_ids=[seg["segment_id"] for seg in stage1_segments],
+                        segment_briefs=segment_briefs,
+                        live_prompts=live_prompts,
+                    )
+                except Exception as error:
+                    if not _is_timeout_error(error):
+                        raise
+                    if len(candidate_batch) == 1:
+                        segment_id = str(candidate_batch[0]["segment_id"])
+                        self._report(
+                            f"{batch_label}: scene {segment_id} timed out; "
+                            "using its deterministic fallback",
+                            report,
+                        )
+                        return {
+                            segment_id: self._fallback_concept(
+                                segment_id, global_context,
+                            )
+                        }
+                    smaller_size = max(1, len(candidate_batch) // 2)
+                    self._report(
+                        f"{batch_label}: model request timed out; retrying "
+                        f"as {smaller_size}-scene batches",
+                        report,
+                    )
+                    split_results: dict[str, Any] = {}
+                    for _smaller_start, smaller_batch in chunked(
+                        candidate_batch, smaller_size,
+                    ):
+                        split_results.update(
+                            generate_with_timeout_split(
+                                smaller_batch,
+                                {**collected, **split_results},
+                            )
+                        )
+                    return split_results
+
+            batch_result = generate_with_timeout_split(batch, {})
             self._report(f"{batch_label}: response received, validating keys", report)
 
             batch_result = self._repair_missing_or_extra_keys(
@@ -653,7 +698,8 @@ class ConceptPromptBatcher:
         if missing:
             raise ValueError(f"Missing concept prompts after batched generation: {missing}")
 
-        self._clear_checkpoint()
+        # Keep the complete checkpoint for downstream-failure resume and
+        # diagnostics; the final chronology gate has not run yet.
         _apply_locked_segment_bindings(all_results, segment_briefs)
         # Preserve stage1 order in output JSON.
         return {
@@ -668,6 +714,7 @@ class ConceptPromptBatcher:
         notes: str,
         global_context: dict,
         stage1_segments: list[dict],
+        segment_briefs: dict | None,
     ) -> str:
         material = json.dumps(
             {
@@ -676,6 +723,7 @@ class ConceptPromptBatcher:
                 "notes": notes,
                 "global_context": compact_planning_payload(global_context),
                 "segments": compact_planning_payload(stage1_segments),
+                "segment_briefs": compact_planning_payload(segment_briefs or {}),
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -713,11 +761,6 @@ class ConceptPromptBatcher:
             self._checkpoint_path,
             {"identity": identity, "concepts": concepts},
         )
-
-    def _clear_checkpoint(self) -> None:
-        if self._checkpoint_path is None:
-            return
-        self._checkpoint_path.unlink(missing_ok=True)
 
     def _report(self, message: str, callback: Callable[[str], None] = None) -> None:
         callback = callback or self.progress_callback
@@ -1252,6 +1295,7 @@ class ConceptPromptBatcher:
                     narrative,
                     accepted,
                     contract or {},
+                    selected_actor_ids=_selected_actor_ids(value),
                 ),
             }
             annotated[segment_id] = value
@@ -1310,13 +1354,18 @@ def save_concepts(path: str | Path, concepts: dict, *, artifact_store: ArtifactS
 def validate_and_annotate_concept_chronology(
     concepts: dict[str, Any],
     contract: dict[str, Any],
+    *,
+    semantic_enforcement: str = "block",
 ) -> dict[str, Any]:
     """Validate the complete ordered concept sequence before downstream prompts."""
+    if semantic_enforcement not in {"warn", "block"}:
+        raise ValueError("semantic_enforcement must be 'warn' or 'block'")
     _dedup_one_shot_milestones(concepts, contract)
     _reorder_out_of_order_milestones(concepts, contract)
     _coerce_disallowed_actor_locations(concepts, contract)
     _coerce_terminal_states(concepts, contract)
     final_segment_id = next(reversed(concepts), "")
+    unresolved: list[dict[str, str]] = []
     terminal_milestones = set(
         _normalized_list(contract.get("terminal_milestones") or ["story_complete"])
     )
@@ -1328,14 +1377,27 @@ def validate_and_annotate_concept_chronology(
         )
         if premature:
             milestone = sorted(premature)[0]
-            raise ValueError(
-                "Concept chronology validation failed: terminal milestone "
-                f"{milestone!r} is only valid on final segment {final_segment_id!r}"
+            message = (
+                f"terminal milestone {milestone!r} is only valid "
+                f"on final segment {final_segment_id!r}"
             )
+            if semantic_enforcement == "block":
+                raise ValueError("Concept chronology validation failed: " + message)
+            unresolved.append({"segment_id": segment_id, "reason": message})
     accepted: dict[str, Any] = {}
     failures: list[str] = []
     for segment_id, value in concepts.items():
         if isinstance(value, dict):
+            prior_validation = value.get("semantic_validation")
+            if (
+                isinstance(prior_validation, dict)
+                and prior_validation.get("outcome") == "warning"
+                and prior_validation.get("unresolved_diagnostic")
+            ):
+                unresolved.append({
+                    "segment_id": segment_id,
+                    "reason": str(prior_validation["unresolved_diagnostic"]),
+                })
             conflict = _semantic_conflicts(
                 value,
                 accepted,
@@ -1343,10 +1405,13 @@ def validate_and_annotate_concept_chronology(
                 segment_id=segment_id,
             )
             if conflict:
-                failures.append(f"{segment_id}: {'; '.join(conflict['reasons'])}")
-                continue
+                reason = "; ".join(conflict["reasons"])
+                failures.append(f"{segment_id}: {reason}")
+                unresolved.append({"segment_id": segment_id, "reason": reason})
+                if semantic_enforcement == "block":
+                    continue
         accepted[segment_id] = value
-    if failures:
+    if failures and semantic_enforcement == "block":
         raise ValueError("Concept chronology validation failed: " + failures[0])
     allocated = {
         milestone
@@ -1355,13 +1420,23 @@ def validate_and_annotate_concept_chronology(
     }
     for milestone, source in _ordered_contract_entries(contract, "milestone_order"):
         if milestone not in allocated:
-            raise ValueError(
-                "Concept chronology validation failed: required milestone "
-                f"{milestone!r} is unallocated (source: {source})",
-            )
+            message = f"required milestone {milestone!r} is unallocated (source: {source})"
+            if semantic_enforcement == "block":
+                raise ValueError("Concept chronology validation failed: " + message)
+            if final_segment_id:
+                unresolved.append({"segment_id": final_segment_id, "reason": message})
+    combined: dict[str, list[str]] = {}
+    for item in unresolved:
+        combined.setdefault(item["segment_id"], [])
+        if item["reason"] not in combined[item["segment_id"]]:
+            combined[item["segment_id"]].append(item["reason"])
     return ConceptPromptBatcher._annotate_semantic_validation(
         concepts,
         contract=contract,
+        unresolved=[
+            {"segment_id": segment_id, "reason": "; ".join(reasons)}
+            for segment_id, reasons in combined.items()
+        ],
     )
 
 
@@ -1488,10 +1563,50 @@ def _apply_locked_segment_bindings(
                 narrative["location"] = binding["location_id"]
         if "character_ids" in binding:
             references["actor_ids"] = list(binding.get("character_ids") or [])
+            references["actor_ids_authoritative"] = True
+            selected = set(references["actor_ids"])
+            for boundary in ("incoming", "outgoing"):
+                state = narrative.get(boundary)
+                if isinstance(state, dict) and isinstance(state.get("cast_states"), dict):
+                    state["cast_states"] = {
+                        actor: value
+                        for actor, value in state["cast_states"].items()
+                        if actor in selected
+                    }
         if "prop_ids" in binding:
             narrative["prop_ids"] = list(binding.get("prop_ids") or [])
-        if binding.get("milestone_id"):
-            narrative["milestones"] = [str(binding["milestone_id"])]
+        narrative["milestones"] = (
+            [str(binding["milestone_id"])]
+            if binding.get("milestone_id")
+            else []
+        )
+        acting = {
+            key: binding[key]
+            for key in ("objective", "emotional_turn", "actor_states")
+            if key in binding
+        }
+        if acting:
+            narrative["acting"] = acting
+        if "actor_states" in binding:
+            narrative["cast_states"] = {
+                str(item.get("character_id")): str(item.get("state", "present"))
+                for item in binding.get("actor_states", [])
+                if isinstance(item, dict)
+                and item.get("character_id")
+                and (
+                    "character_ids" not in binding
+                    or str(item["character_id"]) in binding["character_ids"]
+                )
+            }
+            outgoing = narrative.get("outgoing")
+            if isinstance(outgoing, dict):
+                outgoing["cast_states"] = dict(narrative["cast_states"])
+        if binding.get("location_id") and isinstance(narrative.get("outgoing"), dict):
+            narrative["outgoing"]["location"] = binding["location_id"]
+        if "vocal_presentation" in binding:
+            narrative["vocal_presentation"] = binding["vocal_presentation"]
+        if "visual_direction" in binding:
+            narrative["visual_direction"] = binding["visual_direction"]
 
 
 def _matching_signature_segment(
@@ -1868,6 +1983,15 @@ def _narrative_contract(global_context: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def _selected_actor_ids(value: dict[str, Any]) -> list[str] | None:
+    references = value.get("references")
+    if not isinstance(references, dict) or not isinstance(references.get("actor_ids"), list):
+        return None
+    if not references.get("actor_ids_authoritative"):
+        return None
+    return [str(actor) for actor in references["actor_ids"]]
+
+
 def _ordered_contract_entries(
     contract: dict[str, Any], key: str,
 ) -> list[tuple[str, str]]:
@@ -2196,6 +2320,8 @@ def _adjacent_continuity_plan(
     narrative: dict[str, Any],
     prior_concepts: dict[str, Any],
     contract: dict[str, Any],
+    *,
+    selected_actor_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     predecessor_id = next(reversed(prior_concepts), "")
     previous_number = re.search(r"(\d+)$", predecessor_id)
@@ -2220,6 +2346,13 @@ def _adjacent_continuity_plan(
         if isinstance(previous_continuity.get("outgoing"), dict)
         else _narrative_outgoing_snapshot(previous_narrative)
     )
+    if selected_actor_ids is not None:
+        selected = set(selected_actor_ids)
+        previous_outgoing["cast_states"] = {
+            actor: state
+            for actor, state in (previous_outgoing.get("cast_states") or {}).items()
+            if actor in selected
+        }
     current_snapshot = _continuity_snapshot(narrative)
     explicit_incoming = narrative.get("incoming")
     incoming_delta = (
@@ -2235,6 +2368,14 @@ def _adjacent_continuity_plan(
             outgoing,
             _continuity_snapshot(explicit_outgoing),
         )
+    if selected_actor_ids is not None:
+        selected = set(selected_actor_ids)
+        for snapshot in (incoming, outgoing):
+            snapshot["cast_states"] = {
+                actor: state
+                for actor, state in (snapshot.get("cast_states") or {}).items()
+                if actor in selected
+            }
 
     transition = str(
         _normalize_semantic_value(narrative.get("transition_from_previous"))
@@ -2263,12 +2404,15 @@ def _adjacent_continuity_conflicts(
     narrative: dict[str, Any],
     prior_concepts: dict[str, Any],
     contract: dict[str, Any],
+    *,
+    selected_actor_ids: list[str] | None = None,
 ) -> tuple[list[str], str]:
     plan = _adjacent_continuity_plan(
         segment_id,
         narrative,
         prior_concepts,
         contract,
+        selected_actor_ids=selected_actor_ids,
     )
     predecessor_id = str(plan.get("predecessor_id") or "")
     if not predecessor_id:
@@ -2462,6 +2606,7 @@ def _semantic_conflicts(
         narrative,
         prior_concepts,
         contract,
+        selected_actor_ids=_selected_actor_ids(value),
     )
 
     reasons = ["narrative.props must be an object"] if malformed_props else []

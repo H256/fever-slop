@@ -443,7 +443,7 @@ class ArchitecturePortsTests(unittest.TestCase):
             temp = Path(temp_dir)
             render_plan = temp / "render_plan.json"
             render_plan.write_text(json.dumps(self._render_plan()), encoding="utf-8")
-            console = Console(record=True, force_terminal=False, color_system=None, file=io.StringIO())
+            console = Console(record=True, force_terminal=False, color_system=None, width=200, file=io.StringIO())
 
             RenderVideoScenesUseCase(
                 backend=FakeVideoBackend(),

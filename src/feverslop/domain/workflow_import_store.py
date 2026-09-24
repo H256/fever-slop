@@ -3,8 +3,7 @@
 Stores imported workflow snapshots under ``projects/<slug>/workflows/`` and
 drives the draft → validated → tested → active state machine. Activation is
 gated: a profile may only be activated when its validation AND its test-run
-both succeeded. Snapshots are immutable once pinned by a queued or running
-render.
+both succeeded.
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -42,15 +40,6 @@ _PROFILE_ID = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 class WorkflowImportError(Exception):
     """Raised for invalid import-store operations."""
-
-
-@dataclass(frozen=True)
-class PinnedSnapshot:
-    """A snapshot pinned by a queued or running render."""
-
-    profile_id: str
-    workflow_sha256: str
-    render_id: str
 
 
 def _sha256(payload: bytes) -> str:
@@ -121,6 +110,7 @@ class WorkflowImportStore:
         pipeline: str,
         purpose: str,
         graph: object,
+        reset: bool = False,
     ) -> ImportedProfile:
         if not _PROFILE_ID.match(profile_id):
             raise WorkflowImportError("profile_id must be lowercase [a-z0-9._-]")
@@ -135,7 +125,32 @@ class WorkflowImportStore:
         else:
             raise WorkflowImportError("graph must be JSON bytes, text, or a mapping")
         sha = self._write_snapshot(project_id, profile_id, payload)
-        record = {
+        record = self._next_record(
+            project_id=project_id, profile_id=profile_id, pipeline=pipeline, purpose=purpose,
+            sha=sha, reset=reset,
+        )
+        self._write_profile(project_id, profile_id, record)
+        return self.get_profile(project_id, profile_id)
+
+    def _next_record(
+        self,
+        *,
+        project_id: str,
+        profile_id: str,
+        pipeline: str,
+        purpose: str,
+        sha: str,
+        reset: bool,
+    ) -> dict[str, Any]:
+        """Build the profile record for an import.
+
+        A fresh import (or ``reset=True``) yields a blank draft. A same-sha
+        re-import (a no-op or a snapshot self-heal) preserves the full
+        lifecycle record so re-importing does not silently wipe recorded
+        validation/test-run state. A changed-sha re-import resets the
+        validation-dependent fields to draft: they are stale for the new graph.
+        """
+        fresh = {
             "profile_id": profile_id,
             "pipeline": pipeline,
             "purpose": purpose,
@@ -145,10 +160,16 @@ class WorkflowImportStore:
             "test_run": None,
             "analysis": None,
             "validation_valid": None,
-            "pins": [],
         }
-        self._write_profile(project_id, profile_id, record)
-        return self.get_profile(project_id, profile_id)
+        if reset:
+            return fresh
+        try:
+            existing = self._read_profile(project_id, profile_id)
+        except WorkflowImportError:
+            return fresh
+        if existing["workflow_sha256"] == sha:
+            return existing
+        return fresh
 
     def get_profile(self, project_id: str, profile_id: str) -> ImportedProfile:
         record = self._read_profile(project_id, profile_id)
@@ -242,31 +263,6 @@ class WorkflowImportStore:
 
     # -- snapshot immutability ---------------------------------------------
 
-    def pin_snapshot(self, project_id: str, profile_id: str, render_id: str) -> None:
-        record = self._read_profile(project_id, profile_id)
-        pins = record.get("pins") or []
-        if any(pin.get("render_id") == render_id for pin in pins):
-            return
-        pins.append(
-            {
-                "profile_id": profile_id,
-                "workflow_sha256": record["workflow_sha256"],
-                "render_id": render_id,
-            }
-        )
-        record["pins"] = pins
-        self._write_profile(project_id, profile_id, record)
-
-    def unpin_snapshot(self, project_id: str, profile_id: str, render_id: str) -> None:
-        record = self._read_profile(project_id, profile_id)
-        pins = record.get("pins") or []
-        record["pins"] = [pin for pin in pins if pin.get("render_id") != render_id]
-        self._write_profile(project_id, profile_id, record)
-
-    def is_snapshot_pinned(self, project_id: str, profile_id: str) -> bool:
-        record = self._read_profile(project_id, profile_id)
-        return bool(record.get("pins"))
-
     def verify_snapshot(self, project_id: str, profile_id: str) -> bool:
         """True when the stored snapshot still hashes to the recorded sha."""
         record = self._read_profile(project_id, profile_id)
@@ -300,6 +296,3 @@ class ProjectWorkflowImportStore:
 
     def snapshot_path(self, profile_id: str) -> Path:
         return self._store.snapshot_path(self.project_id, profile_id)
-
-    def is_snapshot_pinned(self, profile_id: str) -> bool:
-        return self._store.is_snapshot_pinned(self.project_id, profile_id)
