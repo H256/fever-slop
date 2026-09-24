@@ -33,7 +33,9 @@ class StoryPlanningConfig:
     require_approval: bool = False
     planner_revision: str = PLANNER_REVISION
     failure_policy: str = "warn"
-    acting_batch_size: int = 8
+    # Four short scene briefs keep the creative request feasible for local
+    # 7B--35B models while still amortizing prompt overhead.
+    acting_batch_size: int = 4
 
 
 @dataclass
@@ -425,7 +427,7 @@ class AppConfig:
             raise ValueError("story_planning.failure_policy must be 'warn' or 'block'")
         try:
             story_planning_acting_batch_size = int(
-                story_planning_raw.get("acting_batch_size", 8)
+                story_planning_raw.get("acting_batch_size", 4)
             )
         except (TypeError, ValueError) as exc:
             raise ValueError("story_planning.acting_batch_size must be an integer") from exc

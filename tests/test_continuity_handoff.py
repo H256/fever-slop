@@ -306,6 +306,73 @@ class ContinuityHandoffTests(unittest.TestCase):
 
 
 
+    def test_frame_extractor_uses_keyed_cache_not_shared_file(self):
+        # Regression for #1281: in a flat movie layout a stale unkeyed
+        # lastframe.png (from another scene) must not be served as the
+        # cache; the extractor reads the per-clip keyed file instead.
+        from feverslop.adapters.postprocessor_frame_extractor import (
+            PostprocessorFrameExtractor,
+        )
+
+        class _RecordingPostprocessor:
+            def __init__(self):
+                self.calls = []
+
+            def extract_last_frame(self, video_path, output_path):
+                self.calls.append(video_path)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"reextracted")
+                return output_path
+
+            def last_frame_index(self, video_path):
+                return 0
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            clip = project / "scene_0001.mp4"
+            clip.write_bytes(b"clip")
+            # Stale unkeyed shared file (the bug): belongs to another scene.
+            (project / "lastframe.png").write_bytes(b"WRONG")
+            # Correct keyed cache for this clip.
+            (project / "lastframe_scene_0001.png").write_bytes(b"RIGHT")
+            postprocessor = _RecordingPostprocessor()
+            extractor = PostprocessorFrameExtractor(postprocessor, project_dir=project)
+            result = extractor.extract_last_frame(clip, project / "out.png")
+            self.assertEqual(b"RIGHT", Path(result).read_bytes())
+            self.assertEqual([], postprocessor.calls)  # cache hit, no re-extract
+
+    def test_frame_extractor_reextracts_when_keyed_cache_missing(self):
+        # With no keyed cache present (only the stale unkeyed file), the
+        # extractor must re-extract from the clip rather than copy the
+        # shared file.
+        from feverslop.adapters.postprocessor_frame_extractor import (
+            PostprocessorFrameExtractor,
+        )
+
+        class _RecordingPostprocessor:
+            def __init__(self):
+                self.calls = []
+
+            def extract_last_frame(self, video_path, output_path):
+                self.calls.append(video_path)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"reextracted")
+                return output_path
+
+            def last_frame_index(self, video_path):
+                return 0
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            clip = project / "scene_0001.mp4"
+            clip.write_bytes(b"clip")
+            (project / "lastframe.png").write_bytes(b"WRONG")  # unkeyed only
+            postprocessor = _RecordingPostprocessor()
+            extractor = PostprocessorFrameExtractor(postprocessor, project_dir=project)
+            result = extractor.extract_last_frame(clip, project / "out.png")
+            self.assertEqual(b"reextracted", Path(result).read_bytes())
+            self.assertEqual([clip], postprocessor.calls)
+
     def test_resolved_project_dir_computed_once(self):
         """Verify that project_dir resolution happens once, not per call."""
         with tempfile.TemporaryDirectory() as temp_dir:

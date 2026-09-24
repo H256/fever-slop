@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import httpx
 from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
 
 from feverslop.adapters.api_observability import (
@@ -26,6 +25,7 @@ from feverslop.llm_concurrency import (
     get_shared_llm_concurrency_limiter,
 )
 from feverslop.prompting.vision_references import prepare_vision_image
+from feverslop.security.ip_pinning import create_pinned_httpx_client
 from feverslop.security.url_validation import validate_api_url
 
 RETRYABLE_ERRORS = (APIConnectionError, APITimeoutError, RateLimitError)
@@ -148,11 +148,15 @@ class LocalOpenAIClient:
             raise ValueError("request_timeout_seconds must be greater than zero")
         resolved_key = _resolve_api_key(api_key)
         self.auth_headers = dict(auth_headers or {})
-        validate_api_url(base_url, allow_private_addresses=allow_private_addresses)
+        _, self._pinned_ip = validate_api_url(
+            base_url, allow_private_addresses=allow_private_addresses
+        )
         self.client = OpenAI(
             base_url=base_url,
             api_key=resolved_key,
-            http_client=httpx.Client(follow_redirects=False),
+            http_client=create_pinned_httpx_client(
+                self._pinned_ip, follow_redirects=False
+            ),
             max_retries=0,
             default_headers=self.auth_headers or None,
         )

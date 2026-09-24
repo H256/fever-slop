@@ -17,7 +17,7 @@ from feverslop.application.continuity_boundary import (
 from feverslop.domain.artifact_hash import sha256_file
 from feverslop.domain.continuity import BoundaryFrameManifest
 from feverslop.domain.render_plan import RenderPlan
-from feverslop.errors import FeverSlopDataError
+from feverslop.errors import FeverSlopAdaptationError, FeverSlopDataError
 from feverslop.ports.artifacts import ArtifactStore
 from feverslop.ports.rendering import (
     VideoRenderBackend,
@@ -215,7 +215,7 @@ class RenderVideoScenesUseCase:
             if expected_frames:
                 try:
                     valid = int(probe_frames(existing_path)) == expected_frames
-                except (OSError, ValueError, subprocess.SubprocessError):
+                except (OSError, ValueError, subprocess.SubprocessError, FeverSlopAdaptationError):
                     valid = False
                 if not valid:
                     existing_path = None
