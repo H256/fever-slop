@@ -8,7 +8,7 @@ Required:
 
 - Python `3.12`.
 - `uv` for Python dependency management.
-- FFmpeg available in `PATH`.
+- FFmpeg available in `PATH` (4.x or newer; the postprocessor prefers `-fps_mode` on FFmpeg 5.1+ and automatically falls back to `-vsync` on older builds).
 - ComfyUI running with the API enabled.
 - Required ComfyUI workflows and models under `workflows/` and the configured ComfyUI model folders.
 - An OpenAI-compatible LLM endpoint.

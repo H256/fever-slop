@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -42,7 +44,21 @@ def _download_adaface(model_dir: Path) -> Path:
         return adaface_path
 
     logger.info("Downloading AdaFace ONNX model...")
-    urllib.request.urlretrieve(_ADAFACE_URL, str(adaface_path))
+    # Download to a temp file in the same directory, then rename into place
+    # only after a complete transfer. On any failure the temp file is removed,
+    # so an interrupted download is retried on the next run instead of leaving
+    # a truncated .onnx that onnxruntime would treat as a completed model.
+    fd, temp_name = tempfile.mkstemp(
+        prefix=_ADAFACE_NAME + ".", suffix=".part", dir=model_dir
+    )
+    os.close(fd)
+    temp_path = Path(temp_name)
+    try:
+        urllib.request.urlretrieve(_ADAFACE_URL, str(temp_path))
+        os.replace(temp_path, adaface_path)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
     logger.info("AdaFace downloaded to %s", adaface_path)
     return adaface_path
 

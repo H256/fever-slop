@@ -4,29 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-
-_RESUME_STAGE_ORDER = (
-    "tests",
-    "main_pipeline",
-    "sync_project_settings",
-    "relay_compact",
-    "anchor_fix",
-    "msr_references",
-    "msr_reference_sheets",
-    "h3_prompts",
-    "render_plan",
-    "msr_prompt_enrich",
-    "ingredients_sheets",
-    "ltx_prepare_workflows",
-    "ltx_render_scenes",
-    "facefix",
-    "upscale",
-    "concat_video_only",
-    "mux_original_audio",
-    "diagnostic_scene_audio_concat",
-    "export_timeline",
-)
-_RESUME_STAGE_INDEX = {stage: index for index, stage in enumerate(_RESUME_STAGE_ORDER)}
+from feverslop.domain.stages import RESUME_STAGE_INDEX
 
 
 class PlanAction(str, Enum):
@@ -68,7 +46,7 @@ class ExecutionPlan:
             return stages
         return tuple(sorted(
             stages,
-            key=lambda stage: _RESUME_STAGE_INDEX.get(stage, len(_RESUME_STAGE_INDEX)),
+            key=lambda stage: RESUME_STAGE_INDEX.get(stage, len(RESUME_STAGE_INDEX)),
         ))
 
     @property
