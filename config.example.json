@@ -46,6 +46,7 @@
   "subject": "",
   "locations": [{"id": "forest", "name": "Forest clearing", "visual_description": "", "image_prompt": "", "reference_mode": "empty_environment"}],
   "actors": [{"id": "hero", "name": "Hero", "role": "lead", "visual_description": "", "image_prompt": ""}],
+  "ensembles": [],
   "global_assets": {"cast": [], "locations": [], "styles": [], "props": []},
   "global_cast": [],
   "global_locations": [],
