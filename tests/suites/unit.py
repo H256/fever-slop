@@ -247,6 +247,7 @@ UNIT_MODULES = (
     "semantic_intent_review",
     "semantic_intent_validation",
     "semantic_intent_wiring",
+    "semantic_intent_e2e",
     "sequence_reference_pipeline",
     "sequence_to_sheet",
     "sequence_to_sheet_backend",
