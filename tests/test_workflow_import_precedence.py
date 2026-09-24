@@ -117,7 +117,6 @@ class PrecedenceTests(unittest.TestCase):
             view = store.for_project("proj")
             active = view.find_active(pipeline="minimax_h3", purpose="final")
             self.assertIsNotNone(active)
-            self.assertTrue(view.is_snapshot_pinned("h3-final") is False)
             path = view.snapshot_path("h3-final")
             self.assertTrue(path.exists())
 

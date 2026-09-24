@@ -409,8 +409,11 @@ class ComfyUIMiniMaxH3VideoRenderBackend:
         if not manifest_path.is_file() or self.project_dir is None:
             return
         scene_dir = self.output_dir / f"scene_{scene_number:04}"
-        first_frame_path = scene_dir / "firstframe.png"
-        last_frame_path = scene_dir / "lastframe.png"
+        # The clip is scene_dir/final.mp4; trim_clip keys boundary frames by
+        # the clip stem, so they are lastframe_final.png / firstframe_final.png.
+        clip_stem = "final"
+        first_frame_path = scene_dir / f"firstframe_{clip_stem}.png"
+        last_frame_path = scene_dir / f"lastframe_{clip_stem}.png"
         if not first_frame_path.is_file() or not last_frame_path.is_file():
             return
         manifest = SceneWorkflowManifest.read(manifest_path)

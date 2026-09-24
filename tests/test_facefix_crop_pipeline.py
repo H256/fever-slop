@@ -434,6 +434,102 @@ class TestLoadVideoFrames(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestSaveVideoFramesTempDir(unittest.TestCase):
+    """Each _save_video_frames call must use a unique temp dir (no cross-run clobber)."""
+
+    def _call(self, out_parent):
+        from feverslop.composition.facefix_pipeline import _save_video_frames
+
+        frames = np.zeros((2, 48, 64, 3), dtype=np.uint8)
+        out_parent.mkdir(parents=True, exist_ok=True)
+        return _save_video_frames(
+            frames,
+            out_parent / "final_facefix.mp4",
+            out_parent / "final.mp4",
+            "ffmpeg",
+            120.0,
+        )
+
+    def _base_dir(self):
+        import os
+        import time
+
+        base = Path(os.environ.get("TMPDIR", "/tmp")) / f"feverslop_test_{os.getpid()}_{time.time_ns()}"
+        base.mkdir(parents=True, exist_ok=True)
+        return base
+
+    @patch("feverslop.composition.facefix_pipeline.cv2")
+    @patch("subprocess.run")
+    @patch("tempfile.mkdtemp")
+    def test_distinct_temp_dirs_per_call(self, mock_mkdtemp, mock_run, mock_cv2):
+        import shutil
+
+        mock_run.return_value = MagicMock()
+        mock_cv2.VideoCapture.return_value = MagicMock()
+        mock_cv2.VideoCapture.return_value.get.return_value = 24.0
+
+        created = []
+
+        def _mk(prefix: str = "", suffix: str = "", dir: str | None = None) -> str:
+            base = Path(dir) if dir is not None else Path("/tmp")
+            d = base / f"{prefix}{len(created)}"
+            d.mkdir(parents=True, exist_ok=True)
+            created.append(d)
+            return str(d)
+
+        mock_mkdtemp.side_effect = _mk
+
+        base = self._base_dir()
+        try:
+            self._call(base / "scene_0001")
+            self._call(base / "scene_0001")
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+
+        self.assertEqual(len(created), 2)
+        self.assertNotEqual(created[0], created[1])
+        # The old fixed shared name must no longer be used.
+        for d in created:
+            self.assertNotEqual(d.name, "temp_frames_export")
+
+    @patch("feverslop.composition.facefix_pipeline.cv2")
+    @patch("subprocess.run", side_effect=OSError("boom"))
+    @patch("tempfile.mkdtemp")
+    def test_temp_dir_cleaned_on_failure(self, mock_mkdtemp, mock_run, mock_cv2):
+        import shutil
+
+        mock_cv2.VideoCapture.return_value = MagicMock()
+        mock_cv2.VideoCapture.return_value.get.return_value = 24.0
+
+        made = []
+
+        def _mk(prefix: str = "", suffix: str = "", dir: str | None = None) -> str:
+            base = Path(dir) if dir is not None else Path("/tmp")
+            d = base / f"{prefix}{len(made)}"
+            d.mkdir(parents=True, exist_ok=True)
+            made.append(d)
+            return str(d)
+
+        mock_mkdtemp.side_effect = _mk
+
+        base = self._base_dir()
+        try:
+            parent = base / "scene_0001"
+            parent.mkdir(parents=True, exist_ok=True)
+            frames = np.zeros((2, 48, 64, 3), dtype=np.uint8)
+            from feverslop.composition.facefix_pipeline import _save_video_frames
+
+            with self.assertRaises(OSError):
+                _save_video_frames(
+                    frames, parent / "final_facefix.mp4", parent / "final.mp4",
+                    "ffmpeg", 120.0,
+                )
+        finally:
+            shutil.rmtree(base, ignore_errors=True)
+        # finally-block cleanup must remove the temp dir even on failure.
+        self.assertFalse(made[0].exists())
+
+
 class TestDeprecatedBackend(unittest.TestCase):
     """Verify ComfyUIFaceFixRenderBackend raises DeprecationWarning."""
 
