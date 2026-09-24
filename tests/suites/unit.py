@@ -35,6 +35,7 @@ UNIT_MODULES = (
     "comfyui_client_session",
     "comfyui_client",
     "comfyui_facefix_backend",
+    "comfyui_facefix_h3_backend",
     "comfyui_image_backend",
     "comfyui_ingredients_video_backend",
     "comfyui_minimax_h3_backend",
