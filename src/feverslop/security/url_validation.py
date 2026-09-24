@@ -16,7 +16,7 @@ def validate_api_url(
     allowed_hosts: set[str] | None = None,
     allow_loopback: bool = True,
     allow_private_addresses: bool = True,
-) -> str:
+) -> tuple[str, str | None]:
     """Validate an HTTP API endpoint before it is used for a request.
 
     The URL must use ``http`` or ``https`` and may not contain embedded
@@ -36,6 +36,17 @@ def validate_api_url(
     allowlist is given) restricts hostnames in both modes. A host that is on
     the allowlist is explicitly trusted and skips the address checks
     entirely, including in strict mode.
+
+    Returns ``(normalized_url, pinned_ip)`` where ``pinned_ip`` is the
+    first resolved IP address when the host is a non-literal hostname that
+    resolves successfully in strict mode, and ``None`` otherwise. Callers
+    should use ``pinned_ip`` to pin the TCP connection to the validated
+    address, closing the DNS-rebinding TOCTOU window between validation and
+    the actual request.
+
+    Transparent-proxying limitation: if the HTTP client is configured to use
+    a transparent proxy that re-resolves the hostname independently of the
+    pinned IP, the pinning guarantee does not extend to the proxy hop.
     """
     if not isinstance(url, str) or not url.strip():
         raise APIURLValidationError("API URL must be a non-empty string")
@@ -69,11 +80,15 @@ def validate_api_url(
 
     # Local-network services are the default deployment model. Strict private
     # address filtering is opt-in for deployments that need SSRF protection.
+    # pinned_ip is set only for non-literal hostnames that resolve in strict
+    # mode; a literal IP needs no pinning because the client connects to it
+    # directly without re-resolving DNS.
+    pinned_ip: str | None = None
     if allow_private_addresses or explicitly_allowed:
-        return value
+        return value, None
 
     if normalized_host == "localhost" and allow_loopback:
-        return value
+        return value, None
     try:
         address = ipaddress.ip_address(normalized_host)
     except ValueError:
@@ -82,7 +97,7 @@ def validate_api_url(
         except socket.gaierror:
             # Defer DNS failure handling to the HTTP client; do not turn a
             # temporarily unavailable external service into a config error.
-            return value
+            return value, None
         for result in resolved:
             resolved_address = ipaddress.ip_address(result[4][0])
             if resolved_address.is_loopback and allow_loopback:
@@ -97,9 +112,10 @@ def validate_api_url(
                 raise APIURLValidationError(
                     f"API URL hostname resolves to a private or reserved address: {normalized_host}",
                 )
-        return value
+        pinned_ip = str(resolved[0][4][0])
+        return value, pinned_ip
     if address.is_loopback and allow_loopback:
-        return value
+        return value, None
     if address.is_private or address.is_link_local or address.is_multicast or address.is_reserved or address.is_unspecified:
         raise APIURLValidationError(f"API URL targets a private or reserved address: {normalized_host}")
-    return value
+    return value, None

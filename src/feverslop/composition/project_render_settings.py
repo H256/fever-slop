@@ -4,6 +4,7 @@ from collections.abc import Collection
 from dataclasses import dataclass
 import json
 from pathlib import Path
+from typing import Any
 
 from feverslop.adapters.pipeline_runner_options import RUNNER_ARGUMENTS
 from feverslop.config.project_config import ProjectConfig
@@ -24,11 +25,48 @@ from feverslop.domain.ltx25_audio_contract import (
 
 from .config_loader import resolve_runner_path, runner_root
 
+#: H3 render pipelines all map to the single ``minimax_h3`` import-store family.
+_H3_FAMILY_PIPELINES = frozenset({"minimax-h3-r2v", "minimax-h3-t2v", "minimax-h3-i2v"})
+
 
 @dataclass(frozen=True)
 class ResolvedProjectRenderSettings:
     settings: ProjectRenderSettings
     runner_overrides: dict[str, str]
+
+
+def _import_store_for(project: Path, app_config: Any) -> Any:
+    """Anchor and return the per-project workflow-import store, or None.
+
+    ``app_config`` may be a loaded :class:`AppConfig` (re-anchored to the
+    project dir) or ``None`` (a default config is used). Returns ``None``
+    when the project has no ``workflows`` directory, so the caller falls
+    back to the built-in default.
+    """
+    from feverslop.config.app_config import AppConfig, ComfyUIConfig, LLMConfig
+
+    config = app_config if app_config is not None else AppConfig(llm=LLMConfig(), comfyui=ComfyUIConfig())
+    config.attach_import_store(project)
+    return config.import_store
+
+
+def _active_import_path(project: Path, app_config: Any, video_pipeline: str) -> str | None:
+    """Return the active H3 import snapshot path, or None to use the built-in default.
+
+    All H3 render pipelines map to the single ``minimax_h3`` import-store
+    family. An active ``final`` import (validated + test-run + activated)
+    takes precedence over the built-in two-pass workflow, mirroring the LTX
+    import-precedence path.
+    """
+    if video_pipeline not in _H3_FAMILY_PIPELINES:
+        return None
+    store = _import_store_for(project, app_config)
+    if store is None:
+        return None
+    active = store.find_active(pipeline="minimax_h3", purpose="final")
+    if active is None:
+        return None
+    return str(store.snapshot_path(active.profile_id))
 
 
 def _load_declared_ltx25_profiles() -> RenderProfileRegistry:
@@ -61,6 +99,7 @@ def resolve_project_render_settings(
     explicit_runner_options: Collection[str] = (),
     reference_generation: str | None = None,
     sequence_to_sheet_workflow: str | None = None,
+    app_config: Any = None,
 ) -> ResolvedProjectRenderSettings:
     root = Path(project).resolve()
     config = ProjectConfig.load(root / "config.json")
@@ -93,7 +132,15 @@ def resolve_project_render_settings(
     }
     pipeline_default = pipeline_defaults.get(video_pipeline)
     if pipeline_default and config.workflows.video is None and video_target not in explicit:
-        profile_path = resolve_runner_path(pipeline_default).resolve()
+        # An active, validated H3 import (validated + test-run + activated)
+        # takes precedence over the built-in two-pass workflow, mirroring the
+        # LTX import-precedence path. Fall back to the built-in default when
+        # no import exists.
+        import_path = _active_import_path(root, app_config, video_pipeline)
+        if import_path is not None:
+            profile_path = Path(import_path).resolve()
+        else:
+            profile_path = resolve_runner_path(pipeline_default).resolve()
         video_selection = WorkflowSelection.from_path(profile_path, root=runner_root())
         overrides[video_target] = str(profile_path)
     if config.workflows.video is None and not pipeline_default and config.render_profile.startswith("ltx25-"):

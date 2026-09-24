@@ -116,6 +116,22 @@ class GlobalLibraryCliTests(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertIn("created look character/ava/costume", output.getvalue())
 
+    def test_create_look_rejects_unsafe_look_id(self):
+        temp, library_root, snapshot = self._snapshot_fixture()
+        command = [
+            "--library-root", str(library_root), "create-look",
+            "--kind", "character", "--id", "ava",
+            "--look-id", "../../etc", "--name", "Escaping",
+        ]
+        error = StringIO()
+        with redirect_stdout(StringIO()), redirect_stderr(error):
+            code = main(command)
+        self.assertEqual(2, code)
+        self.assertIn("look id", error.getvalue())
+        self.assertIn("safe id", error.getvalue())
+        # No look was written outside the asset directory.
+        self.assertFalse((library_root / "etc").exists())
+
     def test_validate_reports_dangling_media(self):
         temp, library_root, snapshot = self._snapshot_fixture()
         output = StringIO()

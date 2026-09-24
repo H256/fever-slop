@@ -447,15 +447,22 @@ class PreparedWorkflowRenderer:
                 trim_front_frames=manifest.trim_front_frames,
                 keep_frames=manifest.frame_count,
                 scene=manifest.scene,
-                extract_boundary_frames=True,
+                # Extract boundary frames after the rename so they are keyed
+                # by the final clip stem, not the temporary file stem.
+                extract_boundary_frames=False,
             ))
             os.replace(temporary_final, final_path)
         finally:
             temporary_final.unlink(missing_ok=True)
+        self.postprocessor.extract_first_and_last_frames(
+            final_path,
+            final_path.with_name(f"firstframe_{final_path.stem}.png"),
+            final_path.with_name(f"lastframe_{final_path.stem}.png"),
+        )
         manifest_path = final_path.with_name("manifest.json")
         manifest = SceneWorkflowManifest.read(manifest_path)
-        first_frame_path = layout.scene_dir(manifest.scene) / "firstframe.png"
-        last_frame_path = layout.scene_dir(manifest.scene) / "lastframe.png"
+        first_frame_path = final_path.with_name(f"firstframe_{final_path.stem}.png")
+        last_frame_path = final_path.with_name(f"lastframe_{final_path.stem}.png")
         if first_frame_path.is_file() and last_frame_path.is_file():
             manifest = replace(
                 manifest,

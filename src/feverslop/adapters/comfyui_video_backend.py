@@ -397,14 +397,18 @@ class ComfyUIVideoRenderBackend:
                     f"{self.min_duration:.3f}s..{self.max_duration:.3f}s.",
                 )
 
-            startframe_path = storyboard_dir / f"scene_{scene_number:04}.png"
-            if not startframe_path.exists():
-                raise FeverSlopRenderError(f"Missing storyboard startframe: {startframe_path}")
-
-            comfy_startframe_name = self.asset_uploader.resolve_startframe_name(
-                startframe_path,
-                upload_startframes=upload_startframes,
-            )
+            mode = self.workflow_patcher.render_mode_for_scene(scene)
+            if self.workflow_patcher.requires_startframe(mode):
+                startframe_path = storyboard_dir / f"scene_{scene_number:04}.png"
+                if not startframe_path.exists():
+                    raise FeverSlopRenderError(f"Missing storyboard startframe: {startframe_path}")
+                comfy_startframe_name = self.asset_uploader.resolve_startframe_name(
+                    startframe_path,
+                    upload_startframes=upload_startframes,
+                )
+            else:
+                # Text-to-video: no startframe image is consumed by the graph.
+                comfy_startframe_name = ""
 
             rolling = self._rolling_spec(scene)
             raw_clip = self.render_scene_video(
