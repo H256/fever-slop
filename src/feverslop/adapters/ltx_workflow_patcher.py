@@ -93,6 +93,15 @@ class LTXWorkflowPatcher:
             return self.settings.single_prompt_workflow_path or self.settings.ltx_workflow_path
         return self.settings.ltx_workflow_path
 
+    def requires_startframe(self, mode: str) -> bool:
+        """Return True when the workflow for ``mode`` consumes a startframe image.
+
+        Text-to-video graphs have no ``#STARTFRAME`` anchor, so the startframe
+        input is optional for them.
+        """
+        patcher = WorkflowPatcher(self.load_workflow(mode=mode))
+        return patcher.has_title(self.settings.startframe_node_title)
+
     def load_workflow(self, mode: str = "relay") -> dict:
         return json.loads(self.workflow_path_for_mode(mode).read_text(encoding="utf-8-sig"))
 
@@ -103,12 +112,13 @@ class LTXWorkflowPatcher:
         required_titles = [
             self.settings.width_node_title,
             self.settings.height_node_title,
-            self.settings.startframe_node_title,
             self.settings.frames_node_title,
             self.settings.framerate_node_title,
             self.settings.seed_node_title,
             self.settings.save_video_node_title,
         ]
+        if self.requires_startframe(mode):
+            required_titles.insert(2, self.settings.startframe_node_title)
         if not self._uses_empty_audio(patcher):
             required_titles.extend(
                 [
@@ -190,7 +200,8 @@ class LTXWorkflowPatcher:
         if patcher.has_title(self.settings.trim_audio_node_title):
             patcher.set_input_by_title(self.settings.trim_audio_node_title, "start_index", float(rolling["audio_start_seconds"]))
             patcher.set_input_by_title(self.settings.trim_audio_node_title, "duration", float(rolling["audio_duration_seconds"]))
-        patcher.set_input_by_title(self.settings.startframe_node_title, "image", comfy_startframe_name)
+        if self.requires_startframe(mode):
+            patcher.set_input_by_title(self.settings.startframe_node_title, "image", comfy_startframe_name)
 
         self.patch_prompt_inputs(
             patcher=patcher,
