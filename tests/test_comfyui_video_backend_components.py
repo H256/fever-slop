@@ -549,6 +549,56 @@ class LTXWorkflowPatcherTests(unittest.TestCase):
             startframe_node = next(node for node in workflow.values() if node["_meta"]["title"] == "#STARTFRAME")
             self.assertEqual("scene_0001.png", startframe_node["inputs"]["image"])
 
+    def test_t2v_workflow_without_startframe_anchor_validates_and_builds(self):
+        from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
+        from feverslop.domain.ltx_rendering import AudioWindowSpec
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            settings = self._settings(temp, render_mode="single_prompt")
+            # A text-to-video graph: no #STARTFRAME anchor, empty audio.
+            settings.single_prompt_workflow_path.write_text(
+                json.dumps(
+                    {
+                        "1": {"inputs": {"value": 1280}, "_meta": {"title": "#WIDTH"}},
+                        "2": {"inputs": {"value": 704}, "_meta": {"title": "#HEIGHT"}},
+                        "4": {"inputs": {"value": 24}, "_meta": {"title": "#FRAMES"}},
+                        "5": {"inputs": {"value": 24}, "_meta": {"title": "#FRAMERATE"}},
+                        "6": {"inputs": {"noise_seed": 0}, "_meta": {"title": "#SEED"}},
+                        "7": {"inputs": {"text": ""}, "_meta": {"title": "#PROMPT_POSITIVE"}},
+                        "8": {"inputs": {"filename_prefix": ""}, "_meta": {"title": "#SAVE_VIDEO"}},
+                        "9": {"inputs": {}, "class_type": "LTXVEmptyLatentAudio"},
+                    },
+                ),
+                encoding="utf-8",
+            )
+
+            patcher = LTXWorkflowPatcher(settings)
+            self.assertFalse(patcher.requires_startframe("single_prompt"))
+            patcher.validate_workflow(mode="single_prompt")
+            workflow = patcher.build_workflow(
+                scene={
+                    "scene": 1,
+                    "fps": 24,
+                    "width": 1280,
+                    "height": 704,
+                    "ltx": {"original_style_i2v_prompt": "prompt"},
+                },
+                comfy_audio_name="song.mp3",
+                comfy_startframe_name="scene_0001.png",
+                rolling=AudioWindowSpec(
+                    scene_frame_count=24,
+                    render_frame_count=24,
+                    trim_front_frames=0,
+                    tail_loss_frames=0,
+                    fps=24,
+                    audio_start_seconds=0,
+                    audio_duration_seconds=1,
+                ),
+            )
+            titles = {node.get("_meta", {}).get("title") for node in workflow.values()}
+            self.assertNotIn("#STARTFRAME", titles)
+
     def test_workflow_loading_accepts_utf8_bom(self):
         from feverslop.adapters.ltx_workflow_patcher import LTXWorkflowPatcher
 
@@ -879,6 +929,9 @@ class FakeWorkflowPatcher:
 
     def render_mode_for_scene(self, scene):
         return "single_prompt"
+
+    def requires_startframe(self, mode):
+        return True
 
     def workflow_path_for_mode(self, mode):
         return Path(f"{mode}.json")

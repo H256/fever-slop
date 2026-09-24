@@ -66,7 +66,7 @@ def build_workflow_import_parser(subparsers) -> None:
 
     repair_cmd = commands.add_parser(
         "repair",
-        help="Recover a broken profile back to draft (preserves pins and test-run).",
+        help="Recover a broken profile back to draft (preserves test-run).",
     )
     repair_cmd.add_argument("--project-dir", required=True)
     repair_cmd.add_argument("--profile-id", required=True)
@@ -167,7 +167,7 @@ def _repair(store: WorkflowImportStore, project_id: str, args: argparse.Namespac
             f"profile is {profile.status}; repair only recovers a broken profile"
         )
     store.set_state(project_id, args.profile_id, "draft")
-    output.print(f"{args.profile_id} repaired: broken -> draft (pins and test-run preserved)")
+    output.print(f"{args.profile_id} repaired: broken -> draft (test-run preserved)")
     return 0
 
 

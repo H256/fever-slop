@@ -55,13 +55,11 @@ class WorkflowImportRepairCliTests(unittest.TestCase):
         )
         self.assertEqual("repair", args.workflow_import_command)
 
-    def test_repair_recovers_broken_to_draft_and_preserves_pins(self) -> None:
+    def test_repair_recovers_broken_to_draft(self) -> None:
         self._import_and_break()
-        self.store.pin_snapshot("proj", "h3", "render-1")
         self.assertEqual("broken", self.store.get_profile("proj", "h3").status)
         self.assertEqual(0, self._run_repair())
         self.assertEqual("draft", self.store.get_profile("proj", "h3").status)
-        self.assertTrue(self.store.is_snapshot_pinned("proj", "h3"))
 
     def test_repair_rejects_non_broken_profile(self) -> None:
         self.store.import_workflow(
