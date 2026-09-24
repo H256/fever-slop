@@ -99,6 +99,7 @@ UNIT_MODULES = (
     "llm_api_key_validation",
     "llm_benchmark_cli",
     "ltx25_audio_contract",
+    "ltx25_quality_tiers",
     "ltx25_workflow_hygiene",
     "llm_benchmark",
     "llm_boundary_classification",
