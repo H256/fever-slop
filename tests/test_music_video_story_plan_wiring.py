@@ -22,7 +22,11 @@ from types import SimpleNamespace
 from typing import Any
 
 from feverslop.composition import generate_render_plan as composition
-from feverslop.application.prompt_generation_pipeline import PromptGenerationPipeline
+from feverslop.application.prompt_generation_pipeline import (
+    PromptGenerationPipeline,
+    _concept_bindings_match,
+    _write_concept_bindings_manifest,
+)
 from feverslop.application.story_plan_service import (
     SegmentDescriptor,
     StoryPlanError,
@@ -119,6 +123,7 @@ def _legacy_stage1_segments() -> list[dict]:
 class _RecordingReporter:
     def __init__(self) -> None:
         self.messages: list[str] = []
+        self.tables: list[tuple[Any, ...]] = []
 
     def message(self, text: str) -> None:
         self.messages.append(text)
@@ -130,10 +135,13 @@ class _RecordingReporter:
         pass
 
     def table(self, *args: Any, **kwargs: Any) -> None:
-        pass
+        self.tables.append(args)
 
     def warning(self, *args: Any, **kwargs: Any) -> None:
         self.messages.append(str(args[0]) if args else "warning")
+
+    def run_progress(self, _description: str, func: Any) -> Any:
+        return func()
 
 
 class _FactoryFakeClient:
@@ -321,6 +329,44 @@ def _persist_plan(
 
 
 class MusicVideoStoryPlanWiringTests(unittest.TestCase):
+    def test_bound_concept_reuse_requires_a_matching_binding_manifest(self) -> None:
+        from feverslop.adapters.local_artifacts import JsonArtifactStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = JsonArtifactStore()
+            concept_path = Path(tmp) / "concept_prompts_song.json"
+            store.write_json(concept_path, {"seg-1": {"concept": "old"}})
+            bindings = {"seg-1": {"objective": "Enter the cavern."}}
+
+            self.assertFalse(
+                _concept_bindings_match(
+                    concept_path=concept_path,
+                    segment_briefs=bindings,
+                    artifact_store=store,
+                )
+            )
+
+            _write_concept_bindings_manifest(
+                concept_path=concept_path,
+                segment_briefs=bindings,
+                artifact_store=store,
+            )
+
+            self.assertTrue(
+                _concept_bindings_match(
+                    concept_path=concept_path,
+                    segment_briefs=bindings,
+                    artifact_store=store,
+                )
+            )
+            self.assertFalse(
+                _concept_bindings_match(
+                    concept_path=concept_path,
+                    segment_briefs={"seg-1": {"objective": "Reach the well."}},
+                    artifact_store=store,
+                )
+            )
+
     def test_adapter_passes_story_sources_and_acting_segments(self) -> None:
         calls: dict[str, dict[str, Any]] = {}
 
@@ -349,7 +395,7 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             }, guide="",
         )
         adapter.beat_allocation(
-            song_title="Song", lyrics="orcs", segments=[{"segment_id": "seg-1"}],
+            song_title="Song", lyrics="orcs",
             narrative_bible={}, characters=[], terminal_window_seconds=1, guide="",
             locations=[{"id": "cave"}], props=[{"id": "well"}],
         )
@@ -363,11 +409,20 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
         self.assertEqual(calls["allocation"]["locations"], [{"id": "cave"}])
         self.assertEqual(calls["acting"]["segments"], [{"segment_id": "seg-1"}])
 
-    def test_warn_policy_stops_before_unbound_concept_generation(self) -> None:
+    def test_warn_policy_continues_without_story_bindings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             class FailingService:
                 def build_plan(self, request: Any) -> Any:
-                    raise StoryPlanError("acting output must contain a non-empty briefs list")
+                    raise StoryPlanError(
+                        "acting output must contain a non-empty briefs list",
+                        diagnostics=[
+                            {
+                                "code": "missing_acting_briefs",
+                                "subject_id": "acting",
+                                "message": "acting briefs list missing or empty",
+                            }
+                        ],
+                    )
 
             pipeline = _build_pipeline(story_plan_service_factory=lambda _llm: FailingService())
             reporter = _RecordingReporter()
@@ -376,9 +431,41 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
                 resume=False, stage1_segments=_stage1_segments(), paths=_make_paths(Path(tmp)),
                 reporter=reporter, artifact_store=None, log_file=lambda *_args: None,
             )
-            self.assertIsNone(result)
-            self.assertTrue(stopped)
-            self.assertIn("stopping", " ".join(reporter.messages).lower())
+            self.assertEqual(result, {})
+            self.assertFalse(stopped)
+            self.assertIn("continuing", " ".join(reporter.messages).lower())
+            self.assertEqual("Story plan diagnostics", reporter.tables[0][0])
+
+    def test_story_planning_factory_receives_live_pipeline_reporter(self) -> None:
+        """The production boundary must not replace Rich progress with NullReporter."""
+        with tempfile.TemporaryDirectory() as tmp:
+            captured: dict[str, Any] = {}
+
+            class Service:
+                def build_plan(self, _request: Any) -> Any:
+                    raise StoryPlanError("stop after factory wiring assertion")
+
+            def factory(
+                _llm: Any,
+                *,
+                acting_batch_size: int,
+                reporter: Any,
+            ) -> Service:
+                captured["acting_batch_size"] = acting_batch_size
+                captured["reporter"] = reporter
+                return Service()
+
+            pipeline = _build_pipeline(story_plan_service_factory=factory)
+            reporter = _RecordingReporter()
+            pipeline._resolve_story_plan(
+                config=_make_config(), app_config=_make_app_config(acting_batch_size=3),
+                request=_make_request(), resume=False, stage1_segments=_stage1_segments(),
+                paths=_make_paths(Path(tmp)), reporter=reporter, artifact_store=None,
+                log_file=lambda *_args: None,
+            )
+
+            self.assertEqual(captured["acting_batch_size"], 3)
+            self.assertIs(captured["reporter"], reporter)
     """Wiring tests for the music-video StoryPlan pipeline (issue #1386)."""
 
     def test_resume_accepts_existing_stage1_start_end_schema(self) -> None:
@@ -1002,10 +1089,12 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
         """The production factory must bridge real typed DSPy modules to a plan."""
         factory = getattr(composition, "build_story_plan_service", None)
         self.assertIsNotNone(factory, "composition must expose the production factory")
+        reporter = _RecordingReporter()
 
         service = factory(
             _FactoryFakeLLM(),
             dspy_runtime=_factory_fake_dspy_runtime(),
+            reporter=reporter,
         )
 
         result = service.build_plan(make_request())
@@ -1016,6 +1105,10 @@ class MusicVideoStoryPlanWiringTests(unittest.TestCase):
             [brief["target"] for brief in result.acting["briefs"]],
             ["brief-seg-1", "brief-seg-2"],
         )
+        self.assertIn("Story plan - narrative bible", reporter.messages)
+        self.assertIn("Story plan - story arc", reporter.messages)
+        self.assertIn("Story plan - acting beats", reporter.messages)
+        self.assertEqual("Story arc - model-authored beats", reporter.tables[0][0])
 
 
 if __name__ == "__main__":

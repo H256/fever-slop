@@ -12,6 +12,7 @@ from rich.console import Console
 
 from feverslop.adapters.comfyui_client import ComfyUIClient
 from feverslop.adapters.comfyui_facefix_crop_backend import ComfyUIFaceFixCropBackend
+from feverslop.adapters.comfyui_facefix_h3_backend import ComfyUIFaceFixH3Backend
 from feverslop.adapters.comfyui_model_resolver import ComfyUIModelResolver
 from feverslop.adapters.face_compositor import FaceCompositor
 from feverslop.adapters.face_debug import FaceDebugAdapter
@@ -29,7 +30,11 @@ from feverslop.domain.face_detection import (
     FaceTrackEntry,
     FrameResult,
 )
-from feverslop.domain.facefix_rendering import FaceFixConfig
+from feverslop.domain.facefix_rendering import (
+    FaceFixConfig,
+    FaceFixBackendKind,
+    select_facefix_backend,
+)
 from feverslop.path_utils import coerce_local_path
 from feverslop.scene_artifacts import SceneArtifactLayout
 from feverslop.utils.io import file_is_valid
@@ -65,6 +70,8 @@ class FaceFixCompositionOptions:
     use_crop_pipeline: bool = True
     max_skip_rate: float = 0.5
     ffmpeg_timeout_seconds: float = 120.0
+    video_pipeline: str = ""
+    facefix_backend: str | None = None
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.ffmpeg_timeout_seconds) or self.ffmpeg_timeout_seconds <= 0:
@@ -112,12 +119,314 @@ def run_facefix(
 ) -> list[Path]:
     """Build and execute the FaceFix pipeline.
 
-    When use_crop_pipeline is True, uses the new crop-and-composite approach.
-    Otherwise falls back to the legacy full-res approach.
+    Routes by the scene video backend (issue 519): H3 R2V scenes use the
+    H3-native FaceRefine pass, everything else keeps the LTXV crop path.
+    An explicit ``facefix_backend`` override wins over the video-pipeline
+    heuristic.
     """
+    backend = select_facefix_backend(options.video_pipeline, options.facefix_backend)
+    if backend is FaceFixBackendKind.H3_FACEFIX:
+        return _run_h3_facefix(options, console=console)
     if options.use_crop_pipeline:
         return _run_crop_facefix(options, console=console)
     return _run_legacy_facefix(options, console=console)
+
+
+def _run_h3_facefix(
+    options: FaceFixCompositionOptions,
+    *,
+    console: Console | None = None,
+) -> list[Path]:
+    """H3-native video-to-video FaceRefine pass (issue 519, unit 2).
+
+    Consumes each scene's already-rendered H3 R2V clip, refines it video-to-
+    video at a low, face-size-dependent denoise with the scene's actor
+    references + prompt, then composites only the refined face region back
+    onto the source frames. Scene duration, frame count, and FPS are preserved
+    by mapping the refined frames back onto the original frame count. A
+    FaceRefine failure never overwrites the successful source render: the
+    source clip is copied to ``final_facefix.mp4`` so the scene keeps its
+    original H3 render.
+    """
+    client, model_resolver, config, app_config = _facefix_runtime(options)
+
+    reporter = ConsoleReporter(console) if console is not None else None
+    # FaceRefine is its own major stage: expose it in progress output and
+    # clear the ComfyUI model/VRAM cache left behind by the original H3 R2V
+    # render before we start the (VRAM-heavy) video-to-video refinement.
+    if reporter:
+        reporter.step("H3 FaceRefine (video-to-video)")
+    client.free_cache_and_vram()
+
+    h3_backend = ComfyUIFaceFixH3Backend(
+        client=client,
+        workflow_path=coerce_local_path(options.workflow_path) or Path(
+            "workflows/video_minimax_h3_facefix_v1.json"
+        ),
+        project_dir=coerce_local_path(options.project_dir) if options.project_dir else None,
+        config=config,
+        postprocess=options.postprocess,
+        ffmpeg_path=options.ffmpeg_path,
+        postprocess_reencode=options.postprocess_reencode,
+        ffmpeg_debug=options.ffmpeg_debug,
+        ffmpeg_timeout_seconds=app_config.comfyui.ffmpeg_timeout_seconds,
+        model_resolver=model_resolver,
+    )
+
+    # -- Hexagonal pipeline adapters (shared with the crop path) --
+    detector = InsightFaceDetectorAdapter()
+    identity_adapter = FaceIdentityAdapter(min_similarity=options.recognition_threshold)
+    mask_adapter = FaceMaskAdapter()
+
+    scenes_dir = coerce_local_path(options.scenes_dir)
+    project_dir = coerce_local_path(options.project_dir) if options.project_dir else None
+    layout = SceneArtifactLayout(project_dir) if project_dir else None
+    scene_numbers = options.scene_numbers
+    if scene_numbers is None:
+        scene_numbers = sorted(
+            int(d.name.split("_")[1])
+            for d in scenes_dir.iterdir()
+            if d.is_dir() and d.name.startswith("scene_")
+        )
+
+    reporter = ConsoleReporter(console) if console is not None else None
+    results: list[Path] = []
+    skipped_scenes = 0
+    skip_reasons: dict[str, int] = {}
+
+    def record_skip(reason: str) -> None:
+        nonlocal skipped_scenes
+        skipped_scenes += 1
+        skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+
+    # -- Actor sheet discovery (shared with the crop path) --
+    actor_sheets = options.reference_images or []
+    if not actor_sheets and project_dir:
+        actor_sheets.extend(layout.actor_sheet_images())
+
+    # -- Extract reference embeddings and register identities --
+    from feverslop.adapters.insightface_extractor import InsightFaceExtractor
+
+    extractor = InsightFaceExtractor()
+    actor_embeddings: dict[str, np.ndarray] = {}
+    actor_face_refs: dict[str, Path] = {}
+    for sheet_path in actor_sheets:
+        actor_id = sheet_path.parent.parent.name
+        face_ref = extractor.extract_face_from_image(sheet_path)
+        if face_ref is not None:
+            emb = extractor.extract_embedding(face_ref)
+            if emb is not None:
+                actor_embeddings[actor_id] = emb
+                identity_adapter.register_reference(emb, actor_id)
+                refs_dir = (
+                    project_dir / "output" / "references" / "actors" / actor_id / "face_ref"
+                    if project_dir else None
+                )
+                if refs_dir is not None:
+                    refs_dir.mkdir(parents=True, exist_ok=True)
+                    ref_path = refs_dir / f"{actor_id}_ref.png"
+                    cv2.imwrite(str(ref_path), cv2.cvtColor(face_ref, cv2.COLOR_RGB2BGR))
+                    actor_face_refs[actor_id] = ref_path
+
+    # -- Per-scene video-to-video processing --
+    for scene_number in scene_numbers:
+        scene_dir = layout.scene_dir(scene_number) if layout else scenes_dir / f"scene_{scene_number:04d}"
+        source = layout.scene_final_video(scene_number) if layout else scene_dir / "final.mp4"
+        if not source.exists():
+            record_skip("missing_source")
+            if reporter:
+                reporter.message(
+                    f"[yellow]WARN[/yellow] FaceFix: final.mp4 missing for scene "
+                    f"{scene_number}, skipping"
+                )
+            continue
+
+        final_facefix = (
+            layout.scene_final_facefix_video(scene_number)
+            if layout else scene_dir / "final_facefix.mp4"
+        )
+        if options.skip_existing and file_is_valid(final_facefix):
+            results.append(final_facefix)
+            if reporter:
+                reporter.message(
+                    f"[green]OK[/green] FaceFix scene {scene_number}: already exists"
+                )
+            continue
+
+        original_frames = _load_video_frames(source)
+        if original_frames is None:
+            record_skip("unreadable_source")
+            if reporter:
+                reporter.message(
+                    f"[yellow]WARN[/yellow] FaceFix: cannot load frames for scene "
+                    f"{scene_number}"
+                )
+            continue
+
+        frame_count = len(original_frames)
+        if reporter:
+            reporter.message(
+                f"FaceFix scene {scene_number}: H3 FaceRefine video-to-video "
+                f"({frame_count} frames)..."
+            )
+
+        # -- Track faces per frame (shared with the crop path) --
+        debug_dir = scene_dir / "facefix" / "debug"
+        debug_adapter = FaceDebugAdapter(debug_dir)
+        policy = FaceProcessingPolicy(
+            min_detection_score=0.5,
+            min_identity_score=0.0,
+            enable_identity_check=len(actor_embeddings) > 1,
+            track_confirmation_frames=3,
+            track_max_missing_frames=6,
+            face_crop_expansion=1.0 + options.crop_padding,
+            debug_output=True,
+        )
+        pipeline = FacePipeline(
+            detector=detector,
+            identity_port=identity_adapter,
+            mask_port=mask_adapter,
+            debug_port=debug_adapter,
+            policy=policy,
+        )
+        pipeline.reset()
+
+        actor_frames: dict[str, list[tuple[int, FrameResult]]] = {}
+        total_frames = len(original_frames)
+        for frame_idx in range(total_frames):
+            result = pipeline.process_frame(original_frames[frame_idx], frame_idx)
+            if result.processed:
+                matched_actor: str | None
+                if len(actor_embeddings) == 1:
+                    matched_actor = next(iter(actor_embeddings))
+                elif result.identity_actor_id in actor_embeddings:
+                    matched_actor = result.identity_actor_id
+                else:
+                    matched_actor = "unknown"
+                    logger.warning(
+                        "Frame %d: no confident identity match for scene %d "
+                        "(identity_actor_id=%r), marking as %s",
+                        frame_idx, scene_number,
+                        result.identity_actor_id, matched_actor,
+                    )
+                actor_frames.setdefault(matched_actor, []).append((frame_idx, result))
+                if reporter and frame_idx % max(1, total_frames // 40) == 0:
+                    reporter.message(
+                        f"FaceFix scene {scene_number}: frame "
+                        f"{frame_idx}/{total_frames}"
+                    )
+
+        # -- Sequential per-subject video-to-video render + composite --
+        # Each actor is refined in turn (deterministic sorted order); the
+        # composited output of one pass becomes the source for the next, so
+        # later actors see earlier repairs. This implements the issue's
+        # "refine one identified subject at a time and chain the stitched
+        # output" requirement.
+        working_frames = original_frames
+        any_repair_applied = False
+        for actor_id in sorted(actor_frames.keys()):
+            frames_list = actor_frames[actor_id]
+            # For sequential passes the source video for this actor is the
+            # composited output of the previous pass (or the original for the
+            # first actor).
+            if any_repair_applied:
+                pass_source = scene_dir / "facefix" / f"sequential_{actor_id}.mp4"
+                _save_video_frames(
+                    working_frames,
+                    pass_source,
+                    source,
+                    options.ffmpeg_path,
+                    options.ffmpeg_timeout_seconds,
+                )
+            else:
+                pass_source = source
+
+            repair = _process_actor_h3(
+                scene_number=scene_number,
+                actor_id=actor_id,
+                frames_list=frames_list,
+                source=pass_source,
+                scene_dir=scene_dir,
+                layout=layout,
+                h3_backend=h3_backend,
+                options=options,
+                actor_face_refs=actor_face_refs,
+                skip_reasons=skip_reasons,
+                reporter=reporter,
+            )
+            if repair is None:
+                continue
+
+            if reporter:
+                reporter.message(
+                    f"FaceFix scene {scene_number}: compositing "
+                    f"actor {actor_id}..."
+                )
+            compositor = FaceCompositor(
+                feather_pixels=options.feather_pixels,
+                color_match_strength=options.color_match_strength,
+                diagnostic=True,
+            )
+            composite_result = compositor.composite(
+                face_repairs=[repair],
+                original_frames=working_frames,
+                output_dir=scene_dir / "facefix",
+            )
+            working_frames = composite_result.composited_frames
+            any_repair_applied = True
+
+        # -- Save the final result --
+        if any_repair_applied:
+            _save_video_frames(
+                working_frames,
+                final_facefix,
+                source,
+                options.ffmpeg_path,
+                options.ffmpeg_timeout_seconds,
+            )
+            results.append(final_facefix)
+            if reporter:
+                reporter.message(
+                    f"[green]OK[/green] FaceFix scene {scene_number}: {final_facefix}"
+                )
+        else:
+            # No usable refinement: keep the original H3 render so a FaceRefine
+            # failure never destroys a successful source render.
+            record_skip("no_facefix_output")
+            import shutil
+
+            shutil.copy2(source, final_facefix)
+            results.append(final_facefix)
+
+    total_scenes = len(scene_numbers)
+    skip_rate = skipped_scenes / total_scenes if total_scenes else 0.0
+    if reporter and (skipped_scenes or skip_reasons):
+        reporter.message(
+            "[yellow]WARN[/yellow] FaceFix batch summary: "
+            + json.dumps(
+                {
+                    "stage": "facefix",
+                    "event": "batch_summary",
+                    "total_scenes": total_scenes,
+                    "skipped_scenes": skipped_scenes,
+                    "skip_rate": round(skip_rate, 4),
+                    "skip_reasons": skip_reasons,
+                },
+                sort_keys=True,
+            ),
+        )
+    if total_scenes and skip_rate > options.max_skip_rate:
+        raise RuntimeError(
+            "FaceFix aborted: scene skip rate "
+            f"{skip_rate:.1%} exceeds configured limit "
+            f"{options.max_skip_rate:.1%} (reasons={skip_reasons})"
+        )
+    # VRAM boundary cleanup: clear the FaceRefine model cache before the
+    # downstream upscale stage so the two VRAM-heavy passes don't overlap.
+    client.free_cache_and_vram()
+    if reporter:
+        reporter.message("[green]OK[/green] H3 FaceRefine complete")
+    return results
 
 
 def _run_legacy_facefix(
@@ -563,6 +872,169 @@ def _process_actor_crop(
             crop_size=options.crop_size,
         )
 
+def _process_actor_h3(
+    *,
+    scene_number: int,
+    actor_id: str,
+    frames_list: list[tuple[int, FrameResult]],
+    source: Path,
+    scene_dir: Path,
+    layout: SceneArtifactLayout | None,
+    h3_backend: ComfyUIFaceFixH3Backend,
+    options: FaceFixCompositionOptions,
+    actor_face_refs: dict[str, Path],
+    skip_reasons: dict[str, int],
+    reporter: ConsoleReporter | None,
+) -> FaceRepairData | None:
+    """Refine one actor's scene clip video-to-video and build a repair.
+
+    The H3 backend refines the whole source clip; the refined face region is
+    extracted per tracked frame and composited back by the caller. A render
+    failure keeps the source render (recorded as a skip) and returns None.
+    """
+    facefix_dir = (
+        layout.scene_facefix_dir(scene_number, actor_id)
+        if layout else scene_dir / "facefix" / actor_id
+    )
+    repaired_dir = facefix_dir / "repaired"
+    repaired_mp4 = facefix_dir / f"refined_{actor_id}.mp4"
+
+    if not frames_list:
+        skip_reasons["no_detected_faces"] = skip_reasons.get("no_detected_faces", 0) + 1
+        return None
+
+    if reporter:
+        reporter.message(
+            f"FaceFix scene {scene_number}/{actor_id}: H3 video-to-video "
+            f"refining {len(frames_list)} tracked frames..."
+        )
+
+    if options.skip_existing and repaired_mp4.exists():
+        if reporter:
+            reporter.message(
+                f"[green]OK[/green] FaceFix scene {scene_number}/{actor_id}: "
+                f"already exists"
+            )
+
+    # -- Render the source clip video-to-video through the H3 backend --
+    try:
+        h3_backend.render_scene(
+            scene_number=scene_number,
+            source_video=source,
+            output_dir=facefix_dir,
+            actor_id=actor_id,
+            face_ref_image=actor_face_refs.get(actor_id),
+            scene_prompt=_scene_h3_prompt(layout, scene_number),
+            frame_count=_source_frame_count(source),
+            denoise=options.guiding_strength,
+        )
+    except Exception as exc:  # noqa: BLE001 - keep the source render on any failure
+        skip_reasons["h3_render_failed"] = skip_reasons.get("h3_render_failed", 0) + 1
+        logger.warning(
+            "H3 FaceRefine render failed for scene %d/%s: %s; keeping source render",
+            scene_number, actor_id, exc,
+        )
+        return None
+
+    # -- Load the refined frames and map them back onto the source frames --
+    refined_frames = _load_video_frames(repaired_mp4)
+    if refined_frames is None:
+        # Fall back to the raw (unpostprocessed) output if present.
+        refined_frames = _load_video_frames(facefix_dir / "raw_facefix_h3.mp4")
+    if refined_frames is None:
+        skip_reasons["h3_no_output"] = skip_reasons.get("h3_no_output", 0) + 1
+        if reporter:
+            reporter.message(
+                f"[yellow]WARN[/yellow] FaceFix scene {scene_number}/"
+                f"{actor_id}: no refined output, keeping source render"
+            )
+        return None
+
+    n_refined = len(refined_frames)
+    if reporter:
+        reporter.message(
+            f"FaceFix scene {scene_number}/{actor_id}: mapping {n_refined} "
+            f"refined frames back onto source frames..."
+        )
+
+    # -- Build per-frame repaired face-region artifacts --
+    repaired_dir.mkdir(parents=True, exist_ok=True)
+    track_entries: list[FaceTrackEntry] = []
+    for fi, result in frames_list:
+        if result.box is None:
+            continue
+        # Map the source frame index onto the nearest refined frame (the H3
+        # render may have snapped the frame count to its 16k+5 grid).
+        refined_idx = int(round(fi * max(0, n_refined - 1) / max(1, _source_frame_count(source) - 1)))
+        refined_idx = min(max(refined_idx, 0), n_refined - 1)
+        box = result.box
+        region = _extract_face_crop(
+            refined_frames[refined_idx],
+            box.x1, box.y1, box.x2, box.y2,
+            options.crop_size, options.crop_padding,
+        )
+        crop_path = repaired_dir / f"repaired_{fi:06d}.png"
+        cv2.imwrite(str(crop_path), cv2.cvtColor(region, cv2.COLOR_RGB2BGR))
+        track_entries.append(
+            FaceTrackEntry(
+                frame_index=fi,
+                box=FaceBox(
+                    x1=int(box.x1),
+                    y1=int(box.y1),
+                    x2=int(box.x2),
+                    y2=int(box.y2),
+                    confidence=result.detection_score or 0.0,
+                    actor_id=actor_id,
+                ),
+                crop_path=crop_path,
+            )
+        )
+
+    if not track_entries:
+        skip_reasons["no_tracks"] = skip_reasons.get("no_tracks", 0) + 1
+        if reporter:
+            reporter.message(
+                f"[yellow]WARN[/yellow] FaceFix scene {scene_number}/"
+                f"{actor_id}: no tracks found, keeping source render"
+            )
+        return None
+
+    return FaceRepairData(
+        actor_id=actor_id,
+        repaired_frames_dir=repaired_dir,
+        track_entries=track_entries,
+        crop_size=options.crop_size,
+    )
+
+
+def _source_frame_count(video_path: Path) -> int:
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        return 0
+    count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    cap.release()
+    return count
+
+
+def _scene_h3_prompt(layout: SceneArtifactLayout | None, scene_number: int) -> str:
+    """Read the H3 prompt that conditioned the original R2V scene, if present."""
+    if layout is None:
+        return ""
+    prompt_path = layout.scene_h3_prompt(scene_number)
+    if not prompt_path.is_file():
+        return ""
+    try:
+        data = json.loads(prompt_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return ""
+    if isinstance(data, dict):
+        for key in ("prompt", "h3_prompt", "value"):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    return ""
+
+
 def _facefix_runtime(
     options: FaceFixCompositionOptions,
 ) -> tuple[ComfyUIClient, ComfyUIModelResolver, FaceFixConfig, AppConfig]:
@@ -680,33 +1152,37 @@ def _save_video_frames(
     ffmpeg_path: str = "ffmpeg",
     timeout_seconds: float = 120.0,
 ) -> None:
-    import subprocess
-    temp_dir = output_path.parent / "temp_frames_export"
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    for i, frame in enumerate(frames):
-        bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(str(temp_dir / f"frame_{i:06d}.png"), bgr)
-
-    cap = cv2.VideoCapture(str(reference_video))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
-    cap.release()
-
-    subprocess.run(
-        [
-            ffmpeg_path,
-            "-r", str(fps),
-            "-i", str(temp_dir / "frame_%06d.png"),
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-preset", "fast",
-            "-crf", "18",
-            "-y",
-            str(output_path),
-        ],
-        check=True,
-        capture_output=True,
-        timeout=timeout_seconds,
-    )
-
     import shutil
-    shutil.rmtree(temp_dir, ignore_errors=True)
+    import subprocess
+    import tempfile
+
+    # Unique per-call directory so concurrent or repeated runs writing to the
+    # same scene output parent never share (and clobber) one temp_frames_export.
+    temp_dir = Path(tempfile.mkdtemp(prefix="facefix_frames_", dir=output_path.parent))
+    try:
+        for i, frame in enumerate(frames):
+            bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(str(temp_dir / f"frame_{i:06d}.png"), bgr)
+
+        cap = cv2.VideoCapture(str(reference_video))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
+        cap.release()
+
+        subprocess.run(
+            [
+                ffmpeg_path,
+                "-r", str(fps),
+                "-i", str(temp_dir / "frame_%06d.png"),
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-preset", "fast",
+                "-crf", "18",
+                "-y",
+                str(output_path),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=timeout_seconds,
+        )
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)

@@ -684,6 +684,7 @@ def build_movie_startframe_director_visual_adapter(project_dir: Path, config: di
     from feverslop.adapters.startframe_director_comfyui import (
         ComfyUIStartframeDirectorVisualAdapter,
     )
+    from feverslop.adapters.video_postprocessor import final_video_postprocessor
     from feverslop.composition.render_video import (
         RenderVideoCompositionOptions,
         build_render_video_scenes_use_case,
@@ -723,6 +724,7 @@ def build_movie_startframe_director_visual_adapter(project_dir: Path, config: di
             model=config["startframe_validator_model"],
         ),
         debug_workflows_dir=_startframe_debug_workflows_dir(project_dir, config),
+        postprocessor=final_video_postprocessor(app_config.comfyui.ffmpeg_timeout_seconds),
     )
 
 

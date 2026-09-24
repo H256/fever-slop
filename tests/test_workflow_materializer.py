@@ -103,11 +103,22 @@ class FakeQueue:
 class FakePostprocessor:
     def __init__(self):
         self.specs = []
+        self.frames = []
 
     def trim_clip(self, spec):
         self.specs.append(spec)
         spec.output_file.write_bytes(b"trimmed")
         return spec.output_file
+
+    def extract_first_and_last_frames(self, source, first, last):
+        self.frames.append((source, first, last))
+        first = Path(first)
+        last = Path(last)
+        first.parent.mkdir(parents=True, exist_ok=True)
+        last.parent.mkdir(parents=True, exist_ok=True)
+        first.write_bytes(b"first")
+        last.write_bytes(b"last")
+        return first, last
 
 
 class FakeCurrentServerClient:
