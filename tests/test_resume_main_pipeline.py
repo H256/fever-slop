@@ -226,7 +226,8 @@ class SceneTimelineResumeTests(unittest.TestCase):
             "ltx_prompt_relay_json": root / f"ltx_prompt_relay_{song_id}.json",
             "scene_duration_policy": None,
             "artifact_store": SimpleNamespace(
-                read_json=lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
+                read_json=lambda path: json.loads(Path(path).read_text(encoding="utf-8")),
+                write_json=lambda path, payload: _write_json(path, payload),
             ),
             "log_step": lambda _title: None,
             "log_file": lambda _label, _path: None,
@@ -296,6 +297,74 @@ class SceneTimelineResumeTests(unittest.TestCase):
 
 
 class PromptGenerationResumeTests(unittest.TestCase):
+    def test_final_concept_gate_honors_warn_policy(self):
+        pipeline = self._make_pipeline(
+            llm_factory=lambda _app: None,
+            prompt_pipeline_factory=lambda _llm: None,
+            concept_batcher_factory=lambda _llm, _size: None,
+            scene_prompt_builder_factory=lambda _llm: None,
+        )
+        concepts = {
+            f"segment_{i:03d}": {"narrative": {"milestones": ["arrival"], "location": "room"}}
+            for i in (1, 2)
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = pipeline._finalize_concept_prompts(
+                prompt_pipeline=SimpleNamespace(save_json=lambda path, value, **kwargs: None),
+                reporter=SimpleNamespace(message=lambda text: None),
+                stage1_segments=[{"segment_id": key} for key in concepts],
+                concept_prompts=concepts,
+                global_context={"narrative_contract": {
+                    "milestone_order": ["arrival"], "one_shot_milestones": ["arrival"],
+                }},
+                concept_prompts_json=Path(temp_dir) / "concept_prompts.json",
+                artifact_store=SimpleNamespace(write_json=lambda path, value: None),
+                log_file=lambda label, path: None,
+                semantic_enforcement="warn",
+            )
+
+        self.assertEqual("warning", result["segment_002"]["semantic_validation"]["outcome"])
+
+    def test_resume_repairs_legacy_contract_before_story_plan_consumes_it(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._create_prompt_artifacts(root)
+            resolved_path = root / "resolved_context_song.json"
+            resolved = json.loads(resolved_path.read_text(encoding="utf-8"))
+            resolved.update({
+                "story_idea": "A journey from entrance to destination.",
+                "structured_locations": [{"id": "l1", "name": "Entrance"}],
+                "actors": [{"id": "a1", "name": "A"}],
+                "narrative_contract_source": "llm",
+                "narrative_contract": {
+                    "location_order": ["l1"],
+                    "milestone_order": ["arrival"],
+                },
+            })
+            _write_json(resolved_path, resolved)
+            received = []
+            class PromptModules:
+                def create_narrative_milestone_bindings(self, **kwargs):
+                    return [{"milestone_id": "arrival", "location_id": "l1", "relative_position": 0.0}]
+            pipeline = self._make_pipeline(
+                llm_factory=lambda _app: SimpleNamespace(model="m", client=object()),
+                prompt_pipeline_factory=lambda _llm: PromptModules(),
+                concept_batcher_factory=_no_call("concept_batcher"),
+                scene_prompt_builder_factory=lambda _llm: SimpleNamespace(),
+            )
+            pipeline._resolve_story_plan = lambda **kwargs: (
+                received.append(kwargs["global_context"]["narrative_contract"])
+                or (None, True)
+            )
+
+            pipeline.run(self._make_context(
+                root, request=SimpleNamespace(resume=True, concept_batch_size=0),
+            ))
+
+            self.assertEqual("arrival", received[0]["milestone_bindings"][0]["milestone_id"])
+            persisted = json.loads(resolved_path.read_text(encoding="utf-8"))
+            self.assertEqual(received[0], persisted["narrative_contract"])
+
     def _make_pipeline(self, *, llm_factory, prompt_pipeline_factory, concept_batcher_factory, scene_prompt_builder_factory):
         return PromptGenerationPipeline(
             llm_factory=llm_factory,
@@ -346,7 +415,8 @@ class PromptGenerationResumeTests(unittest.TestCase):
             "scene_details_json": root / f"scene_details_{song_id}.json",
             "scene_prompts_json": root / f"scene_prompts_{song_id}.json",
             "artifact_store": SimpleNamespace(
-                read_json=lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
+                read_json=lambda path: json.loads(Path(path).read_text(encoding="utf-8")),
+                write_json=lambda path, payload: _write_json(path, payload),
             ),
             "log_step": lambda _title: None,
             "log_file": lambda _label, _path: None,
