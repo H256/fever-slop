@@ -19,7 +19,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -227,6 +227,7 @@ class StoryPlanResult:
     plan: StoryPlan
     acting: Mapping[str, Any]
     diagnostics: tuple[Mapping[str, Any], ...]
+    live_prompts: Mapping[str, Any] = field(default_factory=dict)
 
 
 class StoryPlanService:
@@ -249,7 +250,7 @@ class StoryPlanService:
         request.validate()
         diagnostics: list[Mapping[str, Any]] = []
 
-        self._reporter.step("Story plan - narrative bible")
+        self._reporter.step("story-plan-bible")
         self._reporter.message("[cyan]Extracting the premise, stakes, and story facts…[/cyan]")
         bible_raw = self._reporter.run_progress(
             "Story plan - reading the story", lambda: self._job("bible", self._bible_input(request))
@@ -259,31 +260,62 @@ class StoryPlanService:
         )
         self._reporter.message("story-plan-bible complete")
 
-        self._reporter.step("Story plan - story arc")
-        self._reporter.message(
-            "[cyan]Writing a compact beat sheet; scene timing will be bound deterministically…[/cyan]"
-        )
-        allocation_raw = self._reporter.run_progress(
+        self._reporter.step("story-plan-arc-skeleton")
+        arc_raw = self._reporter.run_progress(
             "Story plan - shaping the arc",
-            lambda: self._job("beat_allocation", self._allocation_input(request, bible)),
+            lambda: self._job("arc_skeleton", self._arc_skeleton_input(request, bible)),
         )
-        allocation = self._normalize_job_output(
+        arc = self._normalize_job_output(
+            "arc_skeleton", arc_raw, diagnostics, _FORBIDDEN_RENDER_KEYS
+        )
+        beats = self._validate_arc(arc, diagnostics)
+        self._reporter.message(
+            "story-plan-arc-skeleton complete: "
+            f"{self._describe_arc({'typed_beats': beats})}"
+        )
+
+        self._reporter.step("story-plan-beat-allocation")
+        allocation_raw = self._job(
+            "beat_allocation", self._allocation_input(request, bible, beats)
+        )
+        allocation_raw = self._normalize_job_output(
             "beat_allocation", allocation_raw, diagnostics, _FORBIDDEN_RENDER_KEYS
         )
+        brief_allocations = (
+            allocation_raw.get("brief_allocations", [])
+            if isinstance(allocation_raw, Mapping)
+            else allocation_raw
+        )
+        allocation = {
+            "beats": beats,
+            "brief_allocations": (
+                brief_allocations if isinstance(brief_allocations, list) else []
+            ),
+        }
         allocation = self._coerce_typed_allocation(request, allocation)
         self._validate_allocation(request, allocation, diagnostics)
-        self._reporter.table(
-            "Story arc - model-authored beats",
-            ["#", "Phase", "What is happening"],
-            [
-                [str(index + 1), str(beat.get("phase", "development")), str(beat.get("description", ""))]
-                for index, beat in enumerate(allocation.get("typed_beats", []))
-                if isinstance(beat, Mapping)
-            ],
-        )
         self._reporter.message(
-            f"[green]Bound {len(allocation.get('briefs', []))} scenes to the arc deterministically.[/green]"
+            "story-plan-beat-allocation complete: "
+            f"{len(allocation.get('briefs', []))} segment brief(s) allocated"
         )
+
+        self._reporter.step("story-plan-entity-resolution")
+        resolved_config, entity_decisions = self._resolve_entities(
+            request, allocation
+        )
+        use_count = sum(1 for d in entity_decisions if d["decision"] == "use")
+        extend_count = sum(1 for d in entity_decisions if d["decision"] == "extend")
+        invent_count = sum(1 for d in entity_decisions if d["decision"] == "invent")
+        self._reporter.message(
+            "story-plan-entity-resolution complete: "
+            f"{use_count} use, {extend_count} extend, {invent_count} invent"
+        )
+        for decision in entity_decisions:
+            self._reporter.message(
+                f"  entity {decision['entity_type']} {decision['entity_id']}: "
+                f"{decision['decision']} ({decision['name']})"
+            )
+
         window_rows: list[list[str]] = []
         for index, beat in enumerate(allocation.get("typed_beats", []), start=0):
             if not isinstance(beat, Mapping):
@@ -309,12 +341,17 @@ class StoryPlanService:
             window_rows,
         )
 
-        self._reporter.step("Story plan - acting beats")
+        self._reporter.step("story-plan-acting")
         acting = self._build_acting_in_batches(request, allocation, diagnostics)
         self._validate_acting(allocation, acting, diagnostics)
-        self._reporter.message("[green]Story plan acting complete.[/green]")
+        self._reporter.message(
+            "story-plan-acting complete: "
+            f"{len(acting)} segment brief(s) covered"
+        )
 
-        candidate = self._assemble_candidate(request, allocation, acting)
+        candidate = self._assemble_candidate(
+            request, allocation, acting, resolved_config
+        )
         try:
             self._validate_payload(candidate, diagnostics)
         except StoryPlanValidationError as exc:
@@ -323,18 +360,34 @@ class StoryPlanService:
             validation_errors = []
 
         if validation_errors:
-            self._reporter.warning(
-                "The locally assembled plan did not satisfy its contract. "
-                "No full-plan LLM repair was attempted; the diagnostics identify the failing boundary.",
-                title="Story plan validation",
+            self._reporter.step("story-plan-repair")
+            for error in validation_errors:
+                self._reporter.message(
+                    f"  validation error: {error.get('code', '?')}: "
+                    f"{error.get('message', '')}"
+                )
+            repaired_raw = self._job(
+                "repair",
+                self._repair_input(request, candidate, validation_errors),
             )
-            self._raise_validation_failure(
-                StoryPlanValidationError(
-                    "story plan candidate failed deterministic validation",
-                    errors=validation_errors,
-                ),
-                diagnostics,
+            repaired = self._normalize_job_output(
+                "repair", repaired_raw, diagnostics, _FORBIDDEN_RENDER_KEYS
             )
+            candidate = self._assemble_candidate(
+                request, repaired, acting, resolved_config
+            )
+            try:
+                self._validate_payload(candidate, diagnostics)
+            except StoryPlanValidationError as exc:
+                self._raise_validation_failure(exc, diagnostics)
+            self._reporter.message("story-plan-repair complete")
+
+        if diagnostics:
+            self._reporter.step("story-plan-diagnostics")
+            for diag in diagnostics:
+                self._reporter.warning(
+                    f"{diag.get('code', '?')}: {diag.get('message', '')}"
+                )
 
         plan = StoryPlan.model_validate(candidate, strict=False)
         self._reporter.table(
@@ -342,10 +395,12 @@ class StoryPlanService:
             ["Scenes", "Beats", "Acting briefs"],
             [[str(len(plan.segments)), str(len(plan.beats)), str(len(acting.get("briefs", [])))]],
         )
+        live_prompts = self._build_live_prompts(request, plan, bible, diagnostics)
         return StoryPlanResult(
             plan=plan,
             acting=self._typed_acting(acting, plan),
             diagnostics=tuple(diagnostics),
+            live_prompts=live_prompts,
         )
 
     def _build_acting_in_batches(
@@ -440,7 +495,26 @@ class StoryPlanService:
             for brief_id in (str(brief.get("brief_id", "")) for brief in ordered_briefs)
             if brief_id in by_id
         ]
+        self._dedup_exclusive_allocations(merged["briefs"])
         return merged
+
+    @staticmethod
+    def _dedup_exclusive_allocations(briefs: list[Mapping[str, Any]]) -> None:
+        """Keep at most one exclusive brief per beat (first in canonical order).
+
+        The model may mark several briefs in one beat exclusive; the plan
+        allows at most one.  Clear the rest so the allocation validates.
+        """
+        exclusive_seen: set[str] = set()
+        for brief in briefs:
+            if not isinstance(brief, Mapping):
+                continue
+            if brief.get("exclusive") and brief.get("beat_id"):
+                beat_id = str(brief["beat_id"])
+                if beat_id in exclusive_seen:
+                    brief["exclusive"] = False
+                else:
+                    exclusive_seen.add(beat_id)
 
     @staticmethod
     def _acting_brief_ids(acting: Mapping[str, Any]) -> set[str]:
@@ -483,7 +557,7 @@ class StoryPlanService:
         acting = self._normalize_job_output(
             "acting", raw, diagnostics, _FORBIDDEN_AUDIO_DATA_KEYS
         )
-        acting = self._coerce_typed_acting(batch_allocation, acting)
+        acting = self._coerce_typed_acting(request, batch_allocation, acting)
         raw_output = acting.get("briefs", [])
         output_ids = [
             str(brief.get("brief_id", ""))
@@ -609,13 +683,12 @@ class StoryPlanService:
             "guide": request.guide,
         }
 
-    def _allocation_input(
+    def _arc_skeleton_input(
         self, request: StoryPlanRequest, bible: Mapping[str, Any]
     ) -> dict[str, Any]:
         return {
             "song_title": request.song_title,
             "lyrics": request.lyrics,
-            "segment_count": len(request.segments),
             "narrative_bible": dict(bible),
             "characters": [dict(character) for character in request.characters],
             "locations": [dict(location) for location in request.locations],
@@ -623,6 +696,90 @@ class StoryPlanService:
             "terminal_window_seconds": request.terminal_window_seconds,
             "guide": request.guide,
         }
+
+    def _allocation_input(
+        self,
+        request: StoryPlanRequest,
+        bible: Mapping[str, Any],
+        beats: list[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        return {
+            "song_title": request.song_title,
+            "lyrics": request.lyrics,
+            "beats": [dict(beat) for beat in beats],
+            "segments": [segment.to_compact_dict() for segment in request.segments],
+            "narrative_bible": dict(bible),
+            "characters": [dict(character) for character in request.characters],
+            "locations": [dict(location) for location in request.locations],
+            "props": [dict(prop) for prop in request.props],
+            "terminal_window_seconds": request.terminal_window_seconds,
+            "guide": request.guide,
+        }
+
+    @staticmethod
+    def _validate_arc(
+        arc: Mapping[str, Any], diagnostics: list[Mapping[str, Any]]
+    ) -> list[Mapping[str, Any]]:
+        """Validate the arc skeleton as a whole; return the beats list.
+
+        Structural problems (missing beats, invalid phase) are hard fails;
+        arc-order problems (no opening/resolution) are soft diagnostics so
+        the bounded repair pass can fix them.
+        """
+        beats = arc.get("beats", arc.get("items")) if isinstance(arc, Mapping) else arc
+        if not isinstance(beats, list) or not beats:
+            raise StoryPlanError(
+                "arc_skeleton output must contain a non-empty beats list",
+                diagnostics=[
+                    {
+                        "code": "missing_beats",
+                        "subject_id": "arc",
+                        "message": "beats list missing or empty",
+                    }
+                ],
+            )
+        valid_phases = {"opening", "development", "climax", "resolution"}
+        for index, beat in enumerate(beats):
+            if not isinstance(beat, Mapping):
+                raise StoryPlanError(
+                    f"arc beat {index} must be an object",
+                    diagnostics=[
+                        {
+                            "code": "invalid_arc_beat",
+                            "subject_id": f"beat-{index:03d}",
+                            "message": "arc beat is not an object",
+                        }
+                    ],
+                )
+            phase = str(beat.get("phase", "") or "")
+            if phase not in valid_phases:
+                raise StoryPlanError(
+                    f"arc beat {index} has invalid phase {phase!r}",
+                    diagnostics=[
+                        {
+                            "code": "invalid_arc_phase",
+                            "subject_id": f"beat-{index:03d}",
+                            "message": f"invalid phase {phase!r}",
+                        }
+                    ],
+                )
+        if str(beats[0].get("phase", "")) != "opening":
+            diagnostics.append(
+                {
+                    "code": "arc_no_opening",
+                    "subject_id": "arc",
+                    "message": "first arc beat is not opening",
+                }
+            )
+        if str(beats[-1].get("phase", "")) != "resolution":
+            diagnostics.append(
+                {
+                    "code": "arc_no_resolution",
+                    "subject_id": "arc",
+                    "message": "last arc beat is not resolution",
+                }
+            )
+        return [dict(beat) for beat in beats]
 
     def _acting_input(
         self, request: StoryPlanRequest, allocation: Mapping[str, Any]
@@ -669,6 +826,21 @@ class StoryPlanService:
             "guide": request.guide,
         }
 
+    def _repair_input(
+        self,
+        request: StoryPlanRequest,
+        candidate: Mapping[str, Any],
+        validation_errors: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        return {
+            "song_title": request.song_title,
+            "song_style": request.song_style,
+            "lyrics": request.lyrics,
+            "candidate": dict(candidate),
+            "validation_errors": [dict(error) for error in validation_errors],
+            "guide": request.guide,
+        }
+
     # -- normalization and validation ---------------------------------------
 
     @staticmethod
@@ -688,6 +860,40 @@ class StoryPlanService:
             )
             if contract_allocation is not None:
                 return contract_allocation
+        raw_allocations = allocation.get("brief_allocations")
+        if raw_allocations:
+            # The model sometimes returns brief_allocations as a dict keyed by
+            # target instead of the signature's list of {target, ...} objects.
+            # Normalize both shapes to (target, item) pairs.
+            if isinstance(raw_allocations, Mapping):
+                entries = [
+                    (str(target), item) for target, item in raw_allocations.items()
+                ]
+            else:
+                entries = [
+                    (str(item.get("target", "")), item)
+                    for item in raw_allocations
+                    if isinstance(item, Mapping)
+                ]
+            segments = {segment.segment_id: segment for segment in request.segments}
+            allocation_briefs: list[dict[str, Any]] = []
+            for target, item in entries:
+                if not isinstance(item, Mapping):
+                    continue
+                segment = segments.get(target)
+                if segment is None:
+                    continue
+                index = item.get("beat_index")
+                if not isinstance(index, int) or isinstance(index, bool):
+                    continue
+                allocation_briefs.append({
+                    "brief_id": f"brief-{target}", "segment_id": target,
+                    "start_seconds": segment.start_seconds, "end_seconds": segment.end_seconds,
+                    "beat_indices": [index],
+                    "required": [f"beat-{value + 1:03d}" for value in item.get("required_beat_indices", [])],
+                    "forbidden": [f"beat-{value + 1:03d}" for value in item.get("forbidden_beat_indices", [])],
+                })
+            return {"briefs": allocation_briefs, "typed_beats": raw_beats}
         typed_beats = [dict(item) for item in raw_beats if isinstance(item, Mapping)]
         if not typed_beats:
             return allocation
@@ -696,7 +902,6 @@ class StoryPlanService:
             beat["phase"] = "resolution" if index == len(typed_beats) - 1 else (
                 phase if phase in {"opening", "development", "climax"} else "development"
             )
-
         terminal_segments = [
             segment for segment in request.segments
             if segment.end_seconds > request.terminal_window_seconds
@@ -865,7 +1070,22 @@ class StoryPlanService:
         return {"briefs": briefs, "typed_beats": typed_beats}
 
     @staticmethod
-    def _coerce_typed_acting(allocation: Mapping[str, Any], acting: Mapping[str, Any]) -> Mapping[str, Any]:
+    def _lead_character_id(request: StoryPlanRequest) -> str:
+        """The lead character id: the singer if present, else the first."""
+        for character in request.characters:
+            if isinstance(character, Mapping) and character.get("is_singer"):
+                return str(character.get("id", "")).strip()
+        for character in request.characters:
+            if isinstance(character, Mapping):
+                return str(character.get("id", "")).strip()
+        return ""
+
+    def _coerce_typed_acting(
+        self,
+        request: StoryPlanRequest,
+        allocation: Mapping[str, Any],
+        acting: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
         """Bind typed acting briefs to service-owned brief ids by target."""
         if "briefs" not in acting or not isinstance(acting.get("briefs"), list):
             return acting
@@ -892,15 +1112,29 @@ class StoryPlanService:
             target = str(item.get("target", ""))
             actor_states = list(item.get("actor_states", []))
             if not actor_states:
+                # Prefer the brief's own character_ids, then the beat's, then
+                # the lead character so instrumental segments always get a state.
+                candidate_ids: list[str] = []
+                for character_id in list(item.get("character_ids", [])):
+                    value = str(character_id).strip()
+                    if value and value not in candidate_ids:
+                        candidate_ids.append(value)
                 beat = beat_by_index.get(beat_index_by_target.get(target))
+                for character_id in (beat or {}).get("character_ids", []):
+                    value = str(character_id).strip()
+                    if value and value not in candidate_ids:
+                        candidate_ids.append(value)
+                if not candidate_ids:
+                    lead = self._lead_character_id(request)
+                    if lead:
+                        candidate_ids.append(lead)
                 actor_states = [
                     {
-                        "character_id": str(character_id),
+                        "character_id": character_id,
                         "inner_state": "present",
                         "physical_state": "",
                     }
-                    for character_id in (beat or {}).get("character_ids", [])
-                    if str(character_id).strip()
+                    for character_id in candidate_ids
                 ]
             briefs.append({
                 "brief_id": by_target.get(target, target),
@@ -931,6 +1165,10 @@ class StoryPlanService:
             ])
         if isinstance(raw, BaseModel):
             raw = raw.model_dump(mode="json")
+        if isinstance(raw, list):
+            # Some jobs (e.g. arc_skeleton) return a bare list; wrap it so
+            # the forbidden-key check and downstream access work uniformly.
+            raw = {"items": raw}
         if isinstance(raw, Mapping):
             payload = dict(raw)
         else:
@@ -1118,6 +1356,166 @@ class StoryPlanService:
                 ],
             )
 
+    def _resolve_entities(
+        self,
+        request: StoryPlanRequest,
+        allocation: Mapping[str, Any],
+    ) -> tuple[dict[str, list[dict[str, Any]]], list[Mapping[str, Any]]]:
+        """Resolve entity refs in beats/briefs to config entities (L2).
+
+        For each entity ref, determines the resolution:
+        - use: config has a complete matching entity (non-empty description)
+        - extend: config has a partial entity (empty description) -> fill it
+        - invent: no config entity -> invent, constrained to the story's world
+
+        Returns (resolved_config, decisions) where resolved_config has
+        'characters', 'locations', 'props' lists and decisions is a list
+        of {entity_type, entity_id, decision, name}.
+        """
+        typed_beats = [
+            beat for beat in allocation.get("typed_beats", [])
+            if isinstance(beat, Mapping)
+        ]
+        briefs = [
+            brief for brief in allocation.get("briefs", [])
+            if isinstance(brief, Mapping)
+        ]
+
+        character_refs: set[str] = set()
+        location_refs: set[str] = set()
+        prop_refs: set[str] = set()
+        for beat in typed_beats:
+            for cid in beat.get("character_ids", []):
+                character_refs.add(str(cid))
+            if beat.get("location_id"):
+                location_refs.add(str(beat["location_id"]))
+            for pid in beat.get("prop_ids", []):
+                prop_refs.add(str(pid))
+        for brief in briefs:
+            for cid in brief.get("character_ids", []):
+                character_refs.add(str(cid))
+            if brief.get("location_id"):
+                location_refs.add(str(brief["location_id"]))
+            for pid in brief.get("prop_ids", []):
+                prop_refs.add(str(pid))
+
+        def _config_map(
+            items: tuple[Mapping[str, Any], ...]
+        ) -> dict[str, dict[str, Any]]:
+            return {
+                str(item.get("id", "")).strip(): dict(item)
+                for item in items
+                if isinstance(item, Mapping)
+                and str(item.get("id", "")).strip()
+                and str(item.get("name", "")).strip()
+            }
+
+        config_characters = _config_map(request.characters)
+        config_locations = _config_map(request.locations)
+        config_props = _config_map(request.props)
+
+        decisions: list[Mapping[str, Any]] = []
+
+        def _resolve(
+            entity_type: str,
+            refs: set[str],
+            config: dict[str, dict[str, Any]],
+            is_singer: bool = False,
+        ) -> list[dict[str, Any]]:
+            resolved = [dict(entry) for entry in config.values()]
+            for ref in sorted(refs):
+                if ref in config:
+                    entity = config[ref]
+                    if entity.get("description"):
+                        decisions.append(
+                            {
+                                "entity_type": entity_type,
+                                "entity_id": ref,
+                                "decision": "use",
+                                "name": entity.get("name", ref),
+                            }
+                        )
+                    else:
+                        for entry in resolved:
+                            if entry.get("id") == ref:
+                                entry["description"] = self._generate_entity_description(
+                                    entity_type, ref, request
+                                )
+                                break
+                        decisions.append(
+                            {
+                                "entity_type": entity_type,
+                                "entity_id": ref,
+                                "decision": "extend",
+                                "name": entity.get("name", ref),
+                            }
+                        )
+                else:
+                    name = self._derive_entity_name(entity_type, ref)
+                    new_entity: dict[str, Any] = {
+                        "id": ref,
+                        "name": name,
+                        "description": self._generate_entity_description(
+                            entity_type, ref, request
+                        ),
+                    }
+                    if is_singer:
+                        new_entity["is_singer"] = False
+                    resolved.append(new_entity)
+                    decisions.append(
+                        {
+                            "entity_type": entity_type,
+                            "entity_id": ref,
+                            "decision": "invent",
+                            "name": name,
+                        }
+                    )
+            # The config dicts can carry extra keys (e.g. visual_description,
+            # image_prompt) that the canonical models forbid.  Normalize to the
+            # allowed fields so the candidate validates.
+            allowed = {
+                "character": ("id", "name", "description", "is_singer"),
+                "location": ("id", "name", "description"),
+                "prop": ("id", "name", "description"),
+            }[entity_type]
+            normalized: list[dict[str, Any]] = []
+            for entry in resolved:
+                clean: dict[str, Any] = {
+                    key: entry[key] for key in allowed if key in entry
+                }
+                if entity_type == "character" and "is_singer" not in clean:
+                    clean["is_singer"] = False
+                normalized.append(clean)
+            return normalized
+
+        resolved_characters = _resolve("character", character_refs, config_characters, is_singer=True)
+        resolved_locations = _resolve("location", location_refs, config_locations)
+        resolved_props = _resolve("prop", prop_refs, config_props)
+
+        return (
+            {
+                "characters": resolved_characters,
+                "locations": resolved_locations,
+                "props": resolved_props,
+            },
+            decisions,
+        )
+
+    @staticmethod
+    def _derive_entity_name(entity_type: str, entity_id: str) -> str:
+        """Derive a human-readable name from an entity ID."""
+        name = entity_id.replace("_", " ").replace("-", " ").strip()
+        return name.title() if name else entity_type.title()
+
+    def _generate_entity_description(
+        self, entity_type: str, entity_id: str, request: StoryPlanRequest
+    ) -> str:
+        """Generate a description for an entity, constrained to the story's world."""
+        context = str(request.source_evidence.get("creative_direction", "")).strip()
+        if context:
+            return f"A {entity_type} in the story: {context[:200]}"
+        return f"A {entity_type} in the music video for {request.song_title}"
+
     @staticmethod
     def _validate_acting(
         allocation: Mapping[str, Any],
@@ -1289,15 +1687,30 @@ class StoryPlanService:
                     "subject_id": str(error.get("subject_id", "")),
                     "message": str(error.get("message", "")),
                 }
-                for error in exc.errors
+                for error in diagnostics
             ],
         ) from exc
+
+    @staticmethod
+    def _describe_arc(allocation: Mapping[str, Any]) -> str:
+        """Summarize the beat count and arc phase sequence for observability."""
+        beats = allocation.get("typed_beats")
+        if not isinstance(beats, list):
+            return "0 beats, arc: (none)"
+        phases: list[str] = []
+        for beat in beats:
+            if isinstance(beat, Mapping):
+                phase = str(beat.get("phase", "") or "")
+                if phase:
+                    phases.append(phase)
+        return f"{len(phases)} beats, arc: {' -> '.join(phases) or '(none)'}"
 
     @staticmethod
     def _assemble_candidate(
         request: StoryPlanRequest,
         allocation: Mapping[str, Any],
         acting: Mapping[str, Any],
+        resolved_config: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build a domain ``StoryPlan`` candidate from the job outputs.
 
@@ -1326,44 +1739,58 @@ class StoryPlanService:
                     "notes": creative_direction,
                 },
             }
-        characters: list[dict[str, Any]] = []
-        for character in request.characters:
-            if not isinstance(character, Mapping):
-                continue
-            character_id = str(character.get("id", "")).strip()
-            name = str(character.get("name", "")).strip()
-            if not character_id or not name:
-                continue
-            characters.append(
+        if resolved_config is not None:
+            characters = [
+                dict(entry) for entry in resolved_config.get("characters", [])
+                if isinstance(entry, Mapping)
+            ]
+            locations = [
+                dict(entry) for entry in resolved_config.get("locations", [])
+                if isinstance(entry, Mapping)
+            ]
+            props = [
+                dict(entry) for entry in resolved_config.get("props", [])
+                if isinstance(entry, Mapping)
+            ]
+        else:
+            characters: list[dict[str, Any]] = []
+            for character in request.characters:
+                if not isinstance(character, Mapping):
+                    continue
+                character_id = str(character.get("id", "")).strip()
+                name = str(character.get("name", "")).strip()
+                if not character_id or not name:
+                    continue
+                characters.append(
+                    {
+                        "id": character_id,
+                        "name": name,
+                        "description": str(character.get("description", "")),
+                        "is_singer": bool(character.get("is_singer", False)),
+                    }
+                )
+            locations = [
                 {
-                    "id": character_id,
-                    "name": name,
-                    "description": str(character.get("description", "")),
-                    "is_singer": bool(character.get("is_singer", False)),
+                    "id": str(location.get("id", "")).strip(),
+                    "name": str(location.get("name", "")).strip(),
+                    "description": str(location.get("description", "")),
                 }
-            )
-        locations = [
-            {
-                "id": str(location.get("id", "")).strip(),
-                "name": str(location.get("name", "")).strip(),
-                "description": str(location.get("description", "")),
-            }
-            for location in request.locations
-            if isinstance(location, Mapping)
-            and str(location.get("id", "")).strip()
-            and str(location.get("name", "")).strip()
-        ]
-        props = [
-            {
-                "id": str(prop.get("id", "")).strip(),
-                "name": str(prop.get("name", "")).strip(),
-                "description": str(prop.get("description", "")),
-            }
-            for prop in request.props
-            if isinstance(prop, Mapping)
-            and str(prop.get("id", "")).strip()
-            and str(prop.get("name", "")).strip()
-        ]
+                for location in request.locations
+                if isinstance(location, Mapping)
+                and str(location.get("id", "")).strip()
+                and str(location.get("name", "")).strip()
+            ]
+            props = [
+                {
+                    "id": str(prop.get("id", "")).strip(),
+                    "name": str(prop.get("name", "")).strip(),
+                    "description": str(prop.get("description", "")),
+                }
+                for prop in request.props
+                if isinstance(prop, Mapping)
+                and str(prop.get("id", "")).strip()
+                and str(prop.get("name", "")).strip()
+            ]
         segments: list[dict[str, Any]] = []
         beats = [
             {
@@ -1602,6 +2029,102 @@ class StoryPlanService:
             return typed.model_dump()
         except Exception:
             return {"briefs": normalized_briefs, "character_arcs": normalized_arcs}
+
+    def _live_prompts_input(
+        self,
+        request: StoryPlanRequest,
+        plan: StoryPlan,
+        bible: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        briefs = [
+            {
+                "target": brief.target,
+                "visual_direction": brief.visual_direction,
+                "character_ids": list(brief.character_ids),
+                "location_id": brief.location_id,
+                "prop_ids": list(brief.prop_ids),
+            }
+            for brief in plan.segments
+        ]
+        creative_direction = str(
+            request.source_evidence.get("creative_direction", "")
+        ).strip()
+        return {
+            "creative_direction": creative_direction,
+            "bible": dict(bible),
+            "briefs": briefs,
+            "expected_targets": [brief.target for brief in plan.segments],
+        }
+
+    def _build_live_prompts(
+        self,
+        request: StoryPlanRequest,
+        plan: StoryPlan,
+        bible: Mapping[str, Any],
+        diagnostics: list[Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        """L3: live per-scene image + video prompts (soft-fail).
+
+        Live prompts are an additive layer: a missing, malformed, or
+        unvalidated prompt set is a diagnostic, never a hard failure, so an
+        unconfigured or failing prompt job never blocks plan production.
+        """
+        self._reporter.step("story-plan-live-prompts")
+        try:
+            raw = self._job(
+                "live_prompts", self._live_prompts_input(request, plan, bible)
+            )
+        except Exception as exc:
+            diagnostics.append(
+                {
+                    "code": "live_prompts_failed",
+                    "subject_id": "live_prompts",
+                    "message": f"live prompt job failed: {exc}",
+                }
+            )
+            self._reporter.message("story-plan-live-prompts failed; continuing")
+            return {}
+        prompts = self._normalize_live_prompts(raw, plan, diagnostics)
+        self._reporter.message(
+            "story-plan-live-prompts complete: "
+            f"{len(prompts)} scene prompt(s)"
+        )
+        return prompts
+
+    @staticmethod
+    def _normalize_live_prompts(
+        raw: Any, plan: StoryPlan, diagnostics: list[Mapping[str, Any]]
+    ) -> dict[str, dict[str, str]]:
+        """Normalize the live-prompt job output keyed by segment target.
+
+        Accepts a ``{prompts: [...]}`` mapping or a bare list; drops entries
+        whose target is not a supplied segment or whose image_prompt is empty.
+        """
+        items = raw.get("prompts") if isinstance(raw, Mapping) else raw
+        if not isinstance(items, list):
+            items = []
+        expected = {brief.target for brief in plan.segments}
+        result: dict[str, dict[str, str]] = {}
+        for item in items:
+            if not isinstance(item, Mapping):
+                continue
+            target = str(item.get("target", ""))
+            image_prompt = str(item.get("image_prompt", "") or "").strip()
+            if target not in expected or not image_prompt:
+                continue
+            result[target] = {
+                "image_prompt": image_prompt,
+                "video_prompt": str(item.get("video_prompt", "") or "").strip(),
+            }
+        if not result:
+            diagnostics.append(
+                {
+                    "code": "live_prompts_empty",
+                    "subject_id": "live_prompts",
+                    "message": "no valid live prompts returned",
+                }
+            )
+        return result
 
 
 def compute_source_fingerprint(

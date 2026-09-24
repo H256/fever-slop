@@ -123,6 +123,7 @@ class MusicVideoPromptPipeline:
         global_context: dict | None = None,
         notes: str = "",
         segment_briefs: dict | None = None,
+        live_prompts: dict | None = None,
     ) -> dict:
         payload: dict = {
             "STORY_IDEA": story_idea,
@@ -133,6 +134,8 @@ class MusicVideoPromptPipeline:
         if segment_briefs:
             payload["SEGMENT_BRIEFS"] = segment_briefs
             payload["LOCKED_SEGMENT_BINDINGS"] = segment_briefs
+        if live_prompts:
+            payload["LIVE_PROMPTS"] = live_prompts
         response = self.prompt_modules.concepts(
             payload,
             silent_mode=bool((global_context or {}).get("silent_mode", False)),

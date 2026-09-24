@@ -23,8 +23,10 @@ SONG_BRIEF = "song_brief"
 STORYBOARD_TRANSFORM = "storyboard_transform"
 STORY_IDEA = "story_idea"
 STORY_PLAN_ACTING = "story_plan_acting"
+STORY_PLAN_ARC_SKELETON = "story_plan_arc_skeleton"
 STORY_PLAN_BEAT_ALLOCATION = "story_plan_beat_allocation"
 STORY_PLAN_BIBLE = "story_plan_bible"
+STORY_PLAN_LIVE_PROMPTS = "story_plan_live_prompts"
 STORY_PLAN_REPAIR = "story_plan_repair"
 STYLE_BLOCK = "style_block"
 SUBJECT_LOCATIONS = "subject_locations"
@@ -46,7 +48,13 @@ _STORY_PLAN_STRUCTURED = LLMTaskPolicy("structured", max_tokens=4096)
 # smaller ceiling stops a weak local model from spending minutes on one
 # malformed JSON response; the service retries only the missing brief ids.
 _STORY_PLAN_ACTING = LLMTaskPolicy("creative", max_tokens=1536)
+# The arc skeleton invents the whole story as a coherent set of beats and
+# can be verbose; it is bounded like the other creative story-plan jobs.
+_STORY_PLAN_CREATIVE = LLMTaskPolicy("creative", max_tokens=4096)
 _STORY_PLAN_REPAIR = LLMTaskPolicy("structured", max_tokens=8192)
+# Live prompts return one image + one video prompt per scene (~10-20 scenes).
+# Budget the full response, not per scene: per-scene prose plus JSON overhead.
+_STORY_PLAN_LIVE_PROMPTS = LLMTaskPolicy("creative", max_tokens=16384)
 
 # Concept batches return one structured value per scene. The per-scene budget
 # must be multiplied by the batch size because max_tokens limits the complete
@@ -98,8 +106,10 @@ _POLICIES = {
     STORYBOARD_TRANSFORM: _STRUCTURED,
     STORY_IDEA: _CREATIVE,
     STORY_PLAN_ACTING: _STORY_PLAN_ACTING,
+    STORY_PLAN_ARC_SKELETON: _STORY_PLAN_CREATIVE,
     STORY_PLAN_BEAT_ALLOCATION: _STORY_PLAN_STRUCTURED,
     STORY_PLAN_BIBLE: _STORY_PLAN_STRUCTURED,
+    STORY_PLAN_LIVE_PROMPTS: _STORY_PLAN_LIVE_PROMPTS,
     STORY_PLAN_REPAIR: _STORY_PLAN_REPAIR,
     STYLE_BLOCK: _CREATIVE,
     SUBJECT_LOCATIONS: _STRUCTURED,

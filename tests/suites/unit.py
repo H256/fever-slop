@@ -258,6 +258,7 @@ UNIT_MODULES = (
     "story_plan",
     "story_plan_artifacts",
     "story_plan_dspy",
+    "story_plan_entity_resolution",
     "storyboard_page",
     "storyboard_prompt_transformer",
     "structured_h3_builder",

@@ -323,7 +323,8 @@ class PromptGenerationResumeTests(unittest.TestCase):
                 semantic_enforcement="warn",
             )
 
-        self.assertEqual("warning", result["segment_002"]["semantic_validation"]["outcome"])
+        self.assertEqual("accepted", result["segment_002"]["semantic_validation"]["outcome"])
+        self.assertEqual([], result["segment_002"]["narrative"]["milestones"])
 
     def test_resume_repairs_legacy_contract_before_story_plan_consumes_it(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -354,7 +355,7 @@ class PromptGenerationResumeTests(unittest.TestCase):
             )
             pipeline._resolve_story_plan = lambda **kwargs: (
                 received.append(kwargs["global_context"]["narrative_contract"])
-                or (None, True)
+                or (None, None, True)
             )
 
             pipeline.run(self._make_context(

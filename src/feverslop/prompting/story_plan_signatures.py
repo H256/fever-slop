@@ -1,11 +1,12 @@
-"""Typed DSPy signatures for the small story-plan jobs (issue #1385).
+"""Typed DSPy signatures for the story-plan jobs (issue #1385).
 
-The story plan is produced by divide-and-conquer: four narrow jobs (bible,
-beat allocation and acting) instead of one model writing the full
-screenplay plus concepts. Every output model uses ``extra="forbid"`` so the
-LLM cannot smuggle in timestamps, lyrics, render settings, frame counts, or
-audio bindings as extra fields; the service's deterministic validator is the
-backstop for what slips past the typed contract.
+The story plan is produced by divide-and-conquer: five narrow jobs (bible,
+arc skeleton, beat allocation, acting, live prompts) instead of one model
+writing the full screenplay plus concepts. Every output model uses
+``extra="forbid"`` so the LLM cannot smuggle in timestamps, lyrics, render
+settings, frame counts, or audio bindings as extra fields; the service's
+deterministic validator is the backstop for what slips past the typed
+contract.
 """
 
 from __future__ import annotations
@@ -41,12 +42,31 @@ class BeatAllocationDraft(BaseModel):
     prop_ids: list[str] = Field(default_factory=list)
 
 
-class BeatAllocationResult(BaseModel):
-    """A compact model-authored beat sheet in narrative order."""
+class BriefBeatAllocation(BaseModel):
+    """Per-brief beat constraints for one supplied segment/shot id."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: str
+    beat_index: int
+    required_beat_indices: list[int] = Field(default_factory=list)
+    forbidden_beat_indices: list[int] = Field(default_factory=list)
+
+
+class ArcSkeletonResult(BaseModel):
+    """The story arc as a coherent whole, independent of segment count."""
 
     model_config = ConfigDict(extra="forbid")
 
     beats: list[BeatAllocationDraft] = Field(min_length=1)
+
+
+class BeatAllocationResult(BaseModel):
+    """One mapping per supplied segment, given a fixed arc skeleton."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    brief_allocations: list[BriefBeatAllocation] = Field(default_factory=list)
 
 
 class ActorStateRef(BaseModel):
@@ -75,6 +95,7 @@ class SegmentBriefDraft(BaseModel):
     prop_ids: list[str] = Field(default_factory=list)
     vocal_presentation: str
     visual_direction: str = ""
+    exclusive: bool = False
     objective: str = ""
     emotional_turn: str = ""
     actor_states: list[ActorStateRef] = Field(default_factory=list)
@@ -122,12 +143,14 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         props: list[dict[str, Any]] = dspy_module.InputField()
         bible: dict[str, Any] = dspy_module.OutputField()
 
-    class BeatAllocation(dspy_module.Signature):
-        """Write a small story arc in narrative order.
+    class ArcSkeleton(dspy_module.Signature):
+        """Invent the story arc as a coherent whole, independent of segments.
 
-        The LAST beat reserves the terminal window (phase ``resolution``);
-        Python assigns every segment to this beat sheet deterministically.
-        Do not emit per-segment allocations, timestamps, or frame counts.
+        Produce a small set of narrative beats in order: the FIRST beat is
+        phase ``opening``, the LAST beat is phase ``resolution``. Reference
+        only the supplied canonical ids; never invent ids, timestamps,
+        lyrics, render settings, or audio bindings. The user direction is
+        the highest-priority input.
         """
 
         guide: str = dspy_module.InputField()
@@ -138,6 +161,32 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         characters: list[dict[str, Any]] = dspy_module.InputField()
         locations: list[dict[str, Any]] = dspy_module.InputField()
         props: list[dict[str, Any]] = dspy_module.InputField()
+        beats: list[dict[str, Any]] = dspy_module.OutputField()
+
+    class BeatAllocation(dspy_module.Signature):
+        """Map the fixed arc beats onto the supplied segments.
+
+        Given the arc skeleton, assign every supplied segment exactly one
+        brief allocation with ``beat_index``, ``required_beat_indices``,
+        and ``forbidden_beat_indices``. Do not invent new beats; reference
+        only the supplied beat indices and canonical ids. No timestamps or
+        frame counts.
+        """
+
+        guide: str = dspy_module.InputField()
+        creative_direction: str = dspy_module.InputField(
+            desc="Explicit user direction; highest-priority input.",
+        )
+        bible: dict[str, Any] = dspy_module.InputField()
+        beats: list[dict[str, Any]] = dspy_module.InputField(
+            desc="Fixed arc skeleton beats: index, phase, description.",
+        )
+        characters: list[dict[str, Any]] = dspy_module.InputField()
+        locations: list[dict[str, Any]] = dspy_module.InputField()
+        props: list[dict[str, Any]] = dspy_module.InputField()
+        segments: list[dict[str, Any]] = dspy_module.InputField(
+            desc="Compact segment/shot descriptors: id, fingerprint, duration only.",
+        )
         allocation: dict[str, Any] = dspy_module.OutputField()
 
     class Acting(dspy_module.Signature):
@@ -167,8 +216,46 @@ def build_story_plan_signature_bundle(dspy_module: Any | None = None) -> dict[st
         props: list[dict[str, Any]] = dspy_module.InputField()
         result: dict[str, Any] = dspy_module.OutputField()
 
+    class LivePrompts(dspy_module.Signature):
+        """Write live image and video prompts for each supplied segment.
+
+        Given the validated plan's per-brief creative direction, produce one
+        ``image_prompt`` and one ``video_prompt`` per supplied segment id
+        (``target``). Prompts are concrete, self-contained, and reference only
+        the supplied canonical ids. No timestamps, frame counts, or render
+        settings. The user direction is the highest-priority input.
+        """
+
+        guide: str = dspy_module.InputField()
+        creative_direction: str = dspy_module.InputField(
+            desc="Explicit user direction; highest-priority input.",
+        )
+        bible: dict[str, Any] = dspy_module.InputField()
+        briefs: list[dict[str, Any]] = dspy_module.InputField(
+            desc="Validated per-brief creative direction: target, visual_direction, entities.",
+        )
+        expected_targets: list[str] = dspy_module.InputField(
+            desc="Exact supplied segment ids to return, with no omissions or extras.",
+        )
+        result: dict[str, Any] = dspy_module.OutputField()
+
+    class StoryPlanRepair(dspy_module.Signature):
+        """Fix ONLY the named diagnostics in the prior typed plan.
+
+        Preserve every other field; never add ids, timestamps, lyrics,
+        render settings, or audio bindings.
+        """
+
+        guide: str = dspy_module.InputField()
+        prior_plan: dict[str, Any] = dspy_module.InputField()
+        diagnostics: list[dict[str, Any]] = dspy_module.InputField()
+        plan: dict[str, Any] = dspy_module.OutputField()
+
     return {
         "bible": StoryPlanBible,
+        "arc_skeleton": ArcSkeleton,
         "beat_allocation": BeatAllocation,
         "acting": Acting,
+        "live_prompts": LivePrompts,
+        "repair": StoryPlanRepair,
     }

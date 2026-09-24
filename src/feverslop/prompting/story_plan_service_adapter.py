@@ -101,7 +101,7 @@ class StoryPlanServiceAdapter:
         self._last_bible = result if isinstance(result, Mapping) else {}
         return result
 
-    def beat_allocation(
+    def arc_skeleton(
         self,
         *,
         song_title: str,
@@ -114,12 +114,37 @@ class StoryPlanServiceAdapter:
         props: list[Mapping[str, Any]] | None = None,
         **_extra: Any,
     ) -> Any:
-        return self._modules.beat_allocation(
+        return self._modules.arc_skeleton(
             creative_direction=self._creative_direction,
             bible=dict(narrative_bible),
             characters=[dict(c) for c in characters],
             locations=[dict(location) for location in (locations or [])],
             props=[dict(prop) for prop in (props or [])],
+        )
+
+    def beat_allocation(
+        self,
+        *,
+        song_title: str,
+        lyrics: str,
+        beats: list[Mapping[str, Any]],
+        segments: list[Mapping[str, Any]],
+        narrative_bible: Mapping[str, Any],
+        characters: list[Mapping[str, Any]],
+        terminal_window_seconds: float,
+        guide: str,
+        locations: list[Mapping[str, Any]] | None = None,
+        props: list[Mapping[str, Any]] | None = None,
+        **_extra: Any,
+    ) -> Any:
+        return self._modules.beat_allocation(
+            creative_direction=self._creative_direction,
+            bible=dict(narrative_bible),
+            beats=[dict(beat) for beat in beats],
+            characters=[dict(c) for c in characters],
+            locations=[dict(location) for location in (locations or [])],
+            props=[dict(prop) for prop in (props or [])],
+            segments=[dict(s) for s in segments],
         )
 
     def acting(
@@ -150,4 +175,36 @@ class StoryPlanServiceAdapter:
             characters=[dict(c) for c in characters],
             locations=[dict(location) for location in (locations or [])],
             props=[dict(prop) for prop in (props or [])],
+        )
+
+    def live_prompts(
+        self,
+        *,
+        creative_direction: str,
+        bible: Mapping[str, Any],
+        briefs: list[Mapping[str, Any]],
+        expected_targets: list[str],
+        **_extra: Any,
+    ) -> Any:
+        return self._modules.live_prompts(
+            creative_direction=creative_direction,
+            bible=dict(bible),
+            briefs=[dict(brief) for brief in briefs],
+            expected_targets=list(expected_targets),
+        )
+
+    def repair(
+        self,
+        *,
+        song_title: str,
+        song_style: str,
+        lyrics: str,
+        candidate: Mapping[str, Any],
+        validation_errors: list[Mapping[str, Any]],
+        guide: str,
+        **_extra: Any,
+    ) -> Any:
+        return self._modules.repair(
+            prior_plan=dict(candidate),
+            diagnostics=[dict(e) for e in validation_errors],
         )

@@ -32,6 +32,7 @@ from feverslop.prompting.dspy_runtime import DspyRuntime, H3SignatureBundle
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.story_plan_modules import StoryPlanPromptModules
 from feverslop.prompting.story_plan_signatures import (
+    ArcSkeletonResult,
     BeatAllocationResult,
     SegmentBriefDraft,
     StoryBibleResult,
@@ -174,26 +175,48 @@ def valid_bible() -> dict:
     }
 
 
-def valid_allocation() -> dict:
+def valid_arc() -> dict:
     return {
-        "briefs": [
+        "beats": [
             {
-                "brief_id": "brief-1",
-                "segment_id": "seg-1",
-                "start_seconds": 0.0,
-                "end_seconds": 30.0,
-                "beat_indices": [0],
-                "required": ["beat-0"],
-                "forbidden": [],
+                "phase": "opening",
+                "description": "A singer steps onto the stage.",
+                "character_ids": ["char-1"],
+                "location_id": "cave",
+                "prop_ids": [],
             },
             {
-                "brief_id": "brief-2",
-                "segment_id": "seg-2",
-                "start_seconds": 30.0,
-                "end_seconds": 60.0,
-                "beat_indices": [1],
-                "required": [],
-                "forbidden": ["beat-9"],
+                "phase": "climax",
+                "description": "The singer confronts the mountain.",
+                "character_ids": ["char-1"],
+                "location_id": "well",
+                "prop_ids": ["well"],
+            },
+            {
+                "phase": "resolution",
+                "description": "The singer finds renewal.",
+                "character_ids": ["char-1"],
+                "location_id": "well",
+                "prop_ids": [],
+            },
+        ]
+    }
+
+
+def valid_allocation() -> dict:
+    return {
+        "brief_allocations": [
+            {
+                "target": "seg-1",
+                "beat_index": 0,
+                "required_beat_indices": [0],
+                "forbidden_beat_indices": [],
+            },
+            {
+                "target": "seg-2",
+                "beat_index": 2,
+                "required_beat_indices": [],
+                "forbidden_beat_indices": [1],
             },
         ]
     }
@@ -228,48 +251,33 @@ def acting_for_brief_ids(*brief_ids: str) -> dict:
 
 
 def valid_acting() -> dict:
-    return acting_for_brief_ids("brief-1", "brief-2")
+    return acting_for_brief_ids("brief-seg-1", "brief-seg-2")
+
+
+def valid_live_prompts() -> dict:
+    return {
+        "prompts": [
+            {
+                "target": "seg-1",
+                "image_prompt": "a concrete keyframe for seg-1",
+                "video_prompt": "camera motion for seg-1",
+            },
+            {
+                "target": "seg-2",
+                "image_prompt": "a concrete keyframe for seg-2",
+                "video_prompt": "camera motion for seg-2",
+            },
+        ]
+    }
 
 
 def duplicate_target_allocation() -> dict:
     return {
-        "briefs": [
-            {
-                "brief_id": "brief-1",
-                "segment_id": "seg-1",
-                "start_seconds": 0.0,
-                "end_seconds": 20.0,
-                "beat_indices": [0],
-                "required": [],
-                "forbidden": [],
-            },
-            {
-                "brief_id": "brief-2",
-                "segment_id": "seg-1",
-                "start_seconds": 0.0,
-                "end_seconds": 20.0,
-                "beat_indices": [1],
-                "required": [],
-                "forbidden": [],
-            },
-            {
-                "brief_id": "brief-3",
-                "segment_id": "seg-2",
-                "start_seconds": 20.0,
-                "end_seconds": 40.0,
-                "beat_indices": [2],
-                "required": [],
-                "forbidden": [],
-            },
-            {
-                "brief_id": "brief-4",
-                "segment_id": "seg-3",
-                "start_seconds": 40.0,
-                "end_seconds": 60.0,
-                "beat_indices": [3],
-                "required": [],
-                "forbidden": [],
-            },
+        "brief_allocations": [
+            {"target": "seg-1", "beat_index": 0},
+            {"target": "seg-1", "beat_index": 1},
+            {"target": "seg-2", "beat_index": 2},
+            {"target": "seg-3", "beat_index": 2},
         ]
     }
 
@@ -370,27 +378,35 @@ def _predictor(predictors: list[_FakePredictor], name: str) -> _FakePredictor:
 
 
 class FakePromptModules:
-    """Structural double for the four story-plan job methods."""
+    """Structural double for the five story-plan job methods."""
 
     def __init__(
         self,
         *,
         bible: dict | None = None,
+        arc: dict | None = None,
         allocation: dict | None = None,
         acting: dict | None = None,
+        live_prompts: dict | None = None,
         repair: dict | None = None,
     ) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.outputs = {
             "bible": bible if bible is not None else valid_bible(),
+            "arc_skeleton": arc if arc is not None else valid_arc(),
             "beat_allocation": allocation if allocation is not None else valid_allocation(),
             "acting": acting if acting is not None else valid_acting(),
+            "live_prompts": live_prompts if live_prompts is not None else valid_live_prompts(),
             "repair": repair if repair is not None else valid_repair_plan(),
         }
 
     def bible(self, **kwargs: Any) -> dict:
         self.calls.append(("bible", dict(kwargs)))
         return self.outputs["bible"]
+
+    def arc_skeleton(self, **kwargs: Any) -> dict:
+        self.calls.append(("arc_skeleton", dict(kwargs)))
+        return self.outputs["arc_skeleton"]
 
     def beat_allocation(self, **kwargs: Any) -> dict:
         self.calls.append(("beat_allocation", dict(kwargs)))
@@ -400,15 +416,21 @@ class FakePromptModules:
         self.calls.append(("acting", dict(kwargs)))
         return self.outputs["acting"]
 
+    def live_prompts(self, **kwargs: Any) -> dict:
+        self.calls.append(("live_prompts", dict(kwargs)))
+        return self.outputs["live_prompts"]
+
     def repair(self, **kwargs: Any) -> dict:
         self.calls.append(("repair", dict(kwargs)))
         return self.outputs["repair"]
 
 
 class StrictPromptModules:
-    """Records interface access and rejects any method outside the four jobs."""
+    """Records interface access and rejects any method outside the five jobs."""
 
-    _ALLOWED = frozenset({"bible", "beat_allocation", "acting", "repair"})
+    _ALLOWED = frozenset(
+        {"bible", "arc_skeleton", "beat_allocation", "acting", "live_prompts", "repair"}
+    )
 
     def __init__(self, outputs: dict[str, Any]) -> None:
         object.__setattr__(self, "_outputs", outputs)
@@ -459,14 +481,17 @@ class StoryPlanModuleTests(unittest.TestCase):
         self.modules.beat_allocation(
             creative_direction="cd",
             bible={"premise": "p"},
+            beats=[{"phase": "opening", "description": "d"}],
             characters=[],
             locations=[],
             props=[],
+            segments=[{"segment_id": "seg-1", "vocal_events": [{"t": 1.0}]}],
         )
         kwargs = _predictor(self.predictors, "BeatAllocation").calls[0]
         self.assertEqual(
             sorted(kwargs),
             [
+                "beats",
                 "bible",
                 "characters",
                 "config",
@@ -474,6 +499,7 @@ class StoryPlanModuleTests(unittest.TestCase):
                 "guide",
                 "locations",
                 "props",
+                "segments",
             ],
         )
 
@@ -504,6 +530,36 @@ class StoryPlanModuleTests(unittest.TestCase):
             ],
         )
 
+    def test_live_prompts_payload_allowlist(self) -> None:
+        self.modules.live_prompts(
+            creative_direction="cd",
+            bible={"premise": "p"},
+            briefs=[{"target": "seg-1", "visual_direction": "vd"}],
+            expected_targets=["seg-1"],
+        )
+        kwargs = _predictor(self.predictors, "LivePrompts").calls[0]
+        self.assertEqual(
+            sorted(kwargs),
+            [
+                "bible",
+                "briefs",
+                "config",
+                "creative_direction",
+                "expected_targets",
+                "guide",
+            ],
+        )
+        self.assertIsInstance(kwargs["guide"], str)
+        self.assertTrue(kwargs["guide"])
+
+    def test_repair_payload_allowlist(self) -> None:
+        self.modules.repair(
+            prior_plan={"mode": "music_video"},
+            diagnostics=[{"code": "x", "message": "m"}],
+        )
+        kwargs = _predictor(self.predictors, "StoryPlanRepair").calls[0]
+        self.assertEqual(sorted(kwargs), ["config", "diagnostics", "guide", "prior_plan"])
+
     def test_module_compacts_acoustic_evidence_from_inputs(self) -> None:
         self.modules.bible(
             story_text="A singer leaves.",
@@ -514,6 +570,21 @@ class StoryPlanModuleTests(unittest.TestCase):
         )
         bible_payload = json.dumps(_predictor(self.predictors, "StoryPlanBible").calls[0])
         self.assertNotIn("alignment", bible_payload)
+        self.modules.beat_allocation(
+            creative_direction="cd",
+            bible={"premise": "p"},
+            beats=[{"phase": "opening", "description": "d"}],
+            characters=[],
+            locations=[],
+            props=[],
+            segments=[
+                {
+                    "segment_id": "seg-1",
+                    "vocal_events": [{"t": 1.0}],
+                    "word_timestamps": [{"w": "la"}],
+                }
+            ],
+        )
         allocation_payload = json.dumps(
             _predictor(self.predictors, "BeatAllocation").calls
         )
@@ -528,12 +599,21 @@ class StoryPlanModuleTests(unittest.TestCase):
             locations=[],
             props=[],
         )
-        self.modules.beat_allocation(
+        self.modules.arc_skeleton(
             creative_direction="cd",
             bible={"premise": "p"},
             characters=[],
             locations=[],
             props=[],
+        )
+        self.modules.beat_allocation(
+            creative_direction="cd",
+            bible={"premise": "p"},
+            beats=[],
+            characters=[],
+            locations=[],
+            props=[],
+            segments=[],
         )
         self.modules.acting(
             creative_direction="cd",
@@ -549,6 +629,10 @@ class StoryPlanModuleTests(unittest.TestCase):
             {"max_tokens": 4096},
         )
         self.assertEqual(
+            _predictor(self.predictors, "ArcSkeleton").calls[0]["config"],
+            {"max_tokens": 4096},
+        )
+        self.assertEqual(
             _predictor(self.predictors, "BeatAllocation").calls[0]["config"],
             {"max_tokens": 4096},
         )
@@ -559,14 +643,18 @@ class StoryPlanModuleTests(unittest.TestCase):
 
     def test_module_resolves_per_task_temperature(self) -> None:
         # __init__ creates one LM per job in _BUNDLE_TASK_NAMES order:
-        # acting, beat_allocation, bible. The per-task values come
-        # from DEFAULT_TASK_TEMPERATURES, never the global dspy_temperature.
+        # acting, arc_skeleton, beat_allocation, bible, repair. The per-task
+        # values come from DEFAULT_TASK_TEMPERATURES, never the global
+        # dspy_temperature.
         self.assertEqual(
             [(name, temperature) for name, temperature, _ in self.lm_calls],
             [
                 ("openai/fake-model", 0.6),  # story_plan_acting
+                ("openai/fake-model", 0.6),  # story_plan_arc_skeleton
                 ("openai/fake-model", 0.2),  # story_plan_beat_allocation
                 ("openai/fake-model", 0.2),  # story_plan_bible
+                ("openai/fake-model", 0.6),  # story_plan_live_prompts
+                ("openai/fake-model", 0.2),  # story_plan_repair
             ],
         )
         self.assertNotIn(0.4, [t for _, t, _ in self.lm_calls])
@@ -580,7 +668,7 @@ class StoryPlanModuleTests(unittest.TestCase):
         """
         self.assertEqual(
             [max_tokens for _, _, max_tokens in self.lm_calls],
-            [1536, 4096, 4096],
+            [1536, 4096, 4096, 4096, 16384, 8192],
         )
 
     def test_module_requires_configured_dspy_llm(self) -> None:
@@ -610,13 +698,25 @@ class StoryPlanSignatureBundleTests(unittest.TestCase):
         self.assertEqual(dict[str, Any], bundle["acting"].input_fields["bible"].annotation)
         self.assertEqual(dict[str, Any], bundle["acting"].output_fields["result"].annotation)
 
-    def test_signature_bundle_covers_three_small_jobs(self) -> None:
+    def test_signature_bundle_covers_all_jobs(self) -> None:
         bundle = build_story_plan_signature_bundle()
-        self.assertEqual(sorted(bundle), ["acting", "beat_allocation", "bible"])
+        self.assertEqual(
+            sorted(bundle),
+            [
+                "acting",
+                "arc_skeleton",
+                "beat_allocation",
+                "bible",
+                "live_prompts",
+                "repair",
+            ],
+        )
         self.assertIn("guide", bundle["bible"].input_fields)
         self.assertIn("story_text", bundle["bible"].input_fields)
         self.assertIn("creative_direction", bundle["bible"].input_fields)
         self.assertIn("bible", bundle["bible"].output_fields)
+        self.assertIn("beats", bundle["arc_skeleton"].output_fields)
+        self.assertIn("beats", bundle["beat_allocation"].input_fields)
         self.assertIn("allocation", bundle["beat_allocation"].output_fields)
         self.assertIn("result", bundle["acting"].output_fields)
 
@@ -655,11 +755,15 @@ class StoryPlanTypedContractTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 SegmentBriefDraft.model_validate({**base, key: "x"})
 
-    def test_beat_allocation_result_requires_at_least_one_beat(self) -> None:
+    def test_arc_skeleton_result_requires_at_least_one_beat(self) -> None:
         with self.assertRaises(ValidationError):
-            BeatAllocationResult(beats=[])
-        ok = BeatAllocationResult(beats=[{"phase": "opening", "description": "d"}])
+            ArcSkeletonResult(beats=[])
+        ok = ArcSkeletonResult(beats=[{"phase": "opening", "description": "d"}])
         self.assertEqual(len(ok.beats), 1)
+
+    def test_beat_allocation_result_allows_zero_briefs(self) -> None:
+        ok = BeatAllocationResult(brief_allocations=[])
+        self.assertEqual(len(ok.brief_allocations), 0)
 
 
 # -- service tests -------------------------------------------------------------
@@ -686,7 +790,7 @@ class StoryPlanServiceTests(unittest.TestCase):
             [("seg-1", "beat-001"), ("seg-2", "beat-003")],
         )
         allocation_call = next(payload for name, payload in modules.calls if name == "beat_allocation")
-        self.assertNotIn("segments", allocation_call)
+        self.assertIn("segments", allocation_call)
         self.assertNotIn("repair", [name for name, _ in modules.calls])
 
     def test_service_reports_visible_progress_for_each_creative_job(self) -> None:
@@ -793,7 +897,7 @@ class StoryPlanServiceTests(unittest.TestCase):
         acting_table = next(table for table in reporter.tables if table[0] == "Acting briefs - batch 1/1")
         self.assertEqual(acting_table[1], ["Scene", "Time", "Objective", "Emotional turn", "Voice"])
         self.assertEqual(acting_table[2][0], [
-            "seg-1", "00:00–00:30", "Objective for brief-1.", "Nervous to determined.", "offscreen",
+            "seg-1", "00:00–00:30", "Objective for brief-seg-1.", "Nervous to determined.", "offscreen",
         ])
 
     def test_service_reports_a_locked_story_plan_summary(self) -> None:
@@ -820,7 +924,7 @@ class StoryPlanServiceTests(unittest.TestCase):
         StoryPlanService(prompt_modules=FakePromptModules(), reporter=reporter).build_plan(make_request())
 
         self.assertIn(
-            ("Story plan locked", ["Scenes", "Beats", "Acting briefs"], [["2", "0", "2"]]),
+            ("Story plan locked", ["Scenes", "Beats", "Acting briefs"], [["2", "3", "2"]]),
             reporter.tables,
         )
         self.assertIn("Story plan - locked windows", [table[0] for table in reporter.tables])
@@ -841,11 +945,13 @@ class StoryPlanServiceTests(unittest.TestCase):
     def test_typed_dspy_outputs_produce_beats_and_segment_briefs(self) -> None:
         """The service consumes the public typed planning DTOs directly."""
         modules = FakePromptModules(
-            allocation={
+            arc={
                 "beats": [
                     {"phase": "opening", "description": "The journey begins."},
                     {"phase": "resolution", "description": "The journey resolves."},
                 ],
+            },
+            allocation={
                 "brief_allocations": [
                     {"target": "seg-1", "beat_index": 0},
                     {"target": "seg-2", "beat_index": 1},
@@ -887,6 +993,12 @@ class StoryPlanServiceTests(unittest.TestCase):
     def test_creative_acting_cannot_mark_a_shared_beat_exclusive(self) -> None:
         """Only service-owned narrative allocation may declare exclusivity."""
         modules = FakePromptModules(
+            arc={
+                "beats": [
+                    {"phase": "opening", "description": "The journey begins."},
+                    {"phase": "resolution", "description": "The journey resolves."},
+                ],
+            },
             allocation={
                 "beats": [
                     {"phase": "opening", "description": "The journey begins."},
@@ -1206,7 +1318,7 @@ class StoryPlanServiceTests(unittest.TestCase):
         result = service.build_plan(make_request())
         self.assertEqual(
             [name for name, _ in modules.calls],
-            ["bible", "beat_allocation", "acting"],
+            ["bible", "arc_skeleton", "beat_allocation", "acting", "live_prompts"],
         )
         self.assertEqual(result.diagnostics, ())
         self.assertEqual(
@@ -1234,13 +1346,27 @@ class StoryPlanServiceTests(unittest.TestCase):
                 "lyrics",
                 "narrative_bible",
                 "props",
-                "segment_count",
                 "song_title",
                 "terminal_window_seconds",
             ],
         )
         self.assertEqual(
             sorted(dict(modules.calls[2][1])),
+            [
+                "beats",
+                "characters",
+                "guide",
+                "locations",
+                "lyrics",
+                "narrative_bible",
+                "props",
+                "segments",
+                "song_title",
+                "terminal_window_seconds",
+            ],
+        )
+        self.assertEqual(
+            sorted(dict(modules.calls[3][1])),
             [
                 "briefs",
                 "characters",
@@ -1257,35 +1383,55 @@ class StoryPlanServiceTests(unittest.TestCase):
         )
         self.assertEqual(validate_story_plan_payload(result.plan.model_dump()), [])
 
-    def test_service_only_touches_the_four_job_interface(self) -> None:
+    def test_service_only_touches_the_job_interface(self) -> None:
         outputs = {
             "bible": lambda **kwargs: valid_bible(),
+            "arc_skeleton": lambda **kwargs: valid_arc(),
             "beat_allocation": lambda **kwargs: valid_allocation(),
             "acting": lambda **kwargs: valid_acting(),
+            "live_prompts": lambda **kwargs: valid_live_prompts(),
             "repair": lambda **kwargs: valid_repair_plan(),
         }
         modules = StrictPromptModules(outputs)
         service = StoryPlanService(prompt_modules=modules)
         service.build_plan(make_request())
-        self.assertEqual(modules.accessed, ["bible", "beat_allocation", "acting"])
+        self.assertEqual(
+            modules.accessed,
+            ["bible", "arc_skeleton", "beat_allocation", "acting", "live_prompts"],
+        )
 
-    def test_invalid_candidate_fails_without_a_full_plan_repair(self) -> None:
+    def test_invalid_candidate_triggers_single_repair_with_diagnostics_only(self) -> None:
         modules = FakePromptModules(
             allocation=duplicate_target_allocation(),
-            acting=acting_for_brief_ids("brief-1", "brief-2", "brief-3", "brief-4"),
+            acting=acting_for_brief_ids("brief-seg-1", "brief-seg-2", "brief-seg-3"),
         )
         service = StoryPlanService(prompt_modules=modules)
-        with self.assertRaises(StoryPlanError) as ctx:
-            service.build_plan(make_request_3seg())
-        self.assertIn("deterministic assembly", str(ctx.exception))
-        self.assertNotIn("repair", [name for name, _ in modules.calls])
+        result = service.build_plan(make_request_3seg())
+        self.assertEqual(
+            [name for name, _ in modules.calls],
+            ["bible", "arc_skeleton", "beat_allocation", "acting", "repair", "live_prompts"],
+        )
+        self.assertEqual([name for name, _ in modules.calls].count("repair"), 1)
+        repair_call = next(
+            (payload for name, payload in modules.calls if name == "repair"), None
+        )
+        self.assertIsNotNone(repair_call)
+        repair_kwargs = dict(repair_call)
+        self.assertEqual(
+            sorted(repair_kwargs),
+            ["candidate", "guide", "lyrics", "song_style", "song_title", "validation_errors"],
+        )
+        self.assertTrue(repair_kwargs["validation_errors"])
+        for error in repair_kwargs["validation_errors"]:
+            self.assertEqual(sorted(error), ["code", "message", "subject_id"])
+        self.assertEqual(validate_story_plan_payload(result.plan.model_dump()), [])
 
     def test_second_invalid_repair_result_raises_story_plan_error(self) -> None:
         bad_repair = valid_repair_plan()
         del bad_repair["segments"][0]["audio_ref"]
         modules = FakePromptModules(
             allocation=duplicate_target_allocation(),
-            acting=acting_for_brief_ids("brief-1", "brief-2", "brief-3", "brief-4"),
+            acting=acting_for_brief_ids("brief-seg-1", "brief-seg-2", "brief-seg-3"),
             repair=bad_repair,
         )
         service = StoryPlanService(prompt_modules=modules)
@@ -1296,6 +1442,17 @@ class StoryPlanServiceTests(unittest.TestCase):
             "plan_validation_failed",
             [diagnostic["code"] for diagnostic in ctx.exception.diagnostics],
         )
+
+    def test_repair_pass_through_rederives_provenance_user_direction(self) -> None:
+        modules = FakePromptModules(
+            allocation=duplicate_target_allocation(),
+            acting=acting_for_brief_ids("brief-seg-1", "brief-seg-2", "brief-seg-3"),
+        )
+        service = StoryPlanService(prompt_modules=modules)
+        result = service.build_plan(make_request_3seg())
+        self.assertEqual(result.plan.provenance.producer, STORY_PLAN_PRODUCER)
+        self.assertEqual(result.plan.provenance.source_refs, ["Demo Song"])
+        self.assertEqual(result.plan.provenance.notes, "Keep it intimate.")
 
     def test_assembled_plan_derives_provenance_from_user_direction(self) -> None:
         modules = FakePromptModules()
@@ -1321,7 +1478,10 @@ class StoryPlanServiceTests(unittest.TestCase):
             )
         for character in result.plan.characters:
             self.assertIn(character.id, character_ids)
-        self.assertEqual(result.plan.beats, [])
+        self.assertEqual(
+            [beat.phase for beat in result.plan.beats],
+            ["opening", "climax", "resolution"],
+        )
         self.assertEqual(result.plan.arcs, [])
 
     def test_service_forbidden_render_keys_recorded_in_diagnostics(self) -> None:
@@ -1351,6 +1511,81 @@ class StoryPlanServiceTests(unittest.TestCase):
         ]
         self.assertEqual(len(audio_diagnostics), 1)
         self.assertEqual(audio_diagnostics[0]["keys"], ["audio_features"])
+
+    def test_service_reports_per_entity_resolution_decisions(self) -> None:
+        reporter = _RecordingReporter()
+        modules = FakePromptModules()
+        service = StoryPlanService(prompt_modules=modules, reporter=reporter)
+        service.build_plan(make_request())
+        # Every layer step is reported.
+        for step in (
+            "story-plan-bible",
+            "story-plan-arc-skeleton",
+            "story-plan-beat-allocation",
+            "story-plan-entity-resolution",
+            "story-plan-acting",
+        ):
+            self.assertIn(f"[STEP] {step}", reporter.messages)
+        # Per-entity use/extend/invent decisions are reported, not just counts.
+        for expected in (
+            "entity character char-1: extend (Singer)",
+            "entity location cave: extend (Cave)",
+            "entity location well: extend (Well Grotto)",
+            "entity prop well: extend (Well)",
+        ):
+            self.assertTrue(
+                any(expected in message for message in reporter.messages),
+                f"{expected!r} not reported",
+            )
+
+    def test_service_reports_validation_diagnostics_on_repair(self) -> None:
+        reporter = _RecordingReporter()
+        modules = FakePromptModules(
+            allocation=duplicate_target_allocation(),
+            acting=acting_for_brief_ids("brief-seg-1", "brief-seg-2", "brief-seg-3"),
+        )
+        service = StoryPlanService(prompt_modules=modules, reporter=reporter)
+        service.build_plan(make_request_3seg())
+        self.assertIn("[STEP] story-plan-repair", reporter.messages)
+        # The actual validation errors are surfaced to the console.
+        self.assertTrue(
+            any("validation error:" in message for message in reporter.messages),
+            reporter.messages,
+        )
+        # Accumulated soft diagnostics are surfaced at the end.
+        self.assertIn("[STEP] story-plan-diagnostics", reporter.messages)
+        self.assertTrue(
+            any(message.startswith("[WARN]") for message in reporter.messages),
+            reporter.messages,
+        )
+
+
+class _RecordingReporter:
+    """Reporter double that records step/message/warning calls."""
+
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    def step(self, title: str) -> None:
+        self.messages.append(f"[STEP] {title}")
+
+    def file(self, label: str, path: Any) -> None:
+        pass
+
+    def message(self, text: str) -> None:
+        self.messages.append(text)
+
+    def warning(self, text: str, *, title: str | None = None) -> None:
+        self.messages.append(f"[WARN] {text}")
+
+    def panel(self, text: str, *, title: str | None = None) -> None:
+        pass
+
+    def table(self, title: str, columns: list[str], rows: list[list[str]]) -> None:
+        pass
+
+    def run_progress(self, description: str, func: Any) -> Any:
+        return func()
 
 
 class StoryPlanRequestValidationTests(unittest.TestCase):
@@ -1483,6 +1718,33 @@ class StoryPlanReviewExportTests(unittest.TestCase):
                 )
             ).hexdigest()
             self.assertEqual(manifest["plan_fingerprint"], expected_plan_fingerprint)
+
+
+class StoryPlanExclusiveDedupTests(unittest.TestCase):
+    def test_dedup_keeps_first_exclusive_per_beat(self) -> None:
+        briefs = [
+            {"brief_id": "b1", "beat_id": "beat-001", "exclusive": True},
+            {"brief_id": "b2", "beat_id": "beat-001", "exclusive": True},
+            {"brief_id": "b3", "beat_id": "beat-002", "exclusive": True},
+            {"brief_id": "b4", "beat_id": "beat-002", "exclusive": True},
+            {"brief_id": "b5", "beat_id": None, "exclusive": True},
+        ]
+        StoryPlanService._dedup_exclusive_allocations(briefs)
+        self.assertTrue(briefs[0]["exclusive"])
+        self.assertFalse(briefs[1]["exclusive"])
+        self.assertTrue(briefs[2]["exclusive"])
+        self.assertFalse(briefs[3]["exclusive"])
+        # A brief with no beat_id is never deduplicated.
+        self.assertTrue(briefs[4]["exclusive"])
+
+    def test_dedup_leaves_non_exclusive_briefs_untouched(self) -> None:
+        briefs = [
+            {"brief_id": "b1", "beat_id": "beat-001", "exclusive": False},
+            {"brief_id": "b2", "beat_id": "beat-001", "exclusive": False},
+        ]
+        StoryPlanService._dedup_exclusive_allocations(briefs)
+        self.assertFalse(briefs[0]["exclusive"])
+        self.assertFalse(briefs[1]["exclusive"])
 
 
 if __name__ == "__main__":

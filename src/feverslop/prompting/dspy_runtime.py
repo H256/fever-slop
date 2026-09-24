@@ -28,10 +28,13 @@ DEFAULT_TASK_TEMPERATURES: dict[str, float] = {
     "judge": 0.2,
     "analyzer": 0.2,
     # Story-plan jobs: analytic/structured extraction at the judge/analyzer
-    # level; the creative acting job at the planner/renderer level.
+    # level; the creative arc-skeleton and acting jobs at the planner/renderer
+    # level.
     "story_plan_bible": 0.2,
+    "story_plan_arc_skeleton": 0.6,
     "story_plan_beat_allocation": 0.2,
     "story_plan_acting": 0.6,
+    "story_plan_live_prompts": 0.6,
     "story_plan_repair": 0.2,
 }
 

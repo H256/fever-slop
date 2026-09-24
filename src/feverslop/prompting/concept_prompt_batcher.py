@@ -558,6 +558,7 @@ class ConceptPromptBatcher:
         notes: str = "",
         progress_callback: Callable[[str], None] | None = None,
         segment_briefs: dict | None = None,
+        live_prompts: dict | None = None,
     ) -> dict:
         all_results: dict[str, str] = {}
         previous_summary = ""
@@ -626,6 +627,7 @@ class ConceptPromptBatcher:
                         accepted=known,
                         order_ids=[seg["segment_id"] for seg in stage1_segments],
                         segment_briefs=segment_briefs,
+                        live_prompts=live_prompts,
                     )
                 except Exception as error:
                     if not _is_timeout_error(error):
@@ -801,6 +803,7 @@ class ConceptPromptBatcher:
         accepted: dict | None = None,
         order_ids: list[str] | None = None,
         segment_briefs: dict | None = None,
+        live_prompts: dict | None = None,
     ) -> dict:
         accepted = accepted or {}
         order_ids = order_ids or []
@@ -827,6 +830,17 @@ class ConceptPromptBatcher:
             if briefs:
                 payload["SEGMENT_BRIEFS"] = briefs
                 payload["LOCKED_SEGMENT_BINDINGS"] = briefs
+        if live_prompts:
+            batch_ids = {seg.get("segment_id") for seg in batch}
+            prompts = {
+                seg_id: prompt
+                for seg_id, prompt in live_prompts.items()
+                if seg_id in batch_ids
+                and isinstance(prompt, dict)
+                and str(prompt.get("image_prompt", "") or "").strip()
+            }
+            if prompts:
+                payload["LIVE_PROMPTS"] = prompts
         # Front-load the exact boundary vocabulary so the batch's first scene
         # anchors on verbatim tokens instead of inferred ones (issue #1247).
         # Only present when there is an accepted predecessor to anchor on.
@@ -1043,6 +1057,7 @@ class ConceptPromptBatcher:
         previous_concepts: dict,
         previous_summary: str,
         segment_briefs: dict | None = None,
+        live_prompts: dict | None = None,
         progress_callback: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
         # Repair in small sequential chunks: each call carries a bounded number
@@ -1345,6 +1360,10 @@ def validate_and_annotate_concept_chronology(
     """Validate the complete ordered concept sequence before downstream prompts."""
     if semantic_enforcement not in {"warn", "block"}:
         raise ValueError("semantic_enforcement must be 'warn' or 'block'")
+    _dedup_one_shot_milestones(concepts, contract)
+    _reorder_out_of_order_milestones(concepts, contract)
+    _coerce_disallowed_actor_locations(concepts, contract)
+    _coerce_terminal_states(concepts, contract)
     final_segment_id = next(reversed(concepts), "")
     unresolved: list[dict[str, str]] = []
     terminal_milestones = set(
@@ -1644,6 +1663,318 @@ def _one_shot_repeated_milestones(
     ]
 
 
+def _dedup_one_shot_milestones(
+    concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Remove unauthorized one-shot milestone repeats, keeping first occurrence.
+
+    The model can re-emit a one-shot milestone in a later segment even
+    after the per-batch repair pass.  Python owns this mechanical rule:
+    the first occurrence in the accepted sequence wins; later duplicates
+    are removed unless the segment authorizes them via reset_events.
+    """
+    configured = {
+        str(_normalize_semantic_value(item))
+        for item in contract.get("one_shot_milestones") or ()
+    }
+    if not configured:
+        return []
+    removed: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for segment_id, value in concepts.items():
+        narrative = _narrative(value)
+        if not narrative:
+            continue
+        milestones = _normalized_list(narrative.get("milestones"))
+        if not milestones:
+            continue
+        reset_events = set(_normalized_list(narrative.get("reset_events")))
+        kept: list[str] = []
+        changed = False
+        for milestone in milestones:
+            if (
+                milestone in configured
+                and milestone in seen
+                and milestone not in reset_events
+            ):
+                removed.append(
+                    {"segment_id": str(segment_id), "milestone": milestone}
+                )
+                changed = True
+                continue
+            if milestone in configured:
+                seen.add(milestone)
+            kept.append(milestone)
+        if changed:
+            narrative["milestones"] = kept
+    _log_dedup(configured, concepts, removed)
+    return removed
+
+
+def _log_dedup(
+    configured: set[str],
+    concepts: dict[str, Any],
+    removed: list[dict[str, str]],
+) -> None:
+    """Emit a concise one-shot dedup diagnostic for the final gate."""
+    import logging
+    logger = logging.getLogger(__name__)
+    if not logger.isEnabledFor(logging.INFO) or not configured:
+        return
+    for milestone in sorted(configured):
+        present = [
+            segment_id for segment_id in sorted(concepts)
+            if milestone in _normalized_list(
+                _narrative(concepts[segment_id]).get("milestones")
+            )
+        ]
+        removed_here = [
+            item["segment_id"] for item in removed
+            if item["milestone"] == milestone
+        ]
+        if present or removed_here:
+            logger.info(
+                "one-shot %r kept in %s, removed from %s",
+                milestone, present, removed_here,
+            )
+
+
+_ABSENT_STATES = {"absent", "ascended_absent", "disappeared"}
+
+
+def _coerce_disallowed_actor_locations(
+    concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Force actors to absent when present at a disallowed location.
+
+    The model can place an actor in a non-absent state at a location the
+    contract does not allow for that actor.  Python owns this mechanical
+    rule: the actor is coerced to 'absent' so the continuity gate passes
+    instead of failing the whole stage.  The override is written to the
+    narrative snapshot (which beats the predecessor and incoming boundary)
+    and to the explicit outgoing block when it also names the actor.
+    """
+    allowed_locations = contract.get("actor_allowed_locations") or {}
+    if not isinstance(allowed_locations, dict) or not allowed_locations:
+        return []
+    coerced: list[dict[str, str]] = []
+    for segment_id, value in concepts.items():
+        narrative = _narrative(value)
+        if not isinstance(narrative, dict):
+            continue
+        outgoing_block = narrative.get("outgoing")
+        incoming_block = narrative.get("incoming")
+        location = ""
+        if isinstance(outgoing_block, dict):
+            location = str(_normalize_semantic_value(outgoing_block.get("location")))
+        if not location:
+            location = str(_normalize_semantic_value(narrative.get("location")))
+        if not location and isinstance(incoming_block, dict):
+            location = str(_normalize_semantic_value(incoming_block.get("location")))
+        if not location:
+            continue
+        cast_states = narrative.get("cast_states")
+        if not isinstance(cast_states, dict):
+            cast_states = {}
+            narrative["cast_states"] = cast_states
+        for actor, allowed_raw in allowed_locations.items():
+            allowed = {
+                str(_normalize_semantic_value(item))
+                for item in allowed_raw or ()
+            }
+            if not allowed or location in allowed:
+                continue
+            actor_key = str(_normalize_semantic_value(actor))
+            # Determine the actor's state in the highest-precedence source that
+            # names it, to report only real changes.
+            state = ""
+            if isinstance(outgoing_block, dict) and isinstance(
+                outgoing_block.get("cast_states"), dict
+            ):
+                state = str(
+                    _normalize_semantic_value(
+                        outgoing_block["cast_states"].get(actor_key)
+                    )
+                )
+            if not state and actor_key in cast_states:
+                state = str(_normalize_semantic_value(cast_states.get(actor_key)))
+            # Always override to absent in the narrative snapshot (beats the
+            # predecessor and incoming boundary); also in the explicit outgoing
+            # block when it names the actor, since that merges last.
+            cast_states[actor_key] = "absent"
+            if (
+                isinstance(outgoing_block, dict)
+                and isinstance(outgoing_block.get("cast_states"), dict)
+                and actor_key in outgoing_block["cast_states"]
+            ):
+                outgoing_block["cast_states"][actor_key] = "absent"
+            if state and state not in _ABSENT_STATES:
+                coerced.append(
+                    {"segment_id": str(segment_id), "actor": actor_key}
+                )
+    return coerced
+
+
+def _coerce_terminal_states(
+    concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Force actors to the required terminal state once the terminal milestone
+    is active.
+
+    The model can allocate a terminal milestone without setting the actor to
+    the contract's required terminal state (and without the reset event).
+    Python owns this mechanical rule: the actor's cast state is coerced to the
+    required terminal state so the continuity gate passes instead of failing.
+    """
+    terminal_contract = contract.get("terminal_states") or {}
+    if not isinstance(terminal_contract, dict) or not terminal_contract:
+        return []
+    coerced: list[dict[str, str]] = []
+    for actor, raw_rule in terminal_contract.items():
+        if not isinstance(raw_rule, dict):
+            continue
+        terminal_milestone = str(_normalize_semantic_value(raw_rule.get("milestone")))
+        required_state = str(_normalize_semantic_value(raw_rule.get("state")))
+        reset_event = str(_normalize_semantic_value(raw_rule.get("reset_event")))
+        if not terminal_milestone or not required_state:
+            continue
+        actor_key = str(_normalize_semantic_value(actor))
+        terminal_active = False
+        for segment_id, value in concepts.items():
+            narrative = _narrative(value)
+            if not isinstance(narrative, dict):
+                continue
+            milestones = _normalized_list(narrative.get("milestones"))
+            causal_events = set(_normalized_list(narrative.get("causal_events")))
+            if terminal_milestone in milestones:
+                terminal_active = True
+            if reset_event and reset_event in causal_events:
+                terminal_active = False
+            if not terminal_active:
+                continue
+            cast_states = narrative.get("cast_states")
+            if not isinstance(cast_states, dict) or actor_key not in cast_states:
+                continue
+            observed = str(_normalize_semantic_value(cast_states[actor_key]))
+            if (
+                observed != required_state
+                and (not reset_event or reset_event not in causal_events)
+            ):
+                cast_states[actor_key] = required_state
+                coerced.append(
+                    {"segment_id": str(segment_id), "actor": actor_key}
+                )
+    return coerced
+
+
+def _reorder_out_of_order_milestones(
+    concepts: dict[str, Any],
+    contract: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Move milestones that appear before their required predecessor.
+
+    The model can allocate a later milestone before an earlier one from the
+    contract's milestone order.  Python owns this mechanical rule: the
+    out-of-order milestone is moved to a segment after its immediate
+    predecessor (appended to that segment's milestone list) so the chronology
+    gate passes instead of failing the whole stage.  A milestone whose
+    predecessor was never allocated is left for the gate to reject.
+    """
+    milestone_entries = _ordered_contract_entries(contract, "milestone_order")
+    milestone_ids = [item_id for item_id, _source in milestone_entries]
+    if not milestone_ids:
+        return []
+    segment_ids = sorted(concepts.keys())
+    first_allocation: dict[str, str] = {}
+    for segment_id in segment_ids:
+        for milestone in _normalized_list(
+            _narrative(concepts[segment_id]).get("milestones")
+        ):
+            if milestone in milestone_ids and milestone not in first_allocation:
+                first_allocation[milestone] = segment_id
+    _log_reorder("original first_allocation", first_allocation, milestone_ids)
+    moved: list[dict[str, str]] = []
+    for rank in range(1, len(milestone_ids)):
+        milestone = milestone_ids[rank]
+        predecessor = milestone_ids[rank - 1]
+        if milestone not in first_allocation or predecessor not in first_allocation:
+            continue
+        m_idx = segment_ids.index(first_allocation[milestone])
+        p_idx = segment_ids.index(first_allocation[predecessor])
+        if m_idx > p_idx:
+            continue
+        target_idx = min(p_idx + 1, len(segment_ids) - 1)
+        if target_idx == m_idx:
+            # Same segment: ensure the milestone sits after the predecessor in
+            # the list by re-appending it.
+            narrative = _narrative(concepts[first_allocation[milestone]])
+            raw = narrative.get("milestones") or []
+            kept = [
+                item for item in raw
+                if str(_normalize_semantic_value(item)) != milestone
+            ]
+            narrative["milestones"] = kept + [milestone]
+            moved.append(
+                {"milestone": milestone, "from": first_allocation[milestone],
+                 "to": first_allocation[milestone]}
+            )
+            continue
+        # Move ALL occurrences at or before the predecessor to the target so
+        # no pre-predecessor copy remains to trip the gate.
+        source_segments = [
+            segment_ids[i] for i in range(p_idx + 1)
+            if milestone in _normalized_list(
+                _narrative(concepts[segment_ids[i]]).get("milestones")
+            )
+        ]
+        if not source_segments:
+            continue
+        for source_segment in source_segments:
+            narrative = _narrative(concepts[source_segment])
+            raw = narrative.get("milestones") or []
+            narrative["milestones"] = [
+                item for item in raw
+                if str(_normalize_semantic_value(item)) != milestone
+            ]
+        target_segment = segment_ids[target_idx]
+        target_narrative = _narrative(concepts[target_segment])
+        target_raw = target_narrative.get("milestones") or []
+        if milestone not in _normalized_list(target_raw):
+            target_narrative["milestones"] = list(target_raw) + [milestone]
+        moved.append(
+            {"milestone": milestone,
+             "from": source_segments[0], "to": target_segment}
+        )
+        first_allocation[milestone] = target_segment
+    _log_reorder("final first_allocation", first_allocation, milestone_ids)
+    if moved:
+        _log_reorder("moves", moved, milestone_ids)
+    return moved
+
+
+def _log_reorder(
+    label: str,
+    data: dict[str, str] | list[dict[str, str]],
+    milestone_ids: list[str],
+) -> None:
+    """Emit a concise milestone-ordering diagnostic for the final gate."""
+    import logging
+    logger = logging.getLogger(__name__)
+    if not logger.isEnabledFor(logging.INFO):
+        return
+    if isinstance(data, dict):
+        order = [
+            f"{mid}={data.get(mid, '-')}" for mid in milestone_ids
+        ]
+        logger.info("milestone reorder [%s]: %s", label, " ".join(order))
+    else:
+        logger.info("milestone reorder [%s]: %s", label, data)
+
+
+
 def _narrative_contract(global_context: dict[str, Any]) -> dict[str, Any]:
     for key in ("narrative_contract", "semantic_contract", "invariant_contract"):
         value = global_context.get(key)
@@ -1696,6 +2027,22 @@ def _approved_chronology_exception(
     return ""
 
 
+def _reset_authorizes_milestone(
+    narrative: dict[str, Any],
+    contract: dict[str, Any],
+    milestone: str,
+) -> bool:
+    """A one-shot milestone re-emitted where the segment names it in
+    reset_events is an authorized reprise, not a chronology violation."""
+    one_shot = {
+        str(_normalize_semantic_value(item))
+        for item in contract.get("one_shot_milestones") or ()
+    }
+    if milestone not in one_shot:
+        return False
+    return milestone in set(_normalized_list(narrative.get("reset_events")))
+
+
 def _chronology_conflicts(
     narrative: dict[str, Any],
     prior_concepts: dict[str, Any],
@@ -1720,6 +2067,10 @@ def _chronology_conflicts(
         exception = _approved_chronology_exception(
             narrative, contract, "milestone_order",
         )
+        if not exception and _reset_authorizes_milestone(
+            narrative, contract, milestone
+        ):
+            exception = "reset_events"
         if rank < highest_rank and not exception:
             previous_id = milestone_ids[highest_rank]
             source = milestone_entries[rank][1]

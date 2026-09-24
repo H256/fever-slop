@@ -5,8 +5,11 @@ from typing import Any
 from feverslop.prompting.guide_loader import load_markdown_guide
 from feverslop.prompting.llm_policy import (
     STORY_PLAN_ACTING,
+    STORY_PLAN_ARC_SKELETON,
     STORY_PLAN_BEAT_ALLOCATION,
     STORY_PLAN_BIBLE,
+    STORY_PLAN_LIVE_PROMPTS,
+    STORY_PLAN_REPAIR,
     policy_for,
 )
 from feverslop.prompting.story_plan_signatures import (
@@ -16,8 +19,11 @@ from feverslop.prompting.story_plan_signatures import (
 
 _BUNDLE_TASK_NAMES = {
     STORY_PLAN_ACTING: "acting",
+    STORY_PLAN_ARC_SKELETON: "arc_skeleton",
     STORY_PLAN_BEAT_ALLOCATION: "beat_allocation",
     STORY_PLAN_BIBLE: "bible",
+    STORY_PLAN_LIVE_PROMPTS: "live_prompts",
+    STORY_PLAN_REPAIR: "repair",
 }
 
 
@@ -116,7 +122,7 @@ class StoryPlanPromptModules:
             "bible",
         )
 
-    def beat_allocation(
+    def arc_skeleton(
         self,
         *,
         creative_direction: str,
@@ -126,14 +132,40 @@ class StoryPlanPromptModules:
         props: list[dict[str, Any]],
     ) -> Any:
         return self._call(
-            STORY_PLAN_BEAT_ALLOCATION,
-            load_markdown_guide("story-plan-beat-allocation"),
+            STORY_PLAN_ARC_SKELETON,
+            load_markdown_guide("story-plan-arc-skeleton"),
             {
                 "creative_direction": creative_direction,
                 "bible": bible,
                 "characters": characters,
                 "locations": locations,
                 "props": props,
+            },
+            "beats",
+        )
+
+    def beat_allocation(
+        self,
+        *,
+        creative_direction: str,
+        bible: Any,
+        beats: list[dict[str, Any]],
+        characters: list[dict[str, Any]],
+        locations: list[dict[str, Any]],
+        props: list[dict[str, Any]],
+        segments: list[dict[str, Any]],
+    ) -> Any:
+        return self._call(
+            STORY_PLAN_BEAT_ALLOCATION,
+            load_markdown_guide("story-plan-beat-allocation"),
+            {
+                "creative_direction": creative_direction,
+                "bible": bible,
+                "beats": beats,
+                "characters": characters,
+                "locations": locations,
+                "props": props,
+                "segments": segments,
             },
             "allocation",
         )
@@ -164,4 +196,40 @@ class StoryPlanPromptModules:
                 "props": props,
             },
             "result",
+        )
+
+    def live_prompts(
+        self,
+        *,
+        creative_direction: str,
+        bible: Any,
+        briefs: list[dict[str, Any]],
+        expected_targets: list[str],
+    ) -> Any:
+        return self._call(
+            STORY_PLAN_LIVE_PROMPTS,
+            load_markdown_guide("story-plan-live-prompts"),
+            {
+                "creative_direction": creative_direction,
+                "bible": bible,
+                "briefs": briefs,
+                "expected_targets": list(expected_targets),
+            },
+            "result",
+        )
+
+    def repair(
+        self,
+        *,
+        prior_plan: dict[str, Any],
+        diagnostics: list[dict[str, Any]],
+    ) -> Any:
+        return self._call(
+            STORY_PLAN_REPAIR,
+            load_markdown_guide("story-plan-repair"),
+            {
+                "prior_plan": prior_plan,
+                "diagnostics": diagnostics,
+            },
+            "plan",
         )

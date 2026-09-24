@@ -6,6 +6,10 @@ from feverslop.prompting.concept_prompt_batcher import (
     ConceptPromptBatcher,
     _adjacent_continuity_plan,
     _apply_locked_segment_bindings,
+    _coerce_disallowed_actor_locations,
+    _coerce_terminal_states,
+    _dedup_one_shot_milestones,
+    _reorder_out_of_order_milestones,
     validate_and_annotate_concept_chronology,
 )
 
@@ -60,8 +64,8 @@ class LockedContinuityRegressionTests(unittest.TestCase):
             concepts, contract, semantic_enforcement="warn",
         )
 
-        self.assertEqual("warning", result["segment_002"]["semantic_validation"]["outcome"])
-        self.assertIn("repeats", result["segment_002"]["semantic_validation"]["unresolved_diagnostic"])
+        self.assertEqual("accepted", result["segment_002"]["semantic_validation"]["outcome"])
+        self.assertEqual([], result["segment_002"]["narrative"]["milestones"])
 
     def test_warn_final_chronology_marks_premature_terminal_event(self):
         concepts = {
@@ -2628,6 +2632,278 @@ class BoundaryVocabularyFrontLoadTests(unittest.TestCase):
         # The duplicate is in the aftermath.
         self.assertIn("segment_015", allocation.get("aftermath", []))
         self.assertEqual(["drink"], allocation["one_shot_milestones"])
+
+
+def _loc_concept(
+    beat: str,
+    *,
+    location: str = "",
+    cast_states: dict[str, str] | None = None,
+) -> dict:
+    return {
+        "concept": beat,
+        "narrative": {
+            "story_beat": beat,
+            "objective": "test objective",
+            "action": "test action",
+            "action_phase": "test phase",
+            "milestones": [],
+            "location": location,
+            "cast_states": cast_states if cast_states is not None else {},
+            "props": {},
+        },
+    }
+
+
+class OneShotMilestoneDedupTests(unittest.TestCase):
+    def test_dedup_removes_unauthorized_repeat(self):
+        concepts = {
+            "seg_1": _loc_concept("First.", cast_states={}),
+            "seg_2": _loc_concept("Repeat.", cast_states={}),
+        }
+        concepts["seg_1"]["narrative"]["milestones"] = ["drink"]
+        concepts["seg_2"]["narrative"]["milestones"] = ["drink"]
+        contract = {"one_shot_milestones": ["drink"]}
+        removed = _dedup_one_shot_milestones(concepts, contract)
+        self.assertEqual(
+            [{"segment_id": "seg_2", "milestone": "drink"}],
+            removed,
+        )
+        self.assertEqual([], concepts["seg_2"]["narrative"]["milestones"])
+        self.assertEqual(["drink"], concepts["seg_1"]["narrative"]["milestones"])
+
+    def test_dedup_keeps_reset_authorized_repeat(self):
+        concepts = {
+            "seg_1": _loc_concept("First.", cast_states={}),
+            "seg_2": _loc_concept("Reset.", cast_states={}),
+        }
+        concepts["seg_1"]["narrative"]["milestones"] = ["drink"]
+        concepts["seg_2"]["narrative"]["milestones"] = ["drink"]
+        concepts["seg_2"]["narrative"]["reset_events"] = ["drink"]
+        contract = {"one_shot_milestones": ["drink"]}
+        self.assertEqual([], _dedup_one_shot_milestones(concepts, contract))
+        self.assertEqual(["drink"], concepts["seg_2"]["narrative"]["milestones"])
+
+    def test_dedup_no_contract_is_noop(self):
+        concepts = {
+            "seg_1": _loc_concept("First.", cast_states={}),
+            "seg_2": _loc_concept("Repeat.", cast_states={}),
+        }
+        concepts["seg_1"]["narrative"]["milestones"] = ["drink"]
+        concepts["seg_2"]["narrative"]["milestones"] = ["drink"]
+        self.assertEqual([], _dedup_one_shot_milestones(concepts, {}))
+        self.assertEqual(["drink"], concepts["seg_2"]["narrative"]["milestones"])
+
+
+class ActorLocationCoercionTests(unittest.TestCase):
+    def test_coerce_forces_disallowed_actor_to_absent(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "At the fog.",
+                location="the_void_fog",
+                cast_states={"stranger_reflection": "present"},
+            ),
+        }
+        contract = {
+            "actor_allowed_locations": {
+                "stranger_reflection": ["mirror_threshold"],
+            },
+        }
+        coerced = _coerce_disallowed_actor_locations(concepts, contract)
+        self.assertEqual(
+            [{"segment_id": "seg_1", "actor": "stranger_reflection"}],
+            coerced,
+        )
+        self.assertEqual(
+            "absent",
+            concepts["seg_1"]["narrative"]["cast_states"]["stranger_reflection"],
+        )
+
+    def test_coerce_leaves_allowed_actor_untouched(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "At the threshold.",
+                location="mirror_threshold",
+                cast_states={"stranger_reflection": "present"},
+            ),
+        }
+        contract = {
+            "actor_allowed_locations": {
+                "stranger_reflection": ["mirror_threshold"],
+            },
+        }
+        self.assertEqual([], _coerce_disallowed_actor_locations(concepts, contract))
+        self.assertEqual(
+            "present",
+            concepts["seg_1"]["narrative"]["cast_states"]["stranger_reflection"],
+        )
+
+    def test_coerce_ignores_already_absent_actor(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "At the fog.",
+                location="the_void_fog",
+                cast_states={"stranger_reflection": "absent"},
+            ),
+        }
+        contract = {
+            "actor_allowed_locations": {
+                "stranger_reflection": ["mirror_threshold"],
+            },
+        }
+        self.assertEqual([], _coerce_disallowed_actor_locations(concepts, contract))
+
+    def test_coerce_no_contract_is_noop(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "At the fog.",
+                location="the_void_fog",
+                cast_states={"stranger_reflection": "present"},
+            ),
+        }
+        self.assertEqual([], _coerce_disallowed_actor_locations(concepts, {}))
+        self.assertEqual(
+            "present",
+            concepts["seg_1"]["narrative"]["cast_states"]["stranger_reflection"],
+        )
+
+    def test_final_validation_coerces_disallowed_actor(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "At the fog.",
+                location="the_void_fog",
+                cast_states={"stranger_reflection": "present"},
+            ),
+        }
+        contract = {
+            "actor_allowed_locations": {
+                "stranger_reflection": ["mirror_threshold"],
+            },
+        }
+        annotated = validate_and_annotate_concept_chronology(concepts, contract)
+        self.assertEqual(
+            "absent",
+            concepts["seg_1"]["narrative"]["cast_states"]["stranger_reflection"],
+        )
+        self.assertEqual("accepted", annotated["seg_1"]["semantic_validation"]["outcome"])
+
+
+class TerminalStateCoercionTests(unittest.TestCase):
+    def test_coerce_terminal_state_sets_required_state(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "The end.",
+                location="the_void_fog",
+                cast_states={"lead_subject": "dissolving_silhouette"},
+            ),
+        }
+        concepts["seg_1"]["narrative"]["milestones"] = ["spiritual_erasure_drift"]
+        contract = {
+            "terminal_states": {
+                "lead_subject": {
+                    "milestone": "spiritual_erasure_drift",
+                    "state": "drifting_endlessly",
+                },
+            },
+        }
+        coerced = _coerce_terminal_states(concepts, contract)
+        self.assertEqual(
+            [{"segment_id": "seg_1", "actor": "lead_subject"}],
+            coerced,
+        )
+        self.assertEqual(
+            "drifting_endlessly",
+            concepts["seg_1"]["narrative"]["cast_states"]["lead_subject"],
+        )
+
+    def test_coerce_terminal_state_leaves_reset_authorized_untouched(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "The return.",
+                location="the_void_fog",
+                cast_states={"lead_subject": "corporeal"},
+            ),
+        }
+        concepts["seg_1"]["narrative"]["milestones"] = ["spiritual_erasure_drift"]
+        concepts["seg_1"]["narrative"]["causal_events"] = ["lead_subject_returns"]
+        contract = {
+            "terminal_states": {
+                "lead_subject": {
+                    "milestone": "spiritual_erasure_drift",
+                    "state": "drifting_endlessly",
+                    "reset_event": "lead_subject_returns",
+                },
+            },
+        }
+        self.assertEqual([], _coerce_terminal_states(concepts, contract))
+        self.assertEqual(
+            "corporeal",
+            concepts["seg_1"]["narrative"]["cast_states"]["lead_subject"],
+        )
+
+    def test_coerce_terminal_state_no_contract_is_noop(self):
+        concepts = {
+            "seg_1": _loc_concept(
+                "The end.",
+                location="the_void_fog",
+                cast_states={"lead_subject": "dissolving_silhouette"},
+            ),
+        }
+        concepts["seg_1"]["narrative"]["milestones"] = ["spiritual_erasure_drift"]
+        self.assertEqual([], _coerce_terminal_states(concepts, {}))
+        self.assertEqual(
+            "dissolving_silhouette",
+            concepts["seg_1"]["narrative"]["cast_states"]["lead_subject"],
+        )
+
+
+class MilestoneReorderTests(unittest.TestCase):
+    def test_reorder_moves_out_of_order_milestone(self):
+        concepts = {
+            "seg_1": _loc_concept("Early.", location="dissolving_apartment", cast_states={}),
+            "seg_2": _loc_concept("Jumping.", location="dissolving_apartment", cast_states={}),
+            "seg_3": _loc_concept("The predecessor.", location="mirror_threshold", cast_states={}),
+        }
+        concepts["seg_2"]["narrative"]["milestones"] = ["internal_void_discovery"]
+        concepts["seg_3"]["narrative"]["milestones"] = ["reflection_stranger_encounter"]
+        contract = {
+            "milestone_order": [
+                "reflection_stranger_encounter",
+                "internal_void_discovery",
+            ],
+        }
+        moved = _reorder_out_of_order_milestones(concepts, contract)
+        self.assertEqual(1, len(moved))
+        self.assertNotIn(
+            "internal_void_discovery",
+            concepts["seg_2"]["narrative"]["milestones"],
+        )
+        self.assertIn(
+            "internal_void_discovery",
+            concepts["seg_3"]["narrative"]["milestones"],
+        )
+
+    def test_reorder_leaves_in_order_milestones_untouched(self):
+        concepts = {
+            "seg_1": _loc_concept("The predecessor.", location="mirror_threshold", cast_states={}),
+            "seg_2": _loc_concept("The successor.", location="the_void_fog", cast_states={}),
+        }
+        concepts["seg_1"]["narrative"]["milestones"] = ["reflection_stranger_encounter"]
+        concepts["seg_2"]["narrative"]["milestones"] = ["internal_void_discovery"]
+        contract = {
+            "milestone_order": [
+                "reflection_stranger_encounter",
+                "internal_void_discovery",
+            ],
+        }
+        self.assertEqual([], _reorder_out_of_order_milestones(concepts, contract))
+
+    def test_reorder_no_contract_is_noop(self):
+        concepts = {
+            "seg_1": _loc_concept("The successor.", location="the_void_fog", cast_states={}),
+        }
+        concepts["seg_1"]["narrative"]["milestones"] = ["internal_void_discovery"]
+        self.assertEqual([], _reorder_out_of_order_milestones(concepts, {}))
 
 
 class TargetedRepairTests(unittest.TestCase):
