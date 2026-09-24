@@ -13,8 +13,8 @@ from feverslop.cli.full_auto import add_full_auto_args, run_full_auto_command
 from feverslop.cli.canonical_plan_migration_cli import build_canonical_plan_migration_parser, run_canonical_plan_migration
 from feverslop.cli.movie_cli import add_movie_args
 from feverslop.cli.run_cli import build_run_parser, run_project_command
-from feverslop.cli.revision_commands import run_rebuild_preview, run_revisions
-from feverslop.cli.revisions import build_rebuild_preview_parser, build_revisions_parser
+from feverslop.cli.revision_commands import run_revisions
+from feverslop.cli.revisions import build_revisions_parser
 from feverslop.cli.shared_args import add_render_args
 from feverslop.cli.video_workflow_cli import build_profiles_parser, run_profiles_command
 from feverslop.cli.workflow_import_cli import build_workflow_import_parser, run_workflow_import_command
@@ -68,7 +68,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     add_full_auto_args(full_auto_parser)
     _build_render_parser(subparsers)
     build_revisions_parser(subparsers)
-    build_rebuild_preview_parser(subparsers)
     build_canonical_plan_migration_parser(subparsers)
     build_canonical_plan_parsers(subparsers)
     build_artifact_parsers(subparsers)
@@ -89,8 +88,6 @@ def main() -> None:
         _run_render(args)
     elif args.command == "revisions":
         run_revisions(args)
-    elif args.command == "rebuild-preview":
-        run_rebuild_preview(args)
     elif args.command == "plan-migrate":
         exit_code = run_canonical_plan_migration(args, console=console)
         if exit_code:

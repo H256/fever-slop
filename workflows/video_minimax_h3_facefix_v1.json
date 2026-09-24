@@ -1,0 +1,152 @@
+{
+  "115": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 1.1,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {"title": "#MEGAPIXELS"}
+  },
+  "119": {
+    "inputs": {"vae_name": "minimax_h3_video_vae_fp16.safetensors"},
+    "class_type": "VAELoader",
+    "_meta": {"title": "Load VAE"}
+  },
+  "122": {
+    "inputs": {"samples": ["125", 0], "vae": ["119", 0]},
+    "class_type": "VAEDecode",
+    "_meta": {"title": "VAE Decode"}
+  },
+  "123": {
+    "inputs": {"sampler_name": "euler"},
+    "class_type": "KSamplerSelect",
+    "_meta": {"title": "KSamplerSelect"}
+  },
+  "124": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 8,
+      "denoise": 0.25,
+      "model": ["159", 0]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {"title": "#SCHEDULER"}
+  },
+  "125": {
+    "inputs": {
+      "noise": ["129", 0],
+      "guider": ["126", 0],
+      "sampler": ["123", 0],
+      "sigmas": ["124", 0],
+      "latent_image": ["161", 0]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {"title": "SamplerCustomAdvanced"}
+  },
+  "126": {
+    "inputs": {"model": ["159", 0], "conditioning": ["136", 0]},
+    "class_type": "BasicGuider",
+    "_meta": {"title": "Basic Guider"}
+  },
+  "127": {
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {"title": "Load Diffusion Model"}
+  },
+  "128": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {"title": "Load CLIP"}
+  },
+  "129": {
+    "inputs": {"noise_seed": 494915751971348},
+    "class_type": "RandomNoise",
+    "_meta": {"title": "#SEED"}
+  },
+  "132": {
+    "inputs": {"value": 201},
+    "class_type": "PrimitiveInt",
+    "_meta": {"title": "#FRAMECOUNT"}
+  },
+  "136": {
+    "inputs": {
+      "prompt": ["138", 0],
+      "width": ["115", 0],
+      "height": ["115", 1],
+      "length": ["132", 0],
+      "ref_image_size": "match",
+      "clip": ["128", 0],
+      "vae": ["119", 0],
+      "ref_images.ref_image_0": ["137", 0]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {"title": "#R2V_COMBINE"}
+  },
+  "137": {
+    "inputs": {"image": "empty_placeholder.png", "upload": "image"},
+    "class_type": "LoadImage",
+    "_meta": {"title": "#REF_1"}
+  },
+  "138": {
+    "inputs": {"value": "Refine only the face region. Preserve framing, motion, body and background exactly."},
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {"title": "#PROMPT"}
+  },
+  "141": {
+    "inputs": {"offload_model": true, "offload_cache": true, "anything": ["125", 0]},
+    "class_type": "VRAMCleanup",
+    "_meta": {"title": "#VRAM_CLEANUP"}
+  },
+  "142": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "feverslop/facefix_h3/scene",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": ["122", 0]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {"title": "#SAVE_VIDEO"}
+  },
+  "159": {
+    "inputs": {
+      "lora_name": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+      "strength_model": 0.85,
+      "model": ["127", 0]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "#TURBO_LORA"}
+  },
+  "160": {
+    "inputs": {
+      "video": "empty_placeholder.mp4",
+      "choose_folder_to_upload": "upload",
+      "upload_folder": ""
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {"title": "#LOAD_SOURCE"}
+  },
+  "161": {
+    "inputs": {
+      "latent": ["136", 1],
+      "video_latent": ["160", 0],
+      "strength": 1.0
+    },
+    "class_type": "H3InjectVideoLatent",
+    "_meta": {"title": "#INJECT_VIDEO_LATENT"}
+  }
+}

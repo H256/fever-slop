@@ -30,3 +30,28 @@ class LTX25WorkflowHygieneTests(unittest.TestCase):
             with self.subTest(workflow=path):
                 for model_name in required:
                     self.assertIn(model_name, serialized)
+
+    def test_t2v_graph_is_distinct_from_i2v_and_has_no_image_input(self):
+        """Regression for issue #1303: the t2v graph must not be a byte-identical
+        copy of the i2v graph, and must not carry the i2v image-input/anchoring
+        chain (it is a pure text-to-video graph)."""
+        i2v = json.loads((WORKFLOW_ROOT / "i2v" / "i2v_draft.json").read_text(encoding="utf-8-sig"))
+        for quality in ("draft", "standard", "final"):
+            path = WORKFLOW_ROOT / "t2v" / f"t2v_{quality}.json"
+            with self.subTest(quality=quality):
+                t2v = json.loads(path.read_text(encoding="utf-8-sig"))
+                self.assertNotEqual(
+                    json.dumps(i2v, sort_keys=True),
+                    json.dumps(t2v, sort_keys=True),
+                    "t2v graph is a byte-identical copy of the i2v graph",
+                )
+                classes = {node.get("class_type") for node in t2v.values()}
+                image_chain = classes & {
+                    "LoadImage", "ResizeImageMaskNode", "GetImageSize",
+                    "EmptyImage", "ImageScaleBy", "LTXVPreprocess",
+                    "LTXVImgToVideoInplace",
+                }
+                self.assertFalse(
+                    image_chain,
+                    f"t2v graph still carries i2v image-input nodes: {sorted(image_chain)}",
+                )

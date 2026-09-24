@@ -120,125 +120,15 @@
       "title": "#TRIM_AUDIO"
     }
   },
-  "14": {
-    "inputs": {
-      "image": "scene_0038.png"
-    },
-    "class_type": "LoadImage",
-    "_meta": {
-      "title": "#STARTFRAME"
-    }
-  },
-  "15": {
-    "inputs": {
-      "resize_type": "scale dimensions",
-      "resize_type.width": [
-        "10",
-        0
-      ],
-      "resize_type.height": [
-        "11",
-        0
-      ],
-      "resize_type.crop": "center",
-      "scale_method": "area",
-      "input": [
-        "14",
-        0
-      ]
-    },
-    "class_type": "ResizeImageMaskNode",
-    "_meta": {
-      "title": "Resize Image/Mask"
-    }
-  },
-  "16": {
-    "inputs": {
-      "image": [
-        "15",
-        0
-      ]
-    },
-    "class_type": "GetImageSize",
-    "_meta": {
-      "title": "Get Image Size"
-    }
-  },
-  "17": {
-    "inputs": {
-      "width": [
-        "16",
-        0
-      ],
-      "height": [
-        "16",
-        1
-      ],
-      "batch_size": 1,
-      "color": 0
-    },
-    "class_type": "EmptyImage",
-    "_meta": {
-      "title": "Empty Image"
-    }
-  },
-  "18": {
-    "inputs": {
-      "upscale_method": "lanczos",
-      "scale_by": 0.5,
-      "image": [
-        "17",
-        0
-      ]
-    },
-    "class_type": "ImageScaleBy",
-    "_meta": {
-      "title": "Upscale Image By"
-    }
-  },
-  "19": {
-    "inputs": {
-      "image": [
-        "18",
-        0
-      ]
-    },
-    "class_type": "GetImageSize",
-    "_meta": {
-      "title": "Get Image Size"
-    }
-  },
-  "20": {
-    "inputs": {
-      "strength": 1,
-      "bypass": false,
-      "vae": [
-        "2",
-        0
-      ],
-      "image": [
-        "23",
-        0
-      ],
-      "latent": [
-        "21",
-        0
-      ]
-    },
-    "class_type": "LTXVImgToVideoInplace",
-    "_meta": {
-      "title": "LTXVImgToVideoInplace"
-    }
-  },
   "21": {
     "inputs": {
       "width": [
-        "19",
+        "10",
         0
       ],
       "height": [
-        "19",
-        1
+        "11",
+        0
       ],
       "length": [
         "22",
@@ -258,19 +148,6 @@
     "class_type": "PrimitiveInt",
     "_meta": {
       "title": "#FRAMES"
-    }
-  },
-  "23": {
-    "inputs": {
-      "img_compression": 33,
-      "image": [
-        "14",
-        0
-      ]
-    },
-    "class_type": "LTXVPreprocess",
-    "_meta": {
-      "title": "LTXVPreprocess"
     }
   },
   "25": {
@@ -307,7 +184,7 @@
   "30": {
     "inputs": {
       "video_latent": [
-        "20",
+        "21",
         0
       ],
       "audio_latent": [
@@ -343,7 +220,7 @@
   },
   "32": {
     "inputs": {
-      "sigmas": "1., 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+      "sigmas": "1., 0.996429, 0.992857, 0.989286, 0.985714, 0.982143, 0.978571, 0.975, 0.9375, 0.883036, 0.777679, 0.638393, 0.465179, 0.241071, 0"
     },
     "class_type": "ManualSigmas",
     "_meta": {
@@ -532,28 +409,6 @@
       "title": "LTXVLatentUpsampler"
     }
   },
-  "44": {
-    "inputs": {
-      "strength": 1,
-      "bypass": false,
-      "vae": [
-        "2",
-        0
-      ],
-      "image": [
-        "15",
-        0
-      ],
-      "latent": [
-        "43",
-        0
-      ]
-    },
-    "class_type": "LTXVImgToVideoInplace",
-    "_meta": {
-      "title": "LTXVImgToVideoInplace"
-    }
-  },
   "45": {
     "inputs": {
       "cfg": 1,
@@ -577,7 +432,7 @@
   },
   "46": {
     "inputs": {
-      "sigmas": "0.909375, 0.725, 0.421875, 0.0"
+      "sigmas": "0.909375, 0.830357, 0.751339, 0.638393, 0.508482, 0.361607, 0.180804, 0"
     },
     "class_type": "ManualSigmas",
     "_meta": {
@@ -587,7 +442,7 @@
   "47": {
     "inputs": {
       "video_latent": [
-        "44",
+        "43",
         0
       ],
       "audio_latent": [
