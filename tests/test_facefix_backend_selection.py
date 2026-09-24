@@ -154,7 +154,7 @@ class TestRunFaceFixRouting(unittest.TestCase):
 
 
 class TestRunH3FaceFixSkip(unittest.TestCase):
-    def test_returns_empty_and_reports_warning(self):
+    def test_missing_sources_are_skipped_and_reported(self):
         from feverslop.composition.facefix_pipeline import (
             FaceFixCompositionOptions,
             _run_h3_facefix,
@@ -164,18 +164,23 @@ class TestRunH3FaceFixSkip(unittest.TestCase):
             scenes_dir="/tmp/scenes",
             video_pipeline="minimax-h3-r2v",
             scene_numbers=[1, 2, 3],
+            max_skip_rate=1.0,
         )
         with patch(
             "feverslop.composition.facefix_pipeline.ConsoleReporter"
         ) as mock_reporter_cls:
             mock_reporter = mock_reporter_cls.return_value
             result = _run_h3_facefix(options, console=Console())
+            # All three sources are missing -> all skipped, nothing produced.
             self.assertEqual(result, [])
-            mock_reporter.warning.assert_called_once()
-            message = mock_reporter.warning.call_args.args[0]
-            self.assertIn("not implemented yet", message)
-            self.assertIn("minimax-h3-r2v", message)
-            self.assertIn("3 scenes", message)
+            # The batch summary is reported once (missing_source x3).
+            messages = [
+                call.args[0] for call in mock_reporter.message.call_args_list
+            ]
+            self.assertTrue(
+                any("batch_summary" in m for m in messages),
+                messages,
+            )
 
     def test_no_console_still_returns_empty(self):
         from feverslop.composition.facefix_pipeline import (
@@ -186,6 +191,8 @@ class TestRunH3FaceFixSkip(unittest.TestCase):
         options = FaceFixCompositionOptions(
             scenes_dir="/tmp/scenes",
             video_pipeline="minimax-h3-r2v",
+            scene_numbers=[1],
+            max_skip_rate=1.0,
         )
         self.assertEqual(_run_h3_facefix(options, console=None), [])
 
