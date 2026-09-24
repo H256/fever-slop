@@ -159,6 +159,62 @@ class StoreLifecycleTests(unittest.TestCase):
             snapshot.read_bytes(),
         )
 
+    def test_reimport_same_sha_preserves_lifecycle_state(self) -> None:
+        self.store.import_workflow(
+            project_id="p", profile_id="h3", pipeline="minimax_h3", purpose="final",
+            graph=_GOOD_GRAPH,
+        )
+        self.store.record_validation("p", "h3", valid=True)
+        self.store.record_test_run("p", "h3", TestRunResult(success=True, detail="ok"))
+        before = self.store.get_profile("p", "h3")
+        self.assertEqual("tested", before.status)
+        # Re-importing the identical graph must not wipe recorded state.
+        self.store.import_workflow(
+            project_id="p", profile_id="h3", pipeline="minimax_h3", purpose="final",
+            graph=_GOOD_GRAPH,
+        )
+        after = self.store.get_profile("p", "h3")
+        self.assertEqual("tested", after.status)
+        self.assertIsNotNone(after.test_run)
+        if after.test_run is not None:
+            self.assertTrue(after.test_run.success)
+
+    def test_reimport_changed_sha_resets_to_draft(self) -> None:
+        self.store.import_workflow(
+            project_id="p", profile_id="h3", pipeline="minimax_h3", purpose="final",
+            graph=_GOOD_GRAPH,
+        )
+        self.store.record_validation("p", "h3", valid=True)
+        self.store.record_test_run("p", "h3", TestRunResult(success=True, detail="ok"))
+        self.assertEqual("tested", self.store.get_profile("p", "h3").status)
+        # A different graph is a new snapshot; stale state must reset to draft.
+        changed = dict(_GOOD_GRAPH)
+        changed["5"] = {"class_type": "KSampler", "inputs": {}}
+        self.store.import_workflow(
+            project_id="p", profile_id="h3", pipeline="minimax_h3", purpose="final",
+            graph=changed,
+        )
+        after = self.store.get_profile("p", "h3")
+        self.assertEqual("draft", after.status)
+        self.assertIsNone(after.test_run)
+
+    def test_reimport_reset_flag_forces_full_reset(self) -> None:
+        self.store.import_workflow(
+            project_id="p", profile_id="h3", pipeline="minimax_h3", purpose="final",
+            graph=_GOOD_GRAPH,
+        )
+        self.store.record_validation("p", "h3", valid=True)
+        self.store.record_test_run("p", "h3", TestRunResult(success=True, detail="ok"))
+        self.assertEqual("tested", self.store.get_profile("p", "h3").status)
+        # reset=True must wipe recorded state even for the same graph.
+        self.store.import_workflow(
+            project_id="p", profile_id="h3", pipeline="minimax_h3", purpose="final",
+            graph=_GOOD_GRAPH, reset=True,
+        )
+        after = self.store.get_profile("p", "h3")
+        self.assertEqual("draft", after.status)
+        self.assertIsNone(after.test_run)
+
     def test_snapshot_write_is_atomic(self) -> None:
         self.store.import_workflow(
             project_id="p", profile_id="h3", pipeline="minimax_h3", purpose="final",
