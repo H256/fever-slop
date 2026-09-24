@@ -44,6 +44,7 @@ Generated from the tracked workflow JSON files on 2026-09-09. The classification
 | `workflows/video/minimax_h3/t2v.json` | video | minimax_h3 | t2v | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/t2v_two_pass.json` | video | minimax_h3 | t2v | workflows/video/minimax_h3/ |
 | `workflows/video/minimax_h3/t2v_two_pass.profile.json` | video | minimax_h3 | profile | workflows/video/minimax_h3/ |
+| `workflows/video_minimax_h3_facefix_v1.json` | video | minimax_h3 | facefix | workflows/video/minimax_h3/ |
 | `workflows/video/ltx_25/capabilities.json` | video | ltx_2.5 | capability manifest | workflows/video/ltx_25/ |
 | `workflows/video/ltx_25/profile-matrix.json` | video | ltx_2.5 | profile matrix | workflows/video/ltx_25/ |
 | `workflows/video/ltx_25/t2v/t2v_draft.json` | video | ltx_2.5 | t2v | workflows/video/ltx_25/t2v/ |

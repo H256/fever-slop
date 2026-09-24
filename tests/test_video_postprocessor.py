@@ -262,6 +262,7 @@ class VideoPostProcessorConcatTests(unittest.TestCase):
             patch("feverslop.adapters.video_postprocessor.os.replace"),
             patch.object(VideoPostProcessor, "_validate_video_output"),
             patch.object(VideoPostProcessor, "_pad_short_clip"),
+            patch.object(VideoPostProcessor, "_pad_short_audio"),
         ):
             # trim, first-frame-count, first-frame, last-frame-count, last-frame
             run.side_effect = [None, frame_count_result, None, frame_count_result, None]
