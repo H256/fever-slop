@@ -1,0 +1,21 @@
+{
+  "schema": "feverslop.minimax-h3-quality-profiles/v1",
+  "pass_strategy": "two_pass",
+  "profiles": {
+    "draft": {
+      "pass1": {"resolution": {"megapixels": 0.4, "aspect_ratio": "16:9", "multiple": 32}, "steps": 12, "denoise": 1.0},
+      "pass2": {"resolution_scale": 2.0, "max_megapixels": 1.6, "steps": 4, "denoise": 0.55},
+      "resource_class": "single-gpu-development"
+    },
+    "standard": {
+      "pass1": {"resolution": {"megapixels": 0.6, "aspect_ratio": "16:9", "multiple": 32}, "steps": 20, "denoise": 1.0},
+      "pass2": {"resolution_scale": 2.0, "max_megapixels": 2.4, "steps": 8, "denoise": 0.4},
+      "resource_class": "single-gpu-production"
+    },
+    "final": {
+      "pass1": {"resolution": {"megapixels": 0.8, "aspect_ratio": "16:9", "multiple": 32}, "steps": 28, "denoise": 1.0},
+      "pass2": {"resolution_scale": 2.0, "max_megapixels": 3.2, "steps": 12, "denoise": 0.3},
+      "resource_class": "high-memory-gpu-production"
+    }
+  }
+}

@@ -115,6 +115,7 @@ UNIT_MODULES = (
     "h3_prompt_builder",
     "h3_prompt_checkpoints",
     "h3_prompt_pipeline",
+    "h3_quality_profiles",
     "h3_recovery_integration",
     "h3_two_pass",
     "h3_two_pass_workflows",
